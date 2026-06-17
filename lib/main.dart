@@ -13,12 +13,14 @@ class Myapp extends StatelessWidget {
       
       // home screen
       home: Scaffold(
+        
         // top app bar
         appBar: AppBar(
           backgroundColor: Colors.orange,
           title: Text('Hello there👋🏼'),
           // add a notification icon
         ),
+
         // body
         body: Container(
           
@@ -30,6 +32,7 @@ class Myapp extends StatelessWidget {
             print("pressed");
           },
         ),
+
         // bottom navigation bar
         bottomNavigationBar: BottomNavigationBar(
           items: const [
