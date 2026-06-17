@@ -15,3 +15,4 @@ We know using AI is a part of the development but how the AI agent behave must b
 * **Comments are important when writing features**
 * **It also best to write understandable commit messages even if its long so all we can understand what you changed**
 
+### When working with new features please consider crearing a new branch so as to avoid painfull **MERGE CONFLICTS**
