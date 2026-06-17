@@ -1,0 +1,328 @@
+<!DOCTYPE html><html class="light" lang="en"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>Campus Bite - Home</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "background": "#f8f9fa",
+                        "tertiary": "#00569f",
+                        "on-error-container": "#93000a",
+                        "tertiary-fixed": "#d4e3ff",
+                        "on-tertiary": "#ffffff",
+                        "surface": "#f8f9fa",
+                        "on-primary-fixed-variant": "#005312",
+                        "primary-container": "#2e7d32",
+                        "on-secondary-container": "#623300",
+                        "on-primary-container": "#cbffc2",
+                        "error": "#ba1a1a",
+                        "surface-bright": "#f8f9fa",
+                        "surface-container": "#edeeef",
+                        "surface-container-highest": "#e1e3e4",
+                        "primary-fixed": "#a3f69c",
+                        "inverse-surface": "#2e3132",
+                        "on-secondary-fixed-variant": "#6d3a00",
+                        "outline-variant": "#bfcaba",
+                        "on-surface-variant": "#40493d",
+                        "secondary-fixed-dim": "#ffb77b",
+                        "on-primary": "#ffffff",
+                        "on-secondary": "#ffffff",
+                        "on-error": "#ffffff",
+                        "surface-tint": "#1b6d24",
+                        "secondary-fixed": "#ffdcc2",
+                        "surface-container-low": "#f3f4f5",
+                        "on-tertiary-fixed-variant": "#004786",
+                        "surface-variant": "#e1e3e4",
+                        "secondary": "#8f4e00",
+                        "on-surface": "#191c1d",
+                        "surface-container-high": "#e7e8e9",
+                        "inverse-on-surface": "#f0f1f2",
+                        "primary": "#0d631b",
+                        "on-background": "#191c1d",
+                        "outline": "#707a6c",
+                        "surface-dim": "#d9dadb",
+                        "secondary-container": "#ff8f06",
+                        "inverse-primary": "#88d982",
+                        "on-primary-fixed": "#002204",
+                        "on-secondary-fixed": "#2e1500",
+                        "tertiary-fixed-dim": "#a5c8ff",
+                        "on-tertiary-fixed": "#001c3a",
+                        "surface-container-lowest": "#ffffff",
+                        "on-tertiary-container": "#ebf1ff",
+                        "primary-fixed-dim": "#88d982",
+                        "error-container": "#ffdad6",
+                        "tertiary-container": "#006eca"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "base": "8px",
+                        "container-margin": "16px",
+                        "md": "16px",
+                        "xl": "32px",
+                        "sm": "12px",
+                        "lg": "24px",
+                        "xs": "4px",
+                        "gutter": "16px"
+                    },
+                    "fontFamily": {
+                        "headline-lg-mobile": ["Inter"],
+                        "label-sm": ["Inter"],
+                        "display-lg": ["Inter"],
+                        "title-lg": ["Inter"],
+                        "title-md": ["Inter"],
+                        "label-lg": ["Inter"],
+                        "body-lg": ["Inter"],
+                        "headline-lg": ["Inter"],
+                        "headline-md": ["Inter"],
+                        "body-md": ["Inter"],
+                        "headline-sm": ["Inter"]
+                    },
+                    "fontSize": {
+                        "headline-lg-mobile": ["28px", {"lineHeight": "34px", "fontWeight": "600"}],
+                        "label-sm": ["11px", {"lineHeight": "16px", "letterSpacing": "0.5px", "fontWeight": "500"}],
+                        "display-lg": ["57px", {"lineHeight": "64px", "letterSpacing": "-0.25px", "fontWeight": "700"}],
+                        "title-lg": ["22px", {"lineHeight": "28px", "fontWeight": "500"}],
+                        "title-md": ["16px", {"lineHeight": "24px", "letterSpacing": "0.15px", "fontWeight": "500"}],
+                        "label-lg": ["14px", {"lineHeight": "20px", "letterSpacing": "0.1px", "fontWeight": "500"}],
+                        "body-lg": ["16px", {"lineHeight": "24px", "letterSpacing": "0.5px", "fontWeight": "400"}],
+                        "headline-lg": ["32px", {"lineHeight": "40px", "fontWeight": "600"}],
+                        "headline-md": ["28px", {"lineHeight": "36px", "fontWeight": "600"}],
+                        "body-md": ["14px", {"lineHeight": "20px", "letterSpacing": "0.25px", "fontWeight": "400"}],
+                        "headline-sm": ["24px", {"lineHeight": "32px", "fontWeight": "600"}]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        body { font-family: 'Inter', sans-serif; }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background text-on-background min-h-screen pb-24">
+<!-- Top AppBar Execution -->
+<header class="w-full top-0 sticky flex justify-between items-center px-container-margin py-base w-full z-40 bg-background dark:bg-background">
+<div class="flex items-center gap-md">
+<div class="w-10 h-10 rounded-full overflow-hidden bg-surface-container-highest">
+<img alt="User Profile" data-alt="A professional studio portrait of a friendly university student with a warm smile, wearing a casual denim shirt. The lighting is soft and natural, emphasizing a bright and welcoming student lifestyle aesthetic. The background is a clean, neutral gray that makes the subject stand out clearly in this high-quality profile photograph." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBaiF36jZB2ht2kqbwdTSKX5gz-kgto10qnq2z3GfG_bc6SehvzTZqP-lPcM3Nb9lkWrGVa0Nj_v5uDoQmikmiTxrq0Qv3mclofuW9zs2Nw1k14Qt3gKCBrguX0xttlDX022SiHKPIVwZEBNGSiQUsOxL9sWT1jM5PDXqctQeGAFjYAlLYRZ-Ux_3TuhO8I-LqPmCDpj9XIRZyOO9BstG7dvPTcBHzqFHjYNqZmgf_PHEiIyLcD5ZU07xyuEglyXIjvc1nrv4Nmv42m">
+</div>
+<div>
+<h1 class="font-headline-sm text-headline-sm font-bold text-primary dark:text-primary-fixed">Campus Bite</h1>
+</div>
+</div>
+<div class="flex items-center gap-sm">
+<button class="material-symbols-outlined text-primary hover:bg-surface-container-high transition-colors p-2 rounded-full active:scale-95 transition-transform" data-icon="notifications">notifications</button>
+</div>
+</header>
+<main class="px-container-margin mt-base space-y-xl">
+<!-- Welcome Section -->
+<section class="space-y-xs">
+<p class="font-label-lg text-label-lg text-on-surface-variant">Monday, Oct 23</p>
+<h2 class="font-headline-lg-mobile text-headline-lg-mobile text-on-surface">Welcome DAVID! <br><span class="text-secondary">What's your bite today?</span></h2>
+</section>
+<!-- Search Bar -->
+<section class="sticky top-[64px] z-30 bg-background/80 backdrop-blur-md py-base">
+<div class="relative flex items-center">
+<span class="material-symbols-outlined absolute left-4 text-outline" data-icon="search">search</span>
+<input class="w-full pl-12 pr-4 py-4 bg-surface-container-low border-none rounded-xl focus:ring-2 focus:ring-primary font-body-md text-body-md shadow-sm" placeholder="Search meals, drinks, snacks..." type="text">
+</div>
+</section>
+<!-- Promotion Banner -->
+<section class="relative h-44 rounded-2xl overflow-hidden shadow-lg group">
+<img class="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" data-alt="A delicious, high-angle close-up of a vibrant gourmet harvest bowl featuring roasted vegetables, fresh avocado, quinoa, and colorful microgreens. The lighting is warm and golden, reminiscent of a cozy afternoon sun, creating an appetizing and healthy vibe. The overall aesthetic is fresh and modern, with rich textures that highlight the quality of the campus food service." src="https://lh3.googleusercontent.com/aida-public/AB6AXuD1yVIx5NuNNExTJqSF1qasU6y5LIifUaqpvQz2RnmaadwId1D3iYXwLBepc0-gnyvhcnGLIHUa85Mu33qodRDNUXILbe2ViGjn9I8ojOAss-GwErdpdlUBDh8weI6gK6U8YW0J0KaobQJxV1Rrh2bLzC8-qzOilfLzQi5fbvTezH72r2OLpZnqQSgWNkHRrRa5lMhFONzuBX_q7zb6SRjSTIXAD8VjOK37Td53RJmvt9AomXNb5aliaMB_MbdkQBVlfgbsoBrJiNJ3">
+<div class="absolute inset-0 bg-gradient-to-r from-black/70 to-transparent flex flex-col justify-center p-lg">
+<span class="bg-secondary-container text-on-secondary-container text-label-sm font-bold px-3 py-1 rounded-full w-fit mb-2 uppercase tracking-wider">Today's Special</span>
+<h3 class="font-headline-sm text-headline-sm text-white">Harvest Energy Bowl</h3>
+<p class="text-white/80 font-body-md text-body-md">Get 20% off during lunch hours!</p>
+<button class="mt-md bg-white text-primary font-title-md text-title-md px-lg py-2 rounded-full w-fit active:scale-95 transition-transform">Order Now</button>
+</div>
+</section>
+<!-- Today's Menu: CAFE 1 -->
+<section class="space-y-md">
+<div class="flex justify-between items-center">
+<h3 class="font-title-lg text-title-lg text-on-surface">Menu: CAFE 1</h3>
+<button class="text-primary font-label-lg text-label-lg">See All</button>
+</div>
+<div class="flex gap-md overflow-x-auto hide-scrollbar -mx-container-margin px-container-margin pb-base">
+<!-- Food Card 1 -->
+<div class="flex-shrink-0 w-64 bg-white rounded-xl shadow-sm border border-outline-variant/30 overflow-hidden">
+<img class="h-36 w-full object-cover" data-alt="A succulent, flame-grilled classic cheeseburger served on a toasted brioche bun with melting cheddar cheese, crisp lettuce, and ripe tomato slices. The lighting is bright and clear, emphasizing the textures of the meat and fresh vegetables. The overall presentation is clean and professional, designed to look extremely appetizing in a modern food ordering app interface." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAida4-I2VJmyMWvlYLJssWIyVmKpzqiwx1phmWv3X0-dIyBW7Sz2-hn0zgaKoHJdul3Gbdev58mONGLPhjLbTqiAWx_CBBWOGSxxpC8dw3PY1sLWSEXeNfoMwGjxflQkkGS8L-2sOdxepezkq-XY0GYTjFttgIySbd92bwaykQmLySSXNDKuJbZF07iYEfbUk9yx6Xja3hvG-JisdoSa41i5AFa9N7qLubSV2pysD1XeYjhJrrzDWoSuA3kvVKDcQr_Yl9HMQUKehS">
+<div class="p-md relative">
+<div class="flex justify-between items-start">
+<div>
+<h4 class="font-title-md text-title-md text-on-surface">Classic Smash Burger</h4>
+<p class="text-on-surface-variant font-body-md text-body-md">Served with seasoned fries</p>
+</div>
+</div>
+<div class="mt-md flex justify-between items-center">
+<span class="font-headline-sm text-headline-sm text-primary">$8.50</span>
+<button class="bg-secondary-container text-on-secondary-container p-2 rounded-full active:scale-90 transition-transform shadow-sm flex items-center justify-center">
+<span class="material-symbols-outlined" data-icon="add">add</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Food Card 2 -->
+<div class="flex-shrink-0 w-64 bg-white rounded-xl shadow-sm border border-outline-variant/30 overflow-hidden">
+<img class="h-36 w-full object-cover" data-alt="A fresh and vibrant green salad bowl packed with protein-rich chickpeas, cucumber rounds, cherry tomatoes, and sliced radish, topped with a light vinaigrette. The lighting is airy and natural, highlighting the freshness of each ingredient. The color palette is dominated by healthy greens and bright reds, perfectly suited for a health-conscious university student audience." src="https://lh3.googleusercontent.com/aida-public/AB6AXuANJaH_2WzhGPkarZvP4pI092LPDAe3mN70CcT4kewoQT7C3Q4QReRGNZTHuDORLprWmw70M3BaV2Z4pLeU-VsPaRvU8q65hhR5zxqq0B0PoU6yVVq_kXDwMSpsysVyAhyMfhIErme6npLTHGkLZFoCxNPHIiYECPWaQDT9KTHt8s3WXBB4s5TrwKTb5s7xlkJJFeTp7JW4xYEnyXa1LveFf_PeOp-ohQksIsyEU-smgEl0LECY8gF7cO41LfBZfJDGkIC0vTuc_jBu">
+<div class="p-md relative">
+<div class="flex justify-between items-start">
+<div>
+<h4 class="font-title-md text-title-md text-on-surface">Garden Protein Bowl</h4>
+<p class="text-on-surface-variant font-body-md text-body-md">Vegan, Gluten-free</p>
+</div>
+</div>
+<div class="mt-md flex justify-between items-center">
+<span class="font-headline-sm text-headline-sm text-primary">$7.25</span>
+<button class="bg-secondary-container text-on-secondary-container p-2 rounded-full active:scale-90 transition-transform shadow-sm flex items-center justify-center">
+<span class="material-symbols-outlined" data-icon="add">add</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Today's Menu: CAFE 2 -->
+<section class="space-y-md">
+<div class="flex justify-between items-center">
+<h3 class="font-title-lg text-title-lg text-on-surface">Menu: CAFE 2</h3>
+<button class="text-primary font-label-lg text-label-lg">See All</button>
+</div>
+<div class="flex gap-md overflow-x-auto hide-scrollbar -mx-container-margin px-container-margin pb-base">
+<!-- Food Card 3 -->
+<div class="flex-shrink-0 w-64 bg-white rounded-xl shadow-sm border border-outline-variant/30 overflow-hidden">
+<img class="h-36 w-full object-cover" data-alt="A classic Margherita pizza with a perfectly blistered, artisanal thin crust, topped with bubbling mozzarella cheese and fresh basil leaves. The lighting is warm and rustic, evoking the feel of a traditional stone oven. The image is captured from an overhead perspective, showcasing the delicious details and artisanal quality of the campus cafeteria's pizza selection." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDh9f1iXRNtfdnwoGL1engrymLJmdRBe6hgyGZib7eOlLUmqtdcMUeDXNpxZiUZCSV5hLG_jLAE0Gh3Vg2P6HsPG4Sj7zkvh1eYXK89DAoJj7GViceTCf5sXsWr3ukrjFS0L9cqoqG5BKS8GLZMMbYRFQR3uzfcEmG-2JzGL9x4MXvmR8Ybrlcfxdz0Vuh9YciLoBla-WF08puKKD1X9VzgGzMbddpzS3KWNC7fNIOy5Ob5UZ6giCZpQNVfN6KVdFp5FhETDionISfK">
+<div class="p-md relative">
+<div class="flex justify-between items-start">
+<div>
+<h4 class="font-title-md text-title-md text-on-surface">Artisan Margherita</h4>
+<p class="text-on-surface-variant font-body-md text-body-md">Stone-baked personal pizza</p>
+</div>
+</div>
+<div class="mt-md flex justify-between items-center">
+<span class="font-headline-sm text-headline-sm text-primary">$9.00</span>
+<button class="bg-secondary-container text-on-secondary-container p-2 rounded-full active:scale-90 transition-transform shadow-sm flex items-center justify-center">
+<span class="material-symbols-outlined" data-icon="add">add</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Food Card 4 -->
+<div class="flex-shrink-0 w-64 bg-white rounded-xl shadow-sm border border-outline-variant/30 overflow-hidden">
+<img class="h-36 w-full object-cover" data-alt="A steaming bowl of authentic Japanese ramen featuring rich tonkotsu broth, perfectly cooked noodles, a soft-boiled egg, and tender bamboo shoots. The lighting is focused and warm, creating a cozy and comforting visual appeal. This high-end food photograph emphasizes the depth of flavors and the high quality of ingredients available at the university's specialty food court." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAmHP0EHaRX72gb8tMyNrGrWPc37CmFZ15bGlNdWTXIBIuPec5lUFtzCFcc45fUDsJr__wh4btsb1AwYmgyxeJVYDULQ1i1wRINbxWriX1YeSS7Acsl4FoCfs0grx_HYGuRh8Fa-tLJdNjVGrNnPAVPvl0hnRJ7Anf7S34pum5_4dSA2A6dftqbuJ9OCViV1GB5h10ZamYwSVGllL_yBPkaKo8LzdlQ4b6pGIRruKqCIJRVzKmmAHqysXZHKr6EVOMb4_qGS0oGw2b1">
+<div class="p-md relative">
+<div class="flex justify-between items-start">
+<div>
+<h4 class="font-title-md text-title-md text-on-surface">Shoyu Ramen</h4>
+<p class="text-on-surface-variant font-body-md text-body-md">Classic soy-based broth</p>
+</div>
+</div>
+<div class="mt-md flex justify-between items-center">
+<span class="font-headline-sm text-headline-sm text-primary">$10.50</span>
+<button class="bg-secondary-container text-on-secondary-container p-2 rounded-full active:scale-90 transition-transform shadow-sm flex items-center justify-center">
+<span class="material-symbols-outlined" data-icon="add">add</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Categories Bento -->
+<section class="pb-xl">
+<h3 class="font-title-lg text-title-lg text-on-surface mb-md">Quick Bites</h3>
+<div class="grid grid-cols-2 gap-md">
+<div class="bg-tertiary-fixed text-on-tertiary-fixed-variant p-lg rounded-2xl flex flex-col justify-between h-32 active:scale-[0.98] transition-transform">
+<span class="material-symbols-outlined text-3xl" data-icon="coffee">coffee</span>
+<span class="font-title-md text-title-md font-bold">Coffee &amp; Tea</span>
+</div>
+<div class="bg-primary-fixed text-on-primary-fixed-variant p-lg rounded-2xl flex flex-col justify-between h-32 active:scale-[0.98] transition-transform">
+<span class="material-symbols-outlined text-3xl" data-icon="icecream">icecream</span>
+<span class="font-title-md text-title-md font-bold">Desserts</span>
+</div>
+<div class="col-span-2 bg-secondary-fixed text-on-secondary-fixed-variant p-lg rounded-2xl flex items-center justify-between h-24 active:scale-[0.98] transition-transform">
+<div class="flex items-center gap-md">
+<span class="material-symbols-outlined text-3xl" data-icon="local_bar">local_bar</span>
+<span class="font-title-md text-title-md font-bold">Fresh Smoothies</span>
+</div>
+<span class="material-symbols-outlined" data-icon="arrow_forward">arrow_forward</span>
+</div>
+</div>
+</section>
+</main>
+<!-- Cart FAB -->
+<button class="fixed bottom-20 right-6 z-40 bg-secondary-container text-on-secondary-container w-14 h-14 rounded-full shadow-lg flex items-center justify-center active:scale-90 transition-transform">
+<span class="material-symbols-outlined" data-icon="shopping_basket">shopping_basket</span>
+<div class="absolute -top-1 -right-1 bg-white text-primary text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center border-2 border-secondary-container shadow-sm">
+            2
+        </div>
+</button>
+<!-- Bottom NavBar Execution -->
+<nav class="fixed bottom-0 w-full z-50 rounded-t-xl bg-surface-container dark:bg-surface-container shadow-sm flex justify-around items-center h-16 w-full px-base pb-safe">
+<!-- Home Active -->
+<a class="flex flex-col items-center justify-center bg-secondary-container text-on-secondary-container rounded-full px-5 py-1 active:scale-90 transition-transform" href="#">
+<span class="material-symbols-outlined font-variation-settings: 'FILL' 1" data-icon="home" style="font-variation-settings: 'FILL' 1;">home</span>
+<span class="font-label-sm text-label-sm">Home</span>
+</a>
+<!-- Categories -->
+<a class="flex flex-col items-center justify-center text-on-surface-variant hover:bg-surface-container-highest transition-colors active:scale-90 transition-transform" href="#">
+<span class="material-symbols-outlined" data-icon="category">category</span>
+<span class="font-label-sm text-label-sm">Categories</span>
+</a>
+<!-- Orders -->
+<a class="flex flex-col items-center justify-center text-on-surface-variant hover:bg-surface-container-highest transition-colors active:scale-90 transition-transform" href="#">
+<span class="material-symbols-outlined" data-icon="receipt_long">receipt_long</span>
+<span class="font-label-sm text-label-sm">Orders</span>
+</a>
+<!-- Account -->
+<a class="flex flex-col items-center justify-center text-on-surface-variant hover:bg-surface-container-highest transition-colors active:scale-90 transition-transform" href="#">
+<span class="material-symbols-outlined" data-icon="person">person</span>
+<span class="font-label-sm text-label-sm">Account</span>
+</a>
+</nav>
+<script>
+        // Micro-interactions and smooth scroll behavior
+        document.querySelectorAll('button, a').forEach(el => {
+            el.addEventListener('click', (e) => {
+                // Haptic feedback simulation if supported
+                if (window.navigator.vibrate) {
+                    window.navigator.vibrate(5);
+                }
+            });
+        });
+
+        // Sticky header color shift on scroll
+        window.addEventListener('scroll', () => {
+            const header = document.querySelector('header');
+            if (window.scrollY > 20) {
+                header.classList.add('shadow-md');
+                header.classList.remove('bg-background');
+                header.classList.add('bg-white/95', 'backdrop-blur-md');
+            } else {
+                header.classList.remove('shadow-md');
+                header.classList.remove('bg-white/95', 'backdrop-blur-md');
+                header.classList.add('bg-background');
+            }
+        });
+    </script>
+</body></html>

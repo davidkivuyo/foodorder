@@ -1,0 +1,326 @@
+<!DOCTYPE html><html class="light" lang="en"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>Campus Bite - Account</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&amp;display=swap" rel="stylesheet">
+<style>
+    .material-symbols-outlined {
+      font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+    }
+    .profile-card-shadow {
+      shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+    }
+    body {
+      font-family: 'Inter', sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+  </style>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          "colors": {
+                  "background": "#f8f9fa",
+                  "tertiary": "#00569f",
+                  "on-error-container": "#93000a",
+                  "tertiary-fixed": "#d4e3ff",
+                  "on-tertiary": "#ffffff",
+                  "surface": "#f8f9fa",
+                  "on-primary-fixed-variant": "#005312",
+                  "primary-container": "#2e7d32",
+                  "on-secondary-container": "#623300",
+                  "on-primary-container": "#cbffc2",
+                  "error": "#ba1a1a",
+                  "surface-bright": "#f8f9fa",
+                  "surface-container": "#edeeef",
+                  "surface-container-highest": "#e1e3e4",
+                  "primary-fixed": "#a3f69c",
+                  "inverse-surface": "#2e3132",
+                  "on-secondary-fixed-variant": "#6d3a00",
+                  "outline-variant": "#bfcaba",
+                  "on-surface-variant": "#40493d",
+                  "secondary-fixed-dim": "#ffb77b",
+                  "on-primary": "#ffffff",
+                  "on-secondary": "#ffffff",
+                  "on-error": "#ffffff",
+                  "surface-tint": "#1b6d24",
+                  "secondary-fixed": "#ffdcc2",
+                  "surface-container-low": "#f3f4f5",
+                  "on-tertiary-fixed-variant": "#004786",
+                  "surface-variant": "#e1e3e4",
+                  "secondary": "#8f4e00",
+                  "on-surface": "#191c1d",
+                  "surface-container-high": "#e7e8e9",
+                  "inverse-on-surface": "#f0f1f2",
+                  "primary": "#0d631b",
+                  "on-background": "#191c1d",
+                  "outline": "#707a6c",
+                  "surface-dim": "#d9dadb",
+                  "secondary-container": "#ff8f06",
+                  "inverse-primary": "#88d982",
+                  "on-primary-fixed": "#002204",
+                  "on-secondary-fixed": "#2e1500",
+                  "tertiary-fixed-dim": "#a5c8ff",
+                  "on-tertiary-fixed": "#001c3a",
+                  "surface-container-lowest": "#ffffff",
+                  "on-tertiary-container": "#ebf1ff",
+                  "primary-fixed-dim": "#88d982",
+                  "error-container": "#ffdad6",
+                  "tertiary-container": "#006eca"
+          },
+          "borderRadius": {
+                  "DEFAULT": "0.25rem",
+                  "lg": "0.5rem",
+                  "xl": "0.75rem",
+                  "full": "9999px"
+          },
+          "spacing": {
+                  "base": "8px",
+                  "container-margin": "16px",
+                  "md": "16px",
+                  "xl": "32px",
+                  "sm": "12px",
+                  "lg": "24px",
+                  "xs": "4px",
+                  "gutter": "16px"
+          },
+          "fontFamily": {
+                  "headline-lg-mobile": ["Inter"],
+                  "label-sm": ["Inter"],
+                  "display-lg": ["Inter"],
+                  "title-lg": ["Inter"],
+                  "title-md": ["Inter"],
+                  "label-lg": ["Inter"],
+                  "body-lg": ["Inter"],
+                  "headline-lg": ["Inter"],
+                  "headline-md": ["Inter"],
+                  "body-md": ["Inter"],
+                  "headline-sm": ["Inter"]
+          },
+          "fontSize": {
+                  "headline-lg-mobile": ["28px", {"lineHeight": "34px", "fontWeight": "600"}],
+                  "label-sm": ["11px", {"lineHeight": "16px", "letterSpacing": "0.5px", "fontWeight": "500"}],
+                  "display-lg": ["57px", {"lineHeight": "64px", "letterSpacing": "-0.25px", "fontWeight": "700"}],
+                  "title-lg": ["22px", {"lineHeight": "28px", "fontWeight": "500"}],
+                  "title-md": ["16px", {"lineHeight": "24px", "letterSpacing": "0.15px", "fontWeight": "500"}],
+                  "label-lg": ["14px", {"lineHeight": "20px", "letterSpacing": "0.1px", "fontWeight": "500"}],
+                  "body-lg": ["16px", {"lineHeight": "24px", "letterSpacing": "0.5px", "fontWeight": "400"}],
+                  "headline-lg": ["32px", {"lineHeight": "40px", "fontWeight": "600"}],
+                  "headline-md": ["28px", {"lineHeight": "36px", "fontWeight": "600"}],
+                  "body-md": ["14px", {"lineHeight": "20px", "letterSpacing": "0.25px", "fontWeight": "400"}],
+                  "headline-sm": ["24px", {"lineHeight": "32px", "fontWeight": "600"}]
+          }
+        },
+      },
+    }
+  </script>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background text-on-background min-h-screen pb-24">
+<!-- Top App Bar -->
+<header class="w-full top-0 sticky flex justify-between items-center px-container-margin py-base bg-background z-40">
+<div class="flex items-center gap-md">
+<div class="w-10 h-10 rounded-full overflow-hidden bg-surface-container-high border-2 border-primary/10">
+<img alt="User Profile" class="w-full h-full object-cover" data-alt="A professional, clean portrait of a male university student named David with a friendly smile, short brown hair, wearing a casual dark green polo shirt. The lighting is soft and natural, suggesting a bright campus environment. The overall aesthetic is clean, modern, and trustworthy, aligning with a premium university food service application's minimalist design." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCkZSf7ly8_cNloYgZDtmsYybGZIbc7rPHhOjV9BxtAbyxuMvA7SSzceAf91PkBfBowosbg6Q2Z-qzezbXbvSr_G5gmfRkpTi-M83vlCkpoUlC5lZuEqyUERBh1XxgLljzvWQ5hel4wRejGCIJYqC28Sk_wxZMxGTFxOtRJA2rSAX41WhN6f-XtiVCU-YFg2bMgrKQsCCdjUGEJEupJmhpDM4U4I6CQPCdsyLBqC3qETkBRt3W1cq-B0X8rYnN-6yy2sVBUWeunLxGN">
+</div>
+<h1 class="font-headline-sm text-headline-sm font-bold text-primary">Campus Bite</h1>
+</div>
+<button class="w-10 h-10 flex items-center justify-center rounded-full text-primary hover:bg-surface-container-high transition-colors active:scale-95">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+</header>
+<main class="max-w-3xl mx-auto px-container-margin py-lg space-y-lg">
+<!-- Profile Header Section -->
+<section class="bg-surface-container-lowest p-lg rounded-xl shadow-sm border border-outline-variant/30 text-center md:text-left md:flex md:items-center md:gap-xl">
+<div class="relative inline-block mx-auto md:mx-0">
+<div class="w-24 h-24 md:w-32 md:h-32 rounded-full overflow-hidden border-4 border-primary-fixed shadow-sm">
+<img alt="David's Photo" class="w-full h-full object-cover" data-alt="Close up high-resolution profile photo of David, a cheerful university student. He has an approachable and energetic expression, with professional lighting that emphasizes a fresh, dependable personality. The background is a soft-focus campus greenery, blending perfectly with the green and orange brand palette of Campus Bite." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBAersKMn6000hnn3dC3DDlPE45-SJwJF_7dAhi8FVSwVsC-KzU5taPnZYEVw0Rafu_mU738cB5uJEUTTnz4OmeUytL6eA9dPBX1NJ3l0M0e1UxPgjst2F4usYJwpjFNxcGq9101JNpbi0tf8MnfBAhet8_IkQf7pEm5r7OlwP5DH_dQg6trhU_9s3194iSMNffJG_FRXUrTew9xCsJ1kp2acIIzDmbxFqemdMCMoHFXGD0aYwfu6XZlz6NWH5qSvcfGVhvXkXCu8oX">
+</div>
+<button class="absolute bottom-1 right-1 bg-secondary text-white p-1.5 rounded-full shadow-md active:scale-90 transition-transform">
+<span class="material-symbols-outlined !text-[18px]">edit</span>
+</button>
+</div>
+<div class="mt-md md:mt-0 space-y-xs">
+<h2 class="font-headline-sm text-headline-sm-mobile md:text-headline-sm text-on-surface">David Wilson</h2>
+<p class="font-body-md text-body-md text-on-surface-variant flex items-center justify-center md:justify-start gap-xs">
+<span class="material-symbols-outlined !text-[16px]">mail</span>
+          david.wilson@university.edu
+        </p>
+<p class="font-body-md text-body-md text-on-surface-variant flex items-center justify-center md:justify-start gap-xs">
+<span class="material-symbols-outlined !text-[16px]">badge</span>
+          Student ID: 2024-88321
+        </p>
+<div class="pt-sm flex justify-center md:justify-start gap-md">
+<div class="px-md py-1 bg-primary-fixed text-on-primary-fixed rounded-full font-label-sm text-label-sm">
+            Junior Year
+          </div>
+<div class="px-md py-1 bg-secondary-fixed text-on-secondary-fixed rounded-full font-label-sm text-label-sm">
+            Engineering
+          </div>
+</div>
+</div>
+</section>
+<!-- Admin Toggle / Stats Preview (Bento-ish) -->
+<section class="hidden animate-in fade-in slide-in-from-top-4 duration-300" id="admin-preview">
+<div class="grid grid-cols-2 md:grid-cols-4 gap-md">
+<div class="bg-primary-container text-on-primary-container p-md rounded-xl space-y-xs">
+<p class="font-label-sm text-label-sm opacity-90 uppercase tracking-wider">Total Orders</p>
+<p class="font-headline-sm text-headline-sm">1,248</p>
+</div>
+<div class="bg-secondary-container text-on-secondary-container p-md rounded-xl space-y-xs">
+<p class="font-label-sm text-label-sm opacity-90 uppercase tracking-wider">Daily Revenue</p>
+<p class="font-headline-sm text-headline-sm">$842.10</p>
+</div>
+<div class="bg-tertiary-container text-on-tertiary-container p-md rounded-xl space-y-xs">
+<p class="font-label-sm text-label-sm opacity-90 uppercase tracking-wider">Peak Hour</p>
+<p class="font-headline-sm text-headline-sm">12:30 PM</p>
+</div>
+<div class="bg-surface-container-highest text-on-surface-variant p-md rounded-xl space-y-xs">
+<p class="font-label-sm text-label-sm opacity-90 uppercase tracking-wider">Active Users</p>
+<p class="font-headline-sm text-headline-sm">312</p>
+</div>
+</div>
+</section>
+<div class="flex items-center justify-between px-xs">
+<h3 class="font-title-lg text-title-lg text-on-surface">Account Settings</h3>
+<button class="flex items-center gap-xs text-primary font-label-lg text-label-lg px-md py-2 rounded-full hover:bg-primary/5 transition-colors" onclick="toggleAdminView()">
+<span class="material-symbols-outlined !text-[20px]" id="admin-icon">admin_panel_settings</span>
+<span id="admin-text">Admin View</span>
+</button>
+</div>
+<!-- Options List -->
+<nav class="bg-surface-container-lowest rounded-xl shadow-sm border border-outline-variant/30 overflow-hidden divide-y divide-outline-variant/20">
+<!-- Edit Profile -->
+<a class="flex items-center justify-between p-lg hover:bg-surface-container-high transition-colors group active:scale-[0.99] transition-transform" href="#">
+<div class="flex items-center gap-lg">
+<div class="w-10 h-10 rounded-full bg-primary-fixed/30 flex items-center justify-center text-primary">
+<span class="material-symbols-outlined">edit_square</span>
+</div>
+<div>
+<p class="font-title-md text-title-md text-on-surface">Edit Profile</p>
+<p class="font-body-md text-body-md text-on-surface-variant">Manage your personal information</p>
+</div>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant group-hover:translate-x-1 transition-transform">chevron_right</span>
+</a>
+<!-- Notification Settings -->
+<a class="flex items-center justify-between p-lg hover:bg-surface-container-high transition-colors group active:scale-[0.99] transition-transform" href="#">
+<div class="flex items-center gap-lg">
+<div class="w-10 h-10 rounded-full bg-secondary-fixed/30 flex items-center justify-center text-secondary">
+<span class="material-symbols-outlined">notifications_active</span>
+</div>
+<div>
+<p class="font-title-md text-title-md text-on-surface">Notification Settings</p>
+<p class="font-body-md text-body-md text-on-surface-variant">Alerts, order updates, and promos</p>
+</div>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant group-hover:translate-x-1 transition-transform">chevron_right</span>
+</a>
+<!-- Order History -->
+<a class="flex items-center justify-between p-lg hover:bg-surface-container-high transition-colors group active:scale-[0.99] transition-transform" href="#">
+<div class="flex items-center gap-lg">
+<div class="w-10 h-10 rounded-full bg-tertiary-fixed/30 flex items-center justify-center text-tertiary">
+<span class="material-symbols-outlined">receipt_long</span>
+</div>
+<div>
+<p class="font-title-md text-title-md text-on-surface">Order History</p>
+<p class="font-body-md text-body-md text-on-surface-variant">View your past bites and reorder</p>
+</div>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant group-hover:translate-x-1 transition-transform">chevron_right</span>
+</a>
+<!-- Help & Support -->
+<a class="flex items-center justify-between p-lg hover:bg-surface-container-high transition-colors group active:scale-[0.99] transition-transform" href="#">
+<div class="flex items-center gap-lg">
+<div class="w-10 h-10 rounded-full bg-surface-container-highest flex items-center justify-center text-on-surface-variant">
+<span class="material-symbols-outlined">help</span>
+</div>
+<div>
+<p class="font-title-md text-title-md text-on-surface">Help &amp; Support</p>
+<p class="font-body-md text-body-md text-on-surface-variant">FAQ and 24/7 campus support</p>
+</div>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant group-hover:translate-x-1 transition-transform">chevron_right</span>
+</a>
+<!-- Terms & Privacy -->
+<a class="flex items-center justify-between p-lg hover:bg-surface-container-high transition-colors group active:scale-[0.99] transition-transform" href="#">
+<div class="flex items-center gap-lg">
+<div class="w-10 h-10 rounded-full bg-surface-container-highest flex items-center justify-center text-on-surface-variant">
+<span class="material-symbols-outlined">gavel</span>
+</div>
+<div>
+<p class="font-title-md text-title-md text-on-surface">Terms &amp; Privacy</p>
+<p class="font-body-md text-body-md text-on-surface-variant">Policies and usage guidelines</p>
+</div>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant group-hover:translate-x-1 transition-transform">chevron_right</span>
+</a>
+<!-- Logout -->
+<button class="w-full flex items-center justify-between p-lg hover:bg-error-container/20 transition-colors group active:scale-[0.99] transition-transform text-left">
+<div class="flex items-center gap-lg">
+<div class="w-10 h-10 rounded-full bg-error-container/30 flex items-center justify-center text-error">
+<span class="material-symbols-outlined">logout</span>
+</div>
+<div>
+<p class="font-title-md text-title-md text-error">Logout</p>
+<p class="font-body-md text-body-md text-on-surface-variant">Securely exit your session</p>
+</div>
+</div>
+</button>
+</nav>
+<!-- Version Info -->
+<div class="text-center pt-md pb-lg">
+<p class="font-label-sm text-label-sm text-outline">Campus Bite v2.4.1 (Stable)</p>
+<p class="font-label-sm text-label-sm text-outline mt-xs">Made with ❤️ for students</p>
+</div>
+</main>
+<!-- Bottom Navigation Bar -->
+<nav class="fixed bottom-0 w-full z-50 rounded-t-xl bg-surface-container shadow-sm flex justify-around items-center h-16 px-base pb-safe">
+<button class="flex flex-col items-center justify-center text-on-surface-variant hover:bg-surface-container-highest transition-colors active:scale-90 transition-transform">
+<span class="material-symbols-outlined">home</span>
+<span class="font-label-sm text-label-sm">Home</span>
+</button>
+<button class="flex flex-col items-center justify-center text-on-surface-variant hover:bg-surface-container-highest transition-colors active:scale-90 transition-transform">
+<span class="material-symbols-outlined">category</span>
+<span class="font-label-sm text-label-sm">Categories</span>
+</button>
+<button class="flex flex-col items-center justify-center text-on-surface-variant hover:bg-surface-container-highest transition-colors active:scale-90 transition-transform">
+<span class="material-symbols-outlined">receipt_long</span>
+<span class="font-label-sm text-label-sm">Orders</span>
+</button>
+<button class="flex flex-col items-center justify-center bg-secondary-container text-on-secondary-container rounded-full px-5 py-1 active:scale-90 transition-transform">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">person</span>
+<span class="font-label-sm text-label-sm">Account</span>
+</button>
+</nav>
+<script>
+    let isAdminMode = false;
+    function toggleAdminView() {
+      const preview = document.getElementById('admin-preview');
+      const text = document.getElementById('admin-text');
+      const icon = document.getElementById('admin-icon');
+      
+      isAdminMode = !isAdminMode;
+      
+      if (isAdminMode) {
+        preview.classList.remove('hidden');
+        preview.classList.add('flex');
+        text.innerText = 'Exit Admin';
+        icon.innerText = 'cancel';
+      } else {
+        preview.classList.add('hidden');
+        preview.classList.remove('flex');
+        text.innerText = 'Admin View';
+        icon.innerText = 'admin_panel_settings';
+      }
+    }
+  </script>
+</body></html>
