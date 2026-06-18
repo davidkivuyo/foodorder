@@ -5,6 +5,7 @@ void main() {
   runApp(MyApp());
 }
 
+// The main widget
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
@@ -18,6 +19,7 @@ class MyApp extends StatelessWidget {
   }
 }
 
+// home screen
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -25,6 +27,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _NavigationExampleState();
 }
 
+// The top appbar
 class CustomBar extends StatelessWidget implements PreferredSizeWidget {
   const CustomBar({super.key});
 
@@ -47,7 +50,14 @@ class CustomBar extends StatelessWidget implements PreferredSizeWidget {
                     fontStyle: FontStyle.normal,
                   ),
                 ),
-              IconButton(onPressed: () {}, icon: Icon(Icons.notifications)),
+              IconButton(onPressed: () { 
+            Navigator.push(
+              context, 
+              MaterialPageRoute(
+                builder: (_) => Notify(),
+                ),
+                );
+                }, icon: Icon(Icons.notifications)),
             ],
           ),
         ),
@@ -59,6 +69,7 @@ class CustomBar extends StatelessWidget implements PreferredSizeWidget {
   Size get preferredSize => const Size.fromHeight(60.0);
 }
 
+//about screen
 class AboutScreen extends StatelessWidget {
   const AboutScreen({super.key});
 
@@ -68,6 +79,19 @@ class AboutScreen extends StatelessWidget {
   }
 }
 
+// notification screen
+class Notify extends StatelessWidget {
+  const Notify({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+   return Scaffold(
+      appBar: AppBar(title: Text('Notifications'),),
+    );
+  }
+}
+
+//body and bottom navigation
 class _NavigationExampleState extends State<HomeScreen> {
   int currentPageIndex = 0;
 
