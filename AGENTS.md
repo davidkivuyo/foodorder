@@ -152,6 +152,7 @@ Display:
 
 * App title
 * Daily available foods (mock data only)
+* The images must stayed on the designs folder on the root of the project
 
 Categories Screen
 
