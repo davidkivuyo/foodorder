@@ -15,7 +15,7 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Food order app',
-      home: const HomeScreen(),
+      home: const MainScreen(),
     );
   }
 }
