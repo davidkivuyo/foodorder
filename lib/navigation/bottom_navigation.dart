@@ -62,18 +62,20 @@ class _NavigationExampleState extends State<HomeScreen> {
         indicatorColor: Colors.orange,
         selectedIndex: currentPageIndex,
         destinations: [
-          NavigationDestination(icon: Icon(Icons.home_outlined), label: 'Home'),
-
+          NavigationDestination(
+            icon: Icon(Icons.home_outlined),            
+            label: 'Home',
+            ),
           NavigationDestination(
             icon: Icon(Icons.category_outlined),
             label: 'Categories',
           ),
           NavigationDestination(
-            icon: Badge(label: Text('999+'), child: Icon(Icons.receipt_long)),
-            label: 'Order',
+            icon: Icon(Icons.receipt_long_outlined),
+            label: 'Orders',
           ),
           NavigationDestination(
-            icon: Icon(Icons.account_circle),
+           icon: Icon(Icons.person_outline),
             label: 'Account',
           ),
         ],
