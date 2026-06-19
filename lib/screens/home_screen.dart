@@ -16,12 +16,12 @@ class HomeScreen extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                   Text(
-                     'Hello $firstname',
-                     style: TextStyle(
+                    'Hello $firstname 👋🏼\nWhats your Bite today?',
+                    style: TextStyle(
                     color: Color.fromARGB(255, 218, 131, 0),
                     letterSpacing: .5,
                     fontSize: 20,
-                    fontStyle: FontStyle.normal,
+                    fontWeight: FontWeight.bold,
                      ),
                   ),
                    Container(

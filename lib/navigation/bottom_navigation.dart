@@ -47,7 +47,7 @@ class _NavigationExampleState extends State<MainScreen> {
                     color: Color.fromARGB(255, 1, 167, 53),
                     letterSpacing: .5,
                     fontSize: 20,
-                    fontStyle: FontStyle.normal,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
               actions: <Widget>[
