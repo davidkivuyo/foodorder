@@ -38,13 +38,13 @@ class _NavigationExampleState extends State<MainScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      
+    
       // TopBar
       appBar: AppBar(
          title: Text(
                 'CampusBite',
                     style: TextStyle(
-                    color: Color.fromARGB(255, 1, 167, 53),
+                    color: Color.fromARGB(255, 0, 118, 37),
                     letterSpacing: .5,
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
@@ -59,33 +59,26 @@ class _NavigationExampleState extends State<MainScreen> {
                 ),
                 );
                 }, 
-                icon: Icon(Icons.notifications)
+                icon: Icon(Icons.notifications_outlined)
                 ),
-              ]
-            
+              ],
+        backgroundColor: Colors.orange,
+        foregroundColor: Colors.black,
+        elevation: 0,    
       ),
 
       // body
       body: _pages[currentPageIndex],
-      /*body: Center(
-        child: ElevatedButton(
-          child: Text('Account'),
-          onPressed: () { 
-            Navigator.push(
-              context, 
-              MaterialPageRoute(
-                builder: (_) => AboutScreen(),
-                ),
-                );
-                },
-        ),),*/
+      
 
       // shopping cart icon
       floatingActionButton: FloatingActionButton(
-        child: Icon(Icons.shopping_cart),
+        backgroundColor: Colors.orange,
+        shape: CircleBorder(),
         onPressed: () {
           print("pressed");
         },
+        child: Icon(Icons.shopping_cart_outlined),
       ),
 
       // bottom navigation bar

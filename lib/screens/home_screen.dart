@@ -11,24 +11,33 @@ class HomeScreen extends StatelessWidget {
       body: SafeArea(
         child: SingleChildScrollView(
           child: Padding(
-            padding: const EdgeInsets.all(16.0),
+            padding: const EdgeInsets.all(10.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                   Text(
-                    'Hello $firstname 👋🏼\nWhats your Bite today?',
+                    'Welcome $firstname!',
                     style: TextStyle(
                     color: Color.fromARGB(255, 218, 131, 0),
-                    letterSpacing: .5,
+                    letterSpacing: .25,
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
                      ),
                   ),
+                  Text(
+                    'Whats your Bite today?',
+                    style: TextStyle(
+                    color: Color.fromARGB(255, 138, 83, 0),
+                    letterSpacing: .25,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  ),
                    Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
                   child: SearchBar(
                     leading: Icon(Icons.search),
-                    hintText: 'Search',
+                    hintText: 'Search foods, snacks and drinks',
                   )
                 ),
               ],
