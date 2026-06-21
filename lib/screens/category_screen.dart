@@ -5,19 +5,33 @@ class CategoryScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    
     // Allows scrolling
-   return SingleChildScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: EdgeInsets.all(16.0),
-            child: Text('data'),
+    return SingleChildScrollView(
+     child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                  Text(
+                    'Explore Categories',
+                    style: TextStyle(fontSize: 18, color: Colors.black),
+                  ),
+                  Text(
+                    'Find the best meal for your study break!',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: const Color.fromARGB(255, 61, 60, 60),
+                    ),
+                  ),
+                ],
+              ),
+             
+
             ),
           
-        ],
+          
+        );
       
-      ),
-      );
   }
 }

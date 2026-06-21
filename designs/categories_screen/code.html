@@ -1,11 +1,13 @@
-<!DOCTYPE html><html lang="en" style=""><head>
-<meta charset="utf-8">
-<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<!DOCTYPE html>
+
+<html lang="en" style=""><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
 <title>Campus Bite - Categories</title>
 <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
-<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&amp;display=swap" rel="stylesheet"/>
 <script id="tailwind-config">
     tailwind.config = {
       darkMode: "class",
@@ -115,11 +117,18 @@
       color: #191c1d;
       font-family: 'Inter', sans-serif;
     }
-    .category-card {
+    .hide-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .hide-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+    .food-card {
       transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
     }
-    .category-card:active {
-      transform: scale(0.96);
+    .food-card:active {
+      transform: scale(0.98);
     }
   </style>
 <style>
@@ -130,104 +139,135 @@
 </head>
 <body class="bg-background text-on-background min-h-screen pb-32">
 <!-- TopAppBar -->
-<header class="w-full top-0 sticky bg-background dark:bg-background z-40 flex justify-between items-center px-container-margin py-base shadow-sm">
+<header class="w-full top-0 sticky bg-background/80 backdrop-blur-md z-40 flex justify-between items-center px-container-margin py-base border-b border-outline-variant/30">
 <div class="flex items-center gap-base">
 <div class="w-10 h-10 rounded-full bg-surface-container overflow-hidden flex items-center justify-center border border-outline-variant">
-<img alt="User Profile" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCmwb7aimLLCf8wA4SmTmAGE3L26NmWpf_gmUYj54_JfQHDkqbBZiGaTBvr1o6UxDDFyot4Sl3FT95s4mFtL8bHZyPVk3OV1v3Pv-GhTEYbuWgzic4zF50R5LjXKq4UB5m44RP2lCNYMgEsEUO-M9UrMgGv_A5KKJW1yez0WnBvmojXH0DQQrGOCdQOY7wLILzTW4KT_OzmnH3wwl-X8pKgvz3VjvS5yPYjMu8LuZVvh-3eZp_tN08I58sSm9qH_NQvPMCyLTRz1dtE">
+<img alt="User Profile" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCmwb7aimLLCf8wA4SmTmAGE3L26NmWpf_gmUYj54_JfQHDkqbBZiGaTBvr1o6UxDDFyot4Sl3FT95s4mFtL8bHZyPVk3OV1v3Pv-GhTEYbuWgzic4zF50R5LjXKq4UB5m44RP2lCNYMgEsEUO-M9UrMgGv_A5KKJW1yez0WnBvmojXH0DQQrGOCdQOY7wLILzTW4KT_OzmnH3wwl-X8pKgvz3VjvS5yPYjMu8LuZVvh-3eZp_tN08I58sSm9qH_NQvPMCyLTRz1dtE"/>
 </div>
-<h1 class="font-headline-sm text-headline-sm font-bold text-primary dark:text-primary-fixed">Campus Bite</h1>
+<h1 class="font-headline-sm text-headline-sm font-bold text-primary">Campus Bite</h1>
 </div>
 <button class="material-symbols-outlined text-on-surface-variant hover:bg-surface-container-high transition-colors p-2 rounded-full active:scale-95">
       notifications
     </button>
 </header>
-<!-- Search Hero Section -->
-<main class="max-w-4xl mx-auto px-container-margin py-lg">
-<div class="mb-xl">
+<main class="max-w-4xl mx-auto py-lg">
+<!-- Header Section -->
+<div class="px-container-margin mb-lg">
 <h2 class="font-headline-md text-headline-lg-mobile mb-xs">Explore Categories</h2>
 <p class="font-body-md text-body-md text-on-surface-variant">Find the perfect meal for your study break.</p>
 </div>
-<!-- Search Bar -->
-<div class="relative mb-xl">
-<div class="absolute inset-y-0 left-0 pl-md flex items-center pointer-events-none">
-<span class="material-symbols-outlined text-outline">search</span>
+<!-- Horizontal Filter List -->
+<div class="overflow-x-auto hide-scrollbar flex gap-sm px-container-margin mb-xl">
+<button class="flex-shrink-0 px-5 py-2.5 rounded-full bg-secondary-container text-on-secondary-container font-label-lg shadow-sm border border-secondary-container transition-all">
+      Breakfast
+    </button>
+<button class="flex-shrink-0 px-5 py-2.5 rounded-full bg-surface-container-lowest text-on-surface-variant font-label-lg border border-outline-variant hover:border-secondary transition-all">
+      Lunch
+    </button>
+<button class="flex-shrink-0 px-5 py-2.5 rounded-full bg-surface-container-lowest text-on-surface-variant font-label-lg border border-outline-variant hover:border-secondary transition-all">
+      Dinner
+    </button>
+<button class="flex-shrink-0 px-5 py-2.5 rounded-full bg-surface-container-lowest text-on-surface-variant font-label-lg border border-outline-variant hover:border-secondary transition-all">
+      Drinks
+    </button>
+<button class="flex-shrink-0 px-5 py-2.5 rounded-full bg-surface-container-lowest text-on-surface-variant font-label-lg border border-outline-variant hover:border-secondary transition-all">
+      Snacks
+    </button>
 </div>
-<input class="block w-full pl-12 pr-md py-3 bg-surface-container-lowest border-none rounded-xl shadow-sm text-body-lg focus:ring-2 focus:ring-primary focus:ring-opacity-20 transition-shadow" placeholder="Search for food, snacks, or drinks..." type="text">
+<!-- Food Grid Layout -->
+<div class="grid grid-cols-2 gap-md px-container-margin">
+<!-- Food Item 1 -->
+<div class="food-card bg-surface-container-lowest rounded-xl shadow-sm border border-surface-container-highest overflow-hidden flex flex-col">
+<div class="relative h-32 w-full overflow-hidden">
+<img alt="Blueberry Pancakes" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBP0KmdDqqmuf99dW5_TDnnAGBPIvtnHTt2bk00cQnUXihuXSBCLM0fmIHciXshkYPkEUGPcIsfgTOMumsFGQCFzQy3UvZD0homdnBljb7FLG5GTgwfuqOZfGU-hwfoVCYjXg2t2a57Y0E0EXJNpDXoHW61xf_gDnyVUqQf_VIwqmYnpwbTHDvFjandmy0Eq-csLfYfCcmNgd9YEu-MQdsovlDYvyuGtUDvZN-ZJ0pn1jEEzQS_SJK934NLxrmz08ssVhee4RO2_NTt"/>
+<button class="absolute top-2 right-2 p-1.5 bg-surface-container-lowest/80 backdrop-blur rounded-full text-primary shadow-sm">
+<span class="material-symbols-outlined text-sm" style="font-variation-settings: 'FILL' 0;">favorite</span>
+</button>
 </div>
-<!-- Categories Grid (Bento Style Variation) -->
-<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-md">
-<!-- Breakfast Card (Large) -->
-<div class="category-card col-span-2 bg-surface-container-lowest p-lg rounded-xl shadow-sm border border-surface-container-highest relative overflow-hidden group cursor-pointer">
-<div class="relative z-10">
-<div class="w-12 h-12 rounded-lg bg-primary-container flex items-center justify-center text-on-primary-container mb-md">
-<span class="material-symbols-outlined text-[28px]" style="font-variation-settings: 'FILL' 1;">breakfast_dining</span>
-</div>
-<h3 class="font-title-lg text-title-lg text-on-surface">Breakfast</h3>
-<p class="font-label-sm text-label-sm text-on-surface-variant">12 Items</p>
-</div>
-<img class="absolute -bottom-4 -right-4 w-40 h-40 object-cover rounded-full group-hover:scale-110 transition-transform duration-500" data-alt="A beautifully plated campus breakfast featuring fluffy golden pancakes with dripping syrup, fresh red strawberries, and a side of scrambled eggs in a bright, modern university dining hall setting with soft morning sunlight streaming through windows. The style is appetizing and clean with vibrant natural colors." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBP0KmdDqqmuf99dW5_TDnnAGBPIvtnHTt2bk00cQnUXihuXSBCLM0fmIHciXshkYPkEUGPcIsfgTOMumsFGQCFzQy3UvZD0homdnBljb7FLG5GTgwfuqOZfGU-hwfoVCYjXg2t2a57Y0E0EXJNpDXoHW61xf_gDnyVUqQf_VIwqmYnpwbTHDvFjandmy0Eq-csLfYfCcmNgd9YEu-MQdsovlDYvyuGtUDvZN-ZJ0pn1jEEzQS_SJK934NLxrmz08ssVhee4RO2_NTt">
-</div>
-<!-- Lunch Card -->
-<div class="category-card bg-surface-container-lowest p-lg rounded-xl shadow-sm border border-surface-container-highest flex flex-col justify-between cursor-pointer">
-<div class="w-12 h-12 rounded-lg bg-secondary-container flex items-center justify-center text-on-secondary-container">
-<span class="material-symbols-outlined text-[28px]" style="font-variation-settings: 'FILL' 1;">lunch_dining</span>
-</div>
-<div>
-<h3 class="font-title-md text-title-md text-on-surface mt-lg">Lunch</h3>
-<p class="font-label-sm text-label-sm text-on-surface-variant">24 Items</p>
-</div>
-</div>
-<!-- Dinner Card -->
-<div class="category-card bg-surface-container-lowest p-lg rounded-xl shadow-sm border border-surface-container-highest flex flex-col justify-between cursor-pointer">
-<div class="w-12 h-12 rounded-lg bg-tertiary-container flex items-center justify-center text-on-tertiary-container">
-<span class="material-symbols-outlined text-[28px]" style="font-variation-settings: 'FILL' 1;">dinner_dining</span>
-</div>
-<div>
-<h3 class="font-title-md text-title-md text-on-surface mt-lg">Dinner</h3>
-<p class="font-label-sm text-label-sm text-on-surface-variant">18 Items</p>
+<div class="p-base flex flex-col flex-grow">
+<h3 class="font-title-md text-on-surface line-clamp-1">Blueberry Pancakes</h3>
+<p class="font-label-sm text-on-surface-variant mb-md">Stack of 3 fluffy pancakes</p>
+<div class="mt-auto flex items-center justify-between">
+<span class="font-title-md text-primary">$8.50</span>
+<button class="bg-primary text-on-primary w-8 h-8 rounded-lg flex items-center justify-center active:scale-90 transition-transform">
+<span class="material-symbols-outlined text-xl">add</span>
+</button>
 </div>
 </div>
-<!-- Juice Card -->
-<div class="category-card bg-surface-container-lowest p-lg rounded-xl shadow-sm border border-surface-container-highest flex flex-col justify-between cursor-pointer">
-<div class="w-12 h-12 rounded-lg bg-[#FFDCC2] flex items-center justify-center text-[#6d3a00]">
-<span class="material-symbols-outlined text-[28px]" style="font-variation-settings: 'FILL' 1;">local_drink</span>
 </div>
-<div>
-<h3 class="font-title-md text-title-md text-on-surface mt-lg">Juice</h3>
-<p class="font-label-sm text-label-sm text-on-surface-variant">8 Items</p>
+<!-- Food Item 2 -->
+<div class="food-card bg-surface-container-lowest rounded-xl shadow-sm border border-surface-container-highest overflow-hidden flex flex-col">
+<div class="relative h-32 w-full overflow-hidden">
+<img alt="Classic Omelette" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDkCRcnIdTh5ZFSqu0wA2aqtCkDrN5H8eYG8ORknesuU44JHVtShwZR0r9JtR8pCKXrwl_DMxX7pbEnN_Oan-P3dsfQnDInFPtMHMeuO9_7mnrClDxuC3yE_QzD-zcTpbMoEM0ScyesW10WKULUX0XXNEmAL5VBDZmTS9fZtxrtDatSWevvmAxnnGD1l-pag6zCUQl-RaPrrSLKRUiOyKTCx8YM6htBl7gfz3Ax-QTal-ZtNy7M1igRq5jRl-kCzGDZLD8HE3OY0XRg"/>
+<button class="absolute top-2 right-2 p-1.5 bg-surface-container-lowest/80 backdrop-blur rounded-full text-primary shadow-sm">
+<span class="material-symbols-outlined text-sm">favorite</span>
+</button>
+</div>
+<div class="p-base flex flex-col flex-grow">
+<h3 class="font-title-md text-on-surface line-clamp-1">Classic Omelette</h3>
+<p class="font-label-sm text-on-surface-variant mb-md">Swiss cheese &amp; mushrooms</p>
+<div class="mt-auto flex items-center justify-between">
+<span class="font-title-md text-primary">$10.25</span>
+<button class="bg-primary text-on-primary w-8 h-8 rounded-lg flex items-center justify-center active:scale-90 transition-transform">
+<span class="material-symbols-outlined text-xl">add</span>
+</button>
 </div>
 </div>
-<!-- Bites Card (Large/Wide) -->
-<div class="category-card col-span-2 md:col-span-1 lg:col-span-1 bg-surface-container-lowest p-lg rounded-xl shadow-sm border border-surface-container-highest flex flex-col justify-between cursor-pointer bg-gradient-to-br from-surface-container-lowest to-surface-container-low">
-<div class="w-12 h-12 rounded-lg bg-primary-fixed flex items-center justify-center text-on-primary-fixed-variant">
-<span class="material-symbols-outlined text-[28px]" style="font-variation-settings: 'FILL' 1;">cookie</span>
 </div>
-<div>
-<h3 class="font-title-md text-title-md text-on-surface mt-lg">Bites</h3>
-<p class="font-label-sm text-label-sm text-on-surface-variant">15 Items</p>
+<!-- Food Item 3 -->
+<div class="food-card bg-surface-container-lowest rounded-xl shadow-sm border border-surface-container-highest overflow-hidden flex flex-col">
+<div class="relative h-32 w-full overflow-hidden">
+<img alt="Avocado Toast" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA0d_6kWKnQ8fzXWBGRSvk27OsF0rbW8tpa9gWi-jP1Bu6nmc8Yq6KJiEMi8FyCmCj4FlAyrOjgtj-y4S7XGqTF4MYly9kHtCRIOp44FUBEuWp9SVzkK4xl7P-2eke6e6zx-Kprh5wTqA4WxnQX93JnrOqZpnTbov7rCKv1A2enibmb-NisgWGkF3UymVqE2s8TLOEcBynsRAEXEiMtAewa5H7PuUGCs8j8E3QLs4QJMGTPyrUCDih8u-7yXTXTfR-COPD6e4u0-2gk"/>
+</div>
+<div class="p-base flex flex-col flex-grow">
+<h3 class="font-title-md text-on-surface line-clamp-1">Avocado Toast</h3>
+<p class="font-label-sm text-on-surface-variant mb-md">Sourdough with poached egg</p>
+<div class="mt-auto flex items-center justify-between">
+<span class="font-title-md text-primary">$12.00</span>
+<button class="bg-primary text-on-primary w-8 h-8 rounded-lg flex items-center justify-center active:scale-90 transition-transform">
+<span class="material-symbols-outlined text-xl">add</span>
+</button>
 </div>
 </div>
-<!-- Promotions / Special Offer Bento Card -->
-<div class="category-card col-span-2 bg-primary text-on-primary p-lg rounded-xl shadow-lg relative overflow-hidden flex flex-col justify-end cursor-pointer h-48">
+</div>
+<!-- Food Item 4 -->
+<div class="food-card bg-surface-container-lowest rounded-xl shadow-sm border border-surface-container-highest overflow-hidden flex flex-col">
+<div class="relative h-32 w-full overflow-hidden">
+<img alt="Breakfast Burrito" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCxrgwASk7l35x_UU0vcZnem48DnqdSewBZwxAWN-nXn1lpJcI89Ou77C3icRH_aA9T9CDZ_1hSRP0YqH3lc2wqPunTxxFMnpB-KjOSE981xrleeOen13JMQzc0WU5CWL5VikSO8HdEAChSDiHKBeRJCoBBKT5CeTiWFTwPKA9uN6KcIe3u8GjWbyu65n4oS0YeemGArmJIe8unKA9y1QmBQGVrBX2_TsAfTWF6KOKo9CNZc_WPEtj_SMM4DCsf4qC5NoS41yFsTl8z"/>
+</div>
+<div class="p-base flex flex-col flex-grow">
+<h3 class="font-title-md text-on-surface line-clamp-1">Breakfast Burrito</h3>
+<p class="font-label-sm text-on-surface-variant mb-md">Chorizo, eggs &amp; spicy salsa</p>
+<div class="mt-auto flex items-center justify-between">
+<span class="font-title-md text-primary">$9.75</span>
+<button class="bg-primary text-on-primary w-8 h-8 rounded-lg flex items-center justify-center active:scale-90 transition-transform">
+<span class="material-symbols-outlined text-xl">add</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+<!-- Late Night Deal Banner -->
+<div class="mx-container-margin mt-xl mb-lg">
+<div class="bg-primary text-on-primary p-lg rounded-xl shadow-lg relative overflow-hidden flex flex-col justify-end h-40">
 <div class="absolute top-0 right-0 p-lg">
 <span class="material-symbols-outlined text-4xl opacity-20">celebration</span>
 </div>
 <div class="relative z-10">
 <span class="bg-secondary-container text-on-secondary-container px-2 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider mb-sm inline-block">Flash Deal</span>
 <h3 class="font-headline-sm text-headline-sm">Late Night Munchies</h3>
-<p class="font-body-md text-body-md text-on-primary/80">30% off on all Bites after 9 PM</p>
+<p class="font-body-md text-body-md text-on-primary/80">30% off after 9 PM</p>
 </div>
-
 </div>
 </div>
 </main>
 <!-- BottomNavBar -->
-<nav class="fixed bottom-0 w-full z-50 rounded-t-xl bg-surface-container dark:bg-surface-container shadow-sm flex justify-around items-center h-16 px-base pb-safe">
+<nav class="fixed bottom-0 w-full z-50 rounded-t-xl bg-surface-container/95 backdrop-blur-sm shadow-sm flex justify-around items-center h-16 px-base pb-safe">
 <a class="flex flex-col items-center justify-center text-on-surface-variant hover:bg-surface-container-highest transition-colors active:scale-90 px-5 py-1 rounded-full" href="#">
 <span class="material-symbols-outlined">home</span>
 <span class="font-label-sm text-label-sm">Home</span>
 </a>
-<a class="flex flex-col items-center justify-center bg-secondary-container text-on-secondary-container rounded-full px-2 py-1 transition-transform active:scale-90" href="#">
+<a class="flex flex-col items-center justify-center bg-secondary-container text-on-secondary-container rounded-full px-5 py-1 transition-transform active:scale-90 shadow-sm" href="#">
 <span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">category</span>
 <span class="font-label-sm text-label-sm">Categories</span>
 </a>
@@ -246,16 +286,17 @@
 <span class="absolute -top-1 -right-1 bg-white text-secondary font-bold text-xs w-6 h-6 rounded-full flex items-center justify-center shadow-sm border border-secondary-container">3</span>
 </button>
 <script>
-    // Add micro-interactions for card focus
-    document.querySelectorAll('.category-card').forEach(card => {
-      card.addEventListener('mouseenter', () => {
-        card.classList.add('shadow-md');
-      });
-      card.addEventListener('mouseleave', () => {
-        card.classList.remove('shadow-md');
+    // Handle category filter active states
+    const filterButtons = document.querySelectorAll('.hide-scrollbar button');
+    filterButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        filterButtons.forEach(b => {
+          b.classList.remove('bg-secondary-container', 'text-on-secondary-container', 'border-secondary-container');
+          b.classList.add('bg-surface-container-lowest', 'text-on-surface-variant', 'border-outline-variant');
+        });
+        btn.classList.add('bg-secondary-container', 'text-on-secondary-container', 'border-secondary-container');
+        btn.classList.remove('bg-surface-container-lowest', 'text-on-surface-variant', 'border-outline-variant');
       });
     });
   </script>
-
-
 </body></html>
