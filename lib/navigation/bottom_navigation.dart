@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../screens/home_screen.dart';
 import '../screens/account_screen.dart';
+import '../screens/category_screen.dart';
+//import '../screens/order_screen.dart';
 
 // home screen
 class MainScreen extends StatefulWidget {
@@ -26,7 +28,7 @@ class _NavigationExampleState extends State<MainScreen> {
 
   final List<Widget> _pages = [
     const HomeScreen(),
-    const Center(child: Text('Categories Content')),
+    const CategoryScreen(),
     const Center(child: Text('Order Content')),
     const AccountScreen(), // This is your Account screen
   ];

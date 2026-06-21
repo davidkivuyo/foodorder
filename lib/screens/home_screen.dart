@@ -35,7 +35,11 @@ class HomeScreen extends StatelessWidget {
                     fontWeight: FontWeight.bold,
                   ),
                   ),
-const SizedBox(height: 24),
+
+                  //space between text and searchbar
+                  const SizedBox(height: 8),
+
+
                   // search bar
                    Container(
                     padding: EdgeInsets.symmetric(horizontal: 14),
@@ -51,7 +55,13 @@ const SizedBox(height: 24),
                     ),
                   ),
                 ),
+
+                //space
                 const SizedBox(height: 24),
+
+                // banner
+                specialBannerCard(),
+
               ],
             ),
           ),
@@ -60,4 +70,24 @@ const SizedBox(height: 24),
  );
 
   }
+}
+
+
+Widget specialBannerCard(){
+     return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+      child: Container(
+        width: double.infinity,
+        height: 180,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          image: const DecorationImage(image: AssetImage('designs/assets/banner-rice.jpg'),
+          fit: BoxFit.cover,
+          ),
+        ),
+      ),
+      
+      
+      
+      );
 }
