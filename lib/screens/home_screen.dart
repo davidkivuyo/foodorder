@@ -8,6 +8,8 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
  return Scaffold(
+
+  // home screen body
       body: SafeArea(
         child: SingleChildScrollView(
           child: Padding(
@@ -18,14 +20,14 @@ class HomeScreen extends StatelessWidget {
                   Text(
                     'Welcome $firstname!',
                     style: TextStyle(
-                    color: Color.fromARGB(255, 218, 131, 0),
+                    color: Colors.orange,
                     letterSpacing: .25,
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
                      ),
                   ),
                   Text(
-                    'Whats your Bite today?',
+                    "What's your bite today?",
                     style: TextStyle(
                     color: Color.fromARGB(255, 138, 83, 0),
                     letterSpacing: .25,
@@ -33,13 +35,23 @@ class HomeScreen extends StatelessWidget {
                     fontWeight: FontWeight.bold,
                   ),
                   ),
+const SizedBox(height: 24),
+                  // search bar
                    Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
-                  child: SearchBar(
-                    leading: Icon(Icons.search),
+                    padding: EdgeInsets.symmetric(horizontal: 14),
+                    decoration: BoxDecoration(
+                      color: const Color.fromARGB(255, 214, 214, 214),
+                      borderRadius: BorderRadius.circular(16)
+                    ),
+                  child: const TextField(
+                    decoration: InputDecoration(
                     hintText: 'Search foods, snacks and drinks',
-                  )
+                    border: InputBorder.none,
+                    icon: Icon(Icons.search),
+                    ),
+                  ),
                 ),
+                const SizedBox(height: 24),
               ],
             ),
           ),
