@@ -20,7 +20,7 @@ class HomeScreen extends StatelessWidget {
                   'Welcome $firstname!',
                   style: TextStyle(
                     color: Colors.orange,
-                    fontSize: 15,
+                    fontSize: 20,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
