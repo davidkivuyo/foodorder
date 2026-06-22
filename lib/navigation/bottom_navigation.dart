@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import '../screens/home_screen.dart';
 import '../screens/account_screen.dart';
@@ -12,16 +13,6 @@ class MainScreen extends StatefulWidget {
   State<MainScreen> createState() => _NavigationExampleState();
 }
 
-// notification screen
-class Notify extends StatelessWidget {
-  const Notify({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(appBar: AppBar(title: Text('Notifications')));
-  }
-}
-
 // body and bottom navigation
 class _NavigationExampleState extends State<MainScreen> {
   int currentPageIndex = 0;
@@ -30,7 +21,8 @@ class _NavigationExampleState extends State<MainScreen> {
     const HomeScreen(),
     const CategoryScreen(),
     const Center(child: Text('Order Content')),
-    const AccountScreen(), // This is your Account screen
+    // This is the Account screen from account_screen.dart
+    const AccountScreen(), 
   ];
 
   @override
@@ -53,6 +45,8 @@ class _NavigationExampleState extends State<MainScreen> {
             ),
           ],
         ),
+
+        // notification icon- its screen can be found in account_screen.dart file
         actions: <Widget>[
           IconButton(
             onPressed: () {
@@ -61,7 +55,7 @@ class _NavigationExampleState extends State<MainScreen> {
                 MaterialPageRoute(builder: (_) => Notify()),
               );
             },
-            icon: Icon(Icons.notifications_outlined),
+            icon: const Icon(CupertinoIcons.bell),
           ),
         ],
         elevation: 0,
@@ -77,7 +71,7 @@ class _NavigationExampleState extends State<MainScreen> {
         onPressed: () {
           print("pressed");
         },
-        child: Icon(Icons.shopping_cart_outlined),
+        child: const Icon(CupertinoIcons.cart),
       ),
 
       // bottom navigation bar
@@ -94,17 +88,19 @@ class _NavigationExampleState extends State<MainScreen> {
         indicatorColor: Colors.orange,
         selectedIndex: currentPageIndex,
         destinations: [
-          NavigationDestination(icon: Icon(Icons.home_outlined), label: 'Home'),
           NavigationDestination(
-            icon: Icon(Icons.category_outlined),
+            icon: const Icon(CupertinoIcons.home), 
+            label: 'Home'),
+          NavigationDestination(
+            icon: const Icon(CupertinoIcons.square_stack_3d_up),
             label: 'Categories',
           ),
           NavigationDestination(
-            icon: Icon(Icons.receipt_long_outlined),
+            icon: const Icon(CupertinoIcons.cube_box),
             label: 'Orders',
           ),
           NavigationDestination(
-            icon: Icon(Icons.person_outline),
+            icon: const Icon(CupertinoIcons.person),
             label: 'Account',
           ),
         ],

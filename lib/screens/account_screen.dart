@@ -10,3 +10,18 @@ class AccountScreen extends StatelessWidget {
     return Center(child: Text('Account'));
   }
 }
+
+// notification screen
+class Notify extends StatelessWidget {
+  const Notify({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Notifications'),
+        backgroundColor: const Color.fromARGB(255, 230, 230, 230),
+        ),
+        );
+  }
+}

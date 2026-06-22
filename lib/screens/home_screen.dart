@@ -56,7 +56,10 @@ class HomeScreen extends StatelessWidget {
                 const SizedBox(height: 24),
 
                 // banner
-                specialBannerCard()
+                specialBannerCard(),
+
+                // card grid for cafe 1
+                cardGridCafe1(),
               ],
             ),
           ),
@@ -68,8 +71,7 @@ class HomeScreen extends StatelessWidget {
 
 
 Widget specialBannerCard() {
-  return Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+  return Center(
     child: Container(
       width: double.infinity,
       height: 180,
@@ -173,3 +175,9 @@ Widget specialBannerCard() {
 }
 
 
+Widget cardGridCafe1(){
+return Center(
+
+);
+
+}
