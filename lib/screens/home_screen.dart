@@ -56,19 +56,19 @@ class HomeScreen extends StatelessWidget {
                 const SizedBox(height: 24),
 
                 // banner
-                specialBannerCard(),
+                SpecialBannerCard(),
 
                 // space
-                 const SizedBox(height: 24),
+                const SizedBox(height: 24),
 
                 // card grid for cafe 1
-                cardGridCafe1(),
+                CardGridCafe1(),
 
-                 // space
-                 const SizedBox(height: 24),
+                // space
+                const SizedBox(height: 24),
 
                 // card grid for cafe 2
-                cardGridCafe2(),
+                CardGridCafe2(),
               ],
             ),
           ),
@@ -78,405 +78,439 @@ class HomeScreen extends StatelessWidget {
   }
 }
 
+class SpecialBannerCard extends StatelessWidget {
+  // Constructor
+  const SpecialBannerCard({super.key});
 
-Widget specialBannerCard() {
-  return Center(
-    child: Container(
-      width: double.infinity,
-      height: 180,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        image: const DecorationImage(
-          image: AssetImage('designs/assets/banner-rice.jpg'),
-          fit: BoxFit.cover,
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Container(
+        width: double.infinity,
+        height: 180,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          image: const DecorationImage(
+            image: AssetImage('designs/assets/banner-rice.jpg'),
+            fit: BoxFit.cover,
+          ),
         ),
-      ),
-      child: Stack(
-        children: [
-
-          // Dark gradient overlay matching modern Flutter syntax
-          Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
-              gradient: LinearGradient(
-                begin: Alignment.centerLeft,
-                end: Alignment.centerRight,
-                colors: [
-                  Colors.black.withValues(alpha: 0.75), // Darker on the left
-                  Colors.black.withValues(alpha: 0.1),  // Clearer on the right
-                ],
+        child: Stack(
+          children: [
+            // Dark gradient overlay matching modern Flutter syntax
+            Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                gradient: LinearGradient(
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                  colors: [
+                    Colors.black.withValues(alpha: 0.75), // Darker on the left
+                    Colors.black.withValues(alpha: 0.1), // Clearer on the right
+                  ],
+                ),
               ),
             ),
-          ),
-          
-          // Explicitly Positioned Fill layout to guarantee visibility of content
-          Positioned.fill(
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  // Orange "TODAY'S SPECIAL" Badge
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.orange,
-                      borderRadius: BorderRadius.circular(8),
+
+            // Explicitly Positioned Fill layout to guarantee visibility of content
+            Positioned.fill(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    // Orange "TODAY'S SPECIAL" Badge
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.orange,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Text(
+                        "TODAY'S SPECIAL",
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
                     ),
-                    child: const Text(
-                      "TODAY'S SPECIAL",
+                    const SizedBox(height: 8),
+
+                    // Card Title
+                    const Text(
+                      'Harvest Energy Bowl',
                       style: TextStyle(
                         color: Colors.white,
-                        fontSize: 10,
+                        fontSize: 22,
                         fontWeight: FontWeight.bold,
-                        letterSpacing: 0.5,
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  
-                  // Card Title
-                  const Text(
-                    'Harvest Energy Bowl',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  
-                  // Card Subtitle
-                  const Text(
-                    'Get 20% off during lunch hours!',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  
-                  // "Order Now" Button
-                  ElevatedButton(
-                    onPressed: () {},
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: Colors.black,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                    ),
-                    child: const Text(
-                      'Order Now',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    ),
-  );
-}
 
+                    // Card Subtitle
+                    const Text(
+                      'Get 20% off during lunch hours!',
+                      style: TextStyle(color: Colors.white, fontSize: 12),
+                    ),
+                    const SizedBox(height: 12),
 
-Widget cardGridCafe1(){
-final List<Map<String, String>> menuItems = [
-    {
-      'image': 'designs/assets/grilled-meat.jpg', 
-      'title': 'Smoked grilled meat',
-      'subtitle': 'Fresh Steak out of the gill',
-      'price': '\$8.50',
-    },
-    {
-      'image': 'designs/assets/chips.jpg',
-      'title': 'Chips Mshkaki',
-      'subtitle': 'Served with your favourite additive',
-      'price': '\$7.25',
-    },
-  ];
-
-return Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      // Menu Header Row
-      Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          const Text(
-            "Today's Menu: CAFE 1",
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF1E1E1E),
-            ),
-          ),
-          TextButton(
-            onPressed: () {},
-            child: const Text(
-              'See All',
-              style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
-            ),
-          ),
-        ],
-      ),
-      const SizedBox(height: 8),
-
-      // Horizontal Scrollable Cards List
-      SizedBox(
-        height: 250, // Fixed height for the card container
-        child: ListView.builder(
-          scrollDirection: Axis.horizontal,
-          itemCount: menuItems.length,
-          itemBuilder: (context, index) {
-            final item = menuItems[index];
-            return Container(
-              width: 170, // Fixed width for each card
-              margin: const EdgeInsets.only(right: 14),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.05),
-                    blurRadius: 8,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Food Image
-                    Expanded(
-                      child: Container(
-                        decoration: BoxDecoration(
-                          image: DecorationImage(
-                            image: AssetImage(item['image']!),
-                            fit: BoxFit.cover,
-                          ),
+                    // "Order Now" Button
+                    ElevatedButton(
+                      onPressed: () {},
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        foregroundColor: Colors.black,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 8,
                         ),
                       ),
-                    ),
-                    
-                    // Card Details
-                    Padding(
-                      padding: const EdgeInsets.all(12.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            item['title']!,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 14,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            item['subtitle']!,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Colors.grey.shade600 == Colors.grey 
-                                ? const TextStyle(fontSize: 11, color: Colors.grey)
-                                : TextStyle(fontSize: 11, color: Colors.grey.shade600),
-                          ),
-                          const SizedBox(height: 8),
-                          
-                          // Price and Add Button Row
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                item['price']!,
-                                style: const TextStyle(
-                                  color: Color(0xFF0F5132), // Dark green tone
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
-                                ),
-                              ),
-                              Container(
-                                width: 32,
-                                height: 32,
-                                decoration: const BoxDecoration(
-                                  color: Colors.orange,
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Icon(
-                                  Icons.add,
-                                  color: Colors.white,
-                                  size: 20,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
+                      child: const Text(
+                        'Order Now',
+                        style: TextStyle(fontWeight: FontWeight.bold),
                       ),
                     ),
                   ],
                 ),
               ),
-            );
-          },
+            ),
+          ],
         ),
       ),
-    ],
-  );
+    );
+  }
 }
 
+class CardGridCafe1 extends StatelessWidget {
+  const CardGridCafe1({super.key});
 
-Widget cardGridCafe2(){
-final List<Map<String, String>> menuItems = [
-    {
-      'image': 'designs/assets/grilled-meat.jpg', 
-      'title': 'Smoked grilled meat',
-      'subtitle': 'Fresh Steak out of the gill',
-      'price': '\$8.50',
-    },
-    {
-      'image': 'designs/assets/chips.jpg',
-      'title': 'Chips Mshkaki',
-      'subtitle': 'Served with your favourite additive',
-      'price': '\$7.25',
-    },
-  ];
+  @override
+  Widget build(BuildContext context) {
+    final List<Map<String, String>> menuItems = [
+      {
+        'image': 'designs/assets/grilled-meat.jpg',
+        'title': 'Smoked grilled meat',
+        'subtitle': 'Fresh Steak out of the gill',
+        'price': '\$8.50',
+      },
+      {
+        'image': 'designs/assets/chips.jpg',
+        'title': 'Chips Mshkaki',
+        'subtitle': 'Served with your favourite additive',
+        'price': '\$7.25',
+      },
+    ];
 
-return Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      // Menu Header Row
-      Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          const Text(
-            "Today's Menu: CAFE 2",
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF1E1E1E),
-            ),
-          ),
-          TextButton(
-            onPressed: () {},
-            child: const Text(
-              'See All',
-              style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
-            ),
-          ),
-        ],
-      ),
-      const SizedBox(height: 8),
-
-      // Horizontal Scrollable Cards List
-      SizedBox(
-        height: 250, // Fixed height for the card container
-        child: ListView.builder(
-          scrollDirection: Axis.horizontal,
-          itemCount: menuItems.length,
-          itemBuilder: (context, index) {
-            final item = menuItems[index];
-            return Container(
-              width: 170, // Fixed width for each card
-              margin: const EdgeInsets.only(right: 14),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.05),
-                    blurRadius: 8,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Menu Header Row
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              "Today's Menu: CAFE 1",
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF1E1E1E),
               ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Food Image
-                    Expanded(
-                      child: Container(
-                        decoration: BoxDecoration(
-                          image: DecorationImage(
-                            image: AssetImage(item['image']!),
-                            fit: BoxFit.cover,
-                          ),
-                        ),
-                      ),
-                    ),
-                    
-                    // Card Details
-                    Padding(
-                      padding: const EdgeInsets.all(12.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            item['title']!,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 14,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            item['subtitle']!,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Colors.grey.shade600 == Colors.grey 
-                                ? const TextStyle(fontSize: 11, color: Colors.grey)
-                                : TextStyle(fontSize: 11, color: Colors.grey.shade600),
-                          ),
-                          const SizedBox(height: 8),
-                          
-                          // Price and Add Button Row
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                item['price']!,
-                                style: const TextStyle(
-                                  color: Color(0xFF0F5132), // Dark green tone
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
-                                ),
-                              ),
-                              Container(
-                                width: 32,
-                                height: 32,
-                                decoration: const BoxDecoration(
-                                  color: Colors.orange,
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Icon(
-                                  Icons.add,
-                                  color: Colors.white,
-                                  size: 20,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
+            ),
+            TextButton(
+              onPressed: () {},
+              child: const Text(
+                'See All',
+                style: TextStyle(
+                  color: Colors.green,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+
+        // Horizontal Scrollable Cards List
+        SizedBox(
+          height: 250, // Fixed height for the card container
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            itemCount: menuItems.length,
+            itemBuilder: (context, index) {
+              final item = menuItems[index];
+              return Container(
+                width: 170, // Fixed width for each card
+                margin: const EdgeInsets.only(right: 14),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.05),
+                      blurRadius: 8,
+                      offset: const Offset(0, 4),
                     ),
                   ],
                 ),
-              ),
-            );
-          },
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Food Image
+                      Expanded(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            image: DecorationImage(
+                              image: AssetImage(item['image']!),
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      // Card Details
+                      Padding(
+                        padding: const EdgeInsets.all(12.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              item['title']!,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              item['subtitle']!,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Colors.grey.shade600 == Colors.grey
+                                  ? const TextStyle(
+                                      fontSize: 11,
+                                      color: Colors.grey,
+                                    )
+                                  : TextStyle(
+                                      fontSize: 11,
+                                      color: Colors.grey.shade600,
+                                    ),
+                            ),
+                            const SizedBox(height: 8),
+
+                            // Price and Add Button Row
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  item['price']!,
+                                  style: const TextStyle(
+                                    color: Color(0xFF0F5132), // Dark green tone
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                                Container(
+                                  width: 32,
+                                  height: 32,
+                                  decoration: const BoxDecoration(
+                                    color: Colors.orange,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(
+                                    Icons.add,
+                                    color: Colors.white,
+                                    size: 20,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
         ),
-      ),
-    ],
-);
+      ],
+    );
+  }
+}
+
+class CardGridCafe2 extends StatelessWidget {
+  // Constructor
+  const CardGridCafe2({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final List<Map<String, String>> menuItems = [
+      {
+        'image': 'designs/assets/grilled-meat.jpg',
+        'title': 'Smoked grilled meat',
+        'subtitle': 'Fresh Steak out of the gill',
+        'price': '\$8.50',
+      },
+      {
+        'image': 'designs/assets/chips.jpg',
+        'title': 'Chips Mshkaki',
+        'subtitle': 'Served with your favourite additive',
+        'price': '\$7.25',
+      },
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Menu Header Row
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              "Today's Menu: CAFE 2",
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF1E1E1E),
+              ),
+            ),
+            TextButton(
+              onPressed: () {},
+              child: const Text(
+                'See All',
+                style: TextStyle(
+                  color: Colors.green,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+
+        // Horizontal Scrollable Cards List
+        SizedBox(
+          height: 250, // Fixed height for the card container
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            itemCount: menuItems.length,
+            itemBuilder: (context, index) {
+              final item = menuItems[index];
+              return Container(
+                width: 170, // Fixed width for each card
+                margin: const EdgeInsets.only(right: 14),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.05),
+                      blurRadius: 8,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Food Image
+                      Expanded(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            image: DecorationImage(
+                              image: AssetImage(item['image']!),
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      // Card Details
+                      Padding(
+                        padding: const EdgeInsets.all(12.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              item['title']!,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              item['subtitle']!,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Colors.grey.shade600 == Colors.grey
+                                  ? const TextStyle(
+                                      fontSize: 11,
+                                      color: Colors.grey,
+                                    )
+                                  : TextStyle(
+                                      fontSize: 11,
+                                      color: Colors.grey.shade600,
+                                    ),
+                            ),
+                            const SizedBox(height: 8),
+
+                            // Price and Add Button Row
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  item['price']!,
+                                  style: const TextStyle(
+                                    color: Color(0xFF0F5132), // Dark green tone
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                                Container(
+                                  width: 32,
+                                  height: 32,
+                                  decoration: const BoxDecoration(
+                                    color: Colors.orange,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(
+                                    Icons.add,
+                                    color: Colors.white,
+                                    size: 20,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
 }
