@@ -58,8 +58,17 @@ class HomeScreen extends StatelessWidget {
                 // banner
                 specialBannerCard(),
 
+                // space
+                 const SizedBox(height: 24),
+
                 // card grid for cafe 1
                 cardGridCafe1(),
+
+                 // space
+                 const SizedBox(height: 24),
+
+                // card grid for cafe 2
+                cardGridCafe2(),
               ],
             ),
           ),
@@ -176,8 +185,298 @@ Widget specialBannerCard() {
 
 
 Widget cardGridCafe1(){
-return Center(
+final List<Map<String, String>> menuItems = [
+    {
+      'image': 'designs/assets/grilled-meat.jpg', 
+      'title': 'Smoked grilled meat',
+      'subtitle': 'Fresh Steak out of the gill',
+      'price': '\$8.50',
+    },
+    {
+      'image': 'designs/assets/chips.jpg',
+      'title': 'Chips Mshkaki',
+      'subtitle': 'Served with your favourite additive',
+      'price': '\$7.25',
+    },
+  ];
 
+return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      // Menu Header Row
+      Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          const Text(
+            "Today's Menu: CAFE 1",
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF1E1E1E),
+            ),
+          ),
+          TextButton(
+            onPressed: () {},
+            child: const Text(
+              'See All',
+              style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: 8),
+
+      // Horizontal Scrollable Cards List
+      SizedBox(
+        height: 250, // Fixed height for the card container
+        child: ListView.builder(
+          scrollDirection: Axis.horizontal,
+          itemCount: menuItems.length,
+          itemBuilder: (context, index) {
+            final item = menuItems[index];
+            return Container(
+              width: 170, // Fixed width for each card
+              margin: const EdgeInsets.only(right: 14),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.05),
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Food Image
+                    Expanded(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          image: DecorationImage(
+                            image: AssetImage(item['image']!),
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                      ),
+                    ),
+                    
+                    // Card Details
+                    Padding(
+                      padding: const EdgeInsets.all(12.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            item['title']!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            item['subtitle']!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Colors.grey.shade600 == Colors.grey 
+                                ? const TextStyle(fontSize: 11, color: Colors.grey)
+                                : TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                          ),
+                          const SizedBox(height: 8),
+                          
+                          // Price and Add Button Row
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                item['price']!,
+                                style: const TextStyle(
+                                  color: Color(0xFF0F5132), // Dark green tone
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                              ),
+                              Container(
+                                width: 32,
+                                height: 32,
+                                decoration: const BoxDecoration(
+                                  color: Colors.orange,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.add,
+                                  color: Colors.white,
+                                  size: 20,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    ],
+  );
+}
+
+
+Widget cardGridCafe2(){
+final List<Map<String, String>> menuItems = [
+    {
+      'image': 'designs/assets/grilled-meat.jpg', 
+      'title': 'Smoked grilled meat',
+      'subtitle': 'Fresh Steak out of the gill',
+      'price': '\$8.50',
+    },
+    {
+      'image': 'designs/assets/chips.jpg',
+      'title': 'Chips Mshkaki',
+      'subtitle': 'Served with your favourite additive',
+      'price': '\$7.25',
+    },
+  ];
+
+return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      // Menu Header Row
+      Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          const Text(
+            "Today's Menu: CAFE 2",
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF1E1E1E),
+            ),
+          ),
+          TextButton(
+            onPressed: () {},
+            child: const Text(
+              'See All',
+              style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: 8),
+
+      // Horizontal Scrollable Cards List
+      SizedBox(
+        height: 250, // Fixed height for the card container
+        child: ListView.builder(
+          scrollDirection: Axis.horizontal,
+          itemCount: menuItems.length,
+          itemBuilder: (context, index) {
+            final item = menuItems[index];
+            return Container(
+              width: 170, // Fixed width for each card
+              margin: const EdgeInsets.only(right: 14),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.05),
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Food Image
+                    Expanded(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          image: DecorationImage(
+                            image: AssetImage(item['image']!),
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                      ),
+                    ),
+                    
+                    // Card Details
+                    Padding(
+                      padding: const EdgeInsets.all(12.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            item['title']!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            item['subtitle']!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Colors.grey.shade600 == Colors.grey 
+                                ? const TextStyle(fontSize: 11, color: Colors.grey)
+                                : TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                          ),
+                          const SizedBox(height: 8),
+                          
+                          // Price and Add Button Row
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                item['price']!,
+                                style: const TextStyle(
+                                  color: Color(0xFF0F5132), // Dark green tone
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                              ),
+                              Container(
+                                width: 32,
+                                height: 32,
+                                decoration: const BoxDecoration(
+                                  color: Colors.orange,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.add,
+                                  color: Colors.white,
+                                  size: 20,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    ],
 );
-
 }
