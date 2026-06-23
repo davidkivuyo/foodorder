@@ -39,7 +39,7 @@ class _NavigationExampleState extends State<MainScreen> {
               style: TextStyle(
                 color: Color.fromARGB(255, 0, 118, 37),
                 letterSpacing: .5,
-                fontSize: 20,
+                fontSize: 22,
                 fontWeight: FontWeight.bold,
               ),
             ),
@@ -58,7 +58,6 @@ class _NavigationExampleState extends State<MainScreen> {
             icon: const Icon(CupertinoIcons.bell),
           ),
         ],
-        elevation: 0,
       ),
 
       // body

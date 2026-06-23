@@ -225,19 +225,18 @@ class CardGridCafe1 extends StatelessWidget {
                 color: Color(0xFF1E1E1E),
               ),
             ),
-            TextButton(
+            IconButton(
               onPressed: () {},
-              child: const Text(
-                'See All',
-                style: TextStyle(
-                  color: Colors.green,
-                  fontWeight: FontWeight.bold,
-                ),
+              icon: Icon(Icons.arrow_forward),
+              style: IconButton.styleFrom(
+                backgroundColor: Colors.grey[200],
+                padding: EdgeInsets.zero,
+                iconSize:
+                    19, // Shrinks the background wrapper tight around the icon
               ),
             ),
           ],
         ),
-        const SizedBox(height: 8),
 
         // Horizontal Scrollable Cards List
         SizedBox(
@@ -251,7 +250,6 @@ class CardGridCafe1 extends StatelessWidget {
                 width: 200, // Fixed width for each card
                 margin: const EdgeInsets.only(right: 14),
                 decoration: BoxDecoration(
-                  color: Colors.white,
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Card(
@@ -383,19 +381,18 @@ class CardGridCafe2 extends StatelessWidget {
                 color: Color(0xFF1E1E1E),
               ),
             ),
-            TextButton(
+            IconButton(
               onPressed: () {},
-              child: const Text(
-                'See All',
-                style: TextStyle(
-                  color: Colors.green,
-                  fontWeight: FontWeight.bold,
-                ),
+              icon: Icon(Icons.arrow_forward),
+              style: IconButton.styleFrom(
+                backgroundColor: Colors.grey[200],
+                padding: EdgeInsets.zero,
+                iconSize:
+                    19, // Shrinks the background wrapper tight around the icon
               ),
             ),
           ],
         ),
-        const SizedBox(height: 8),
 
         // Horizontal Scrollable Cards List
         SizedBox(
