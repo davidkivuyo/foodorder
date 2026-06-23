@@ -65,7 +65,8 @@ class HomeScreen extends StatelessWidget {
                 CardGridCafe1(),
 
                 // space
-                const SizedBox(height: 24),
+                const SizedBox(height: 20),
+                Divider(),
 
                 // card grid for cafe 2
                 CardGridCafe2(),
@@ -253,6 +254,8 @@ class CardGridCafe1 extends StatelessWidget {
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Card(
+                  elevation: 0,
+                  color: Colors.transparent,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -409,6 +412,8 @@ class CardGridCafe2 extends StatelessWidget {
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Card(
+                  elevation: 0,
+                  color: Colors.transparent,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
