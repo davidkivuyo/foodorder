@@ -248,21 +248,13 @@ class CardGridCafe1 extends StatelessWidget {
             itemBuilder: (context, index) {
               final item = menuItems[index];
               return Container(
-                width: 170, // Fixed width for each card
+                width: 200, // Fixed width for each card
                 margin: const EdgeInsets.only(right: 14),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.05),
-                      blurRadius: 8,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
                 ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(16),
+                child: Card(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -270,6 +262,7 @@ class CardGridCafe1 extends StatelessWidget {
                       Expanded(
                         child: Container(
                           decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(16),
                             image: DecorationImage(
                               image: AssetImage(item['image']!),
                               fit: BoxFit.cover,
@@ -413,21 +406,12 @@ class CardGridCafe2 extends StatelessWidget {
             itemBuilder: (context, index) {
               final item = menuItems[index];
               return Container(
-                width: 170, // Fixed width for each card
+                width: 200, // Fixed width for each card
                 margin: const EdgeInsets.only(right: 14),
                 decoration: BoxDecoration(
-                  color: Colors.white,
                   borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.05),
-                      blurRadius: 8,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
                 ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(16),
+                child: Card(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -435,6 +419,7 @@ class CardGridCafe2 extends StatelessWidget {
                       Expanded(
                         child: Container(
                           decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(16),
                             image: DecorationImage(
                               image: AssetImage(item['image']!),
                               fit: BoxFit.cover,

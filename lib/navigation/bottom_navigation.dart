@@ -66,6 +66,7 @@ class _NavigationExampleState extends State<MainScreen> {
 
       // shopping cart icon
       floatingActionButton: FloatingActionButton(
+        tooltip: 'Cart',
         backgroundColor: Colors.orange,
         shape: CircleBorder(),
         onPressed: () {
