@@ -247,7 +247,7 @@ class CardGridCafe1 extends StatelessWidget {
             itemBuilder: (context, index) {
               final item = menuItems[index];
               return Container(
-                width: 200, // Fixed width for each card
+                width: 220, // Fixed width for each card
                 margin: const EdgeInsets.only(right: 14),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(16),
@@ -403,7 +403,7 @@ class CardGridCafe2 extends StatelessWidget {
             itemBuilder: (context, index) {
               final item = menuItems[index];
               return Container(
-                width: 200, // Fixed width for each card
+                width: 220, // Fixed width for each card
                 margin: const EdgeInsets.only(right: 14),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(16),
