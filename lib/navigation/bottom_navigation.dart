@@ -69,7 +69,26 @@ class _NavigationExampleState extends State<MainScreen> {
         backgroundColor: Colors.orange,
         shape: CircleBorder(),
         onPressed: () {
-          debugPrint("pressed");
+          //Drag handle
+          showModalBottomSheet<void>(
+            context: context,
+            showDragHandle: true,
+            builder: (BuildContext context) {
+              return SizedBox.expand(
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: .center,
+                    mainAxisSize: .min,
+                    children: <Widget>[
+                      const Text('You have an empty cart'),
+                      const SizedBox(height: 10),
+                      Icon(Icons.hourglass_empty),
+                    ],
+                  ),
+                ),
+              );
+            },
+          );
         },
         child: const Icon(CupertinoIcons.cart),
       ),

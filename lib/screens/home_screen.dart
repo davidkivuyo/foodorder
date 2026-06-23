@@ -271,10 +271,11 @@ class CardGridCafe1 extends StatelessWidget {
                           ),
                         ),
                       ),
+                      const SizedBox(height: 2),
 
                       // Card Details
                       Padding(
-                        padding: const EdgeInsets.all(12.0),
+                        padding: const EdgeInsets.all(4),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -288,7 +289,6 @@ class CardGridCafe1 extends StatelessWidget {
                                 color: Colors.black,
                               ),
                             ),
-                            const SizedBox(height: 2),
                             Text(
                               item['subtitle']!,
                               maxLines: 1,
@@ -298,7 +298,24 @@ class CardGridCafe1 extends StatelessWidget {
                                 color: Colors.black,
                               ),
                             ),
-                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                Text(
+                                  '4.5', // Replace with your actual rating map key
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.grey[700],
+                                  ),
+                                ),
+                                Icon(
+                                  Icons.star_rounded,
+                                  color: Colors.amber,
+                                  size: 16,
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 2),
 
                             // Price and Add Button Row
                             Row(
@@ -429,10 +446,10 @@ class CardGridCafe2 extends StatelessWidget {
                           ),
                         ),
                       ),
-
+                      const SizedBox(height: 2),
                       // Card Details
                       Padding(
-                        padding: const EdgeInsets.all(12.0),
+                        padding: const EdgeInsets.all(4),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -446,7 +463,6 @@ class CardGridCafe2 extends StatelessWidget {
                                 color: Colors.black,
                               ),
                             ),
-                            const SizedBox(height: 2),
                             Text(
                               item['subtitle']!,
                               maxLines: 1,
@@ -456,7 +472,25 @@ class CardGridCafe2 extends StatelessWidget {
                                 color: Colors.black,
                               ),
                             ),
-                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                Text(
+                                  '4.5', // Replace with your actual rating map key
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.grey[700],
+                                  ),
+                                ),
+                                Icon(
+                                  Icons.star_rounded,
+                                  color: Colors.amber,
+                                  size: 16,
+                                ),
+                              ],
+                            ),
+
+                            const SizedBox(height: 2),
 
                             // Price and Add Button Row
                             Row(
