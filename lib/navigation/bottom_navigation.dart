@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../screens/home_screen.dart';
 import '../screens/account_screen.dart';
 import '../screens/category_screen.dart';
-//import '../screens/order_screen.dart';
+import '../screens/order_screen.dart';
 
 // home screen
 class MainScreen extends StatefulWidget {
@@ -20,9 +20,9 @@ class _NavigationExampleState extends State<MainScreen> {
   final List<Widget> _pages = [
     const HomeScreen(),
     const CategoryScreen(),
-    const Center(child: Text('Order Content')),
+    const OrdersScreen(),
     // This is the Account screen from account_screen.dart
-    const AccountScreen(), 
+    const AccountScreen(),
   ];
 
   @override
@@ -69,7 +69,7 @@ class _NavigationExampleState extends State<MainScreen> {
         backgroundColor: Colors.orange,
         shape: CircleBorder(),
         onPressed: () {
-          print("pressed");
+          debugPrint("pressed");
         },
         child: const Icon(CupertinoIcons.cart),
       ),
@@ -78,7 +78,7 @@ class _NavigationExampleState extends State<MainScreen> {
       bottomNavigationBar: NavigationBar(
         onDestinationSelected: (int index) {
           /* if (index == 3){
-          Navigator.push(context, 
+          Navigator.push(context,
           MaterialPageRoute(builder: (_) => AboutScreen()));
           }*/
           setState(() {
@@ -89,8 +89,9 @@ class _NavigationExampleState extends State<MainScreen> {
         selectedIndex: currentPageIndex,
         destinations: [
           NavigationDestination(
-            icon: const Icon(CupertinoIcons.home), 
-            label: 'Home'),
+            icon: const Icon(CupertinoIcons.home),
+            label: 'Home',
+          ),
           NavigationDestination(
             icon: const Icon(CupertinoIcons.square_stack_3d_up),
             label: 'Categories',

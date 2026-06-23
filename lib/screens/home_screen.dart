@@ -200,13 +200,13 @@ class CardGridCafe1 extends StatelessWidget {
         'image': 'designs/assets/grilled-meat.jpg',
         'title': 'Smoked grilled meat',
         'subtitle': 'Fresh Steak out of the gill',
-        'price': '\$8.50',
+        'price': 'tsh 15000',
       },
       {
         'image': 'designs/assets/chips.jpg',
         'title': 'Chips Mshkaki',
         'subtitle': 'Served with your favourite additive',
-        'price': '\$7.25',
+        'price': 'tsh 3000',
       },
     ];
 
@@ -291,6 +291,7 @@ class CardGridCafe1 extends StatelessWidget {
                               style: const TextStyle(
                                 fontWeight: FontWeight.bold,
                                 fontSize: 14,
+                                color: Colors.black,
                               ),
                             ),
                             const SizedBox(height: 2),
@@ -298,15 +299,10 @@ class CardGridCafe1 extends StatelessWidget {
                               item['subtitle']!,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: Colors.grey.shade600 == Colors.grey
-                                  ? const TextStyle(
-                                      fontSize: 11,
-                                      color: Colors.grey,
-                                    )
-                                  : TextStyle(
-                                      fontSize: 11,
-                                      color: Colors.grey.shade600,
-                                    ),
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.black,
+                              ),
                             ),
                             const SizedBox(height: 8),
 
@@ -360,16 +356,22 @@ class CardGridCafe2 extends StatelessWidget {
   Widget build(BuildContext context) {
     final List<Map<String, String>> menuItems = [
       {
-        'image': 'designs/assets/grilled-meat.jpg',
-        'title': 'Smoked grilled meat',
-        'subtitle': 'Fresh Steak out of the gill',
-        'price': '\$8.50',
+        'image': 'designs/assets/sandwich.jpg',
+        'title': 'Honey Sandwich',
+        'subtitle': 'Fresh sandwich for your breakfast',
+        'price': 'tsh 1000',
       },
       {
-        'image': 'designs/assets/chips.jpg',
-        'title': 'Chips Mshkaki',
+        'image': 'designs/assets/burgerchips.jpg',
+        'title': 'Burger with fries',
         'subtitle': 'Served with your favourite additive',
-        'price': '\$7.25',
+        'price': 'tsh 7000',
+      },
+      {
+        'image': 'designs/assets/biriyanimeat.jpg',
+        'title': 'Biriyani With meat',
+        'subtitle': 'full one plate satisfaction',
+        'price': 'tsh 2500',
       },
     ];
 
@@ -454,6 +456,7 @@ class CardGridCafe2 extends StatelessWidget {
                               style: const TextStyle(
                                 fontWeight: FontWeight.bold,
                                 fontSize: 14,
+                                color: Colors.black,
                               ),
                             ),
                             const SizedBox(height: 2),
@@ -461,15 +464,10 @@ class CardGridCafe2 extends StatelessWidget {
                               item['subtitle']!,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: Colors.grey.shade600 == Colors.grey
-                                  ? const TextStyle(
-                                      fontSize: 11,
-                                      color: Colors.grey,
-                                    )
-                                  : TextStyle(
-                                      fontSize: 11,
-                                      color: Colors.grey.shade600,
-                                    ),
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.black,
+                              ),
                             ),
                             const SizedBox(height: 8),
 
@@ -494,7 +492,7 @@ class CardGridCafe2 extends StatelessWidget {
                                   ),
                                   child: const Icon(
                                     Icons.add,
-                                    color: Colors.white,
+                                    color: Colors.black,
                                     size: 20,
                                   ),
                                 ),
@@ -512,5 +510,13 @@ class CardGridCafe2 extends StatelessWidget {
         ),
       ],
     );
+  }
+}
+
+class QuickBites extends StatelessWidget {
+  const QuickBites({super.key});
+  @override
+  Widget build(BuildContext context) {
+    return Placeholder();
   }
 }
