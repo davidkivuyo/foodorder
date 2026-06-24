@@ -20,6 +20,7 @@ class MyApp extends StatelessWidget {
         colorSchemeSeed: Colors.blue,
         textTheme: GoogleFonts.ralewayTextTheme(Theme.of(context).textTheme),
       ),
+      themeMode: ThemeMode.system,
       home: const MainScreen(),
     );
   }
