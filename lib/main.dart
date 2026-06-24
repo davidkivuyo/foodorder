@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-
 import 'navigation/bottom_navigation.dart';
 import 'package:google_fonts/google_fonts.dart';
 

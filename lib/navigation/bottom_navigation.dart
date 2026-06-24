@@ -74,7 +74,8 @@ class _NavigationExampleState extends State<MainScreen> {
             context: context,
             showDragHandle: true,
             builder: (BuildContext context) {
-              return SizedBox.expand(
+              return SizedBox(
+                height: 140,
                 child: Center(
                   child: Column(
                     mainAxisAlignment: .center,

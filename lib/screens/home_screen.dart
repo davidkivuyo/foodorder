@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 
-String firstname = 'DAVID';
-
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
@@ -16,26 +14,6 @@ class HomeScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Welcome $firstname!',
-                  style: TextStyle(
-                    color: Colors.orange,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                Text(
-                  "What's your bite today?",
-                  style: TextStyle(
-                    color: Color.fromARGB(255, 138, 83, 0),
-                    fontSize: 19,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-
-                //space between text and searchbar
-                const SizedBox(height: 8),
-
                 // search bar
                 Container(
                   padding: EdgeInsets.symmetric(horizontal: 14),
@@ -53,13 +31,13 @@ class HomeScreen extends StatelessWidget {
                 ),
 
                 //space
-                const SizedBox(height: 24),
+                const SizedBox(height: 18),
 
                 // banner
                 SpecialBannerCard(),
 
                 // space
-                const SizedBox(height: 24),
+                const SizedBox(height: 18),
 
                 // card grid for cafe 1
                 CardGridCafe1(),
