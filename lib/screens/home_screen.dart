@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 class HomeScreen extends StatelessWidget {
@@ -48,6 +49,19 @@ class HomeScreen extends StatelessWidget {
 
                 // card grid for cafe 2
                 CardGridCafe2(),
+
+                const SizedBox(height: 20),
+                Divider(),
+                const SizedBox(height: 10),
+                Text(
+                  "Quick Bites",
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF1E1E1E),
+                  ),
+                ),
+                QuickBites(),
               ],
             ),
           ),
@@ -514,8 +528,54 @@ class CardGridCafe2 extends StatelessWidget {
 
 class QuickBites extends StatelessWidget {
   const QuickBites({super.key});
+
   @override
   Widget build(BuildContext context) {
-    return Placeholder();
+    return Center(
+      child: GridView.count(
+        crossAxisCount: 2,
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        padding: EdgeInsets.symmetric(vertical: 2),
+
+        children: [
+          Card(
+            elevation: 0,
+            color: Colors.blue,
+            child: Padding(
+              padding: const EdgeInsets.all(10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+
+                children: [
+                  Icon(Icons.coffee_outlined),
+                  const SizedBox(height: 15),
+                  Text("Coffee & Tea"),
+                ],
+              ),
+            ),
+          ),
+          Card(
+            elevation: 0,
+            color: Colors.green,
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+
+                children: [
+                  Icon(Icons.icecream),
+                  const SizedBox(height: 24),
+                  Text(
+                    "Deserts",
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
