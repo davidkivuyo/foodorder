@@ -29,15 +29,15 @@ class _NavigationExampleState extends State<MainScreen> {
   @override
   Widget build(BuildContext context) {
     return DashNoInterNetScreen(
-      image: Image.asset("designs/assets/satellite.png", height: 80, width: 90),
-      titleText: "Oops !",
+      image: Image.asset("designs/assets/satellite.png", width: 90, height: 90),
+      titleText: "Sorry for the delay",
       titleTextStyle: const TextStyle(
         fontSize: 22,
         fontWeight: FontWeight.bold,
         color: Colors.black,
       ),
       subtitleText:
-          "No Internet Connection Found. Check your connection and start again.",
+          "We're having trouble connecting, but you should have your food shortly.",
       subtitleTextStyle: const TextStyle(
         fontSize: 15,
         fontWeight: FontWeight.normal,
@@ -47,21 +47,52 @@ class _NavigationExampleState extends State<MainScreen> {
       padding: const EdgeInsets.all(16.0),
       textAlign: TextAlign.center,
       spacing: 15,
+      buttonTextColor: Colors.white,
+      buttonColor: Colors.grey,
+      buttonPadding: const EdgeInsets.symmetric(
+        horizontal: 18.0,
+        vertical: 8.0,
+      ),
+      buttonText: "Try Again",
+      buttonTextStyle: const TextStyle(
+        fontSize: 16,
+        color: Colors.white,
+        fontWeight: FontWeight.bold,
+      ),
+      buttonBorderShape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10.0),
+      ),
+      buttonHeight: 50,
+      buttonWidth: 250,
+      buttonStyle: ElevatedButton.styleFrom(
+        elevation: 4,
+        backgroundColor: Colors.orange,
+      ),
+      onInternetAvailable: () {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text("Internet connected!")));
+      },
+      onRetryFailed: () {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              "no internet found! please connect to internet and try again.",
+            ),
+          ),
+        );
+      },
       child: Scaffold(
         // TopBar
         appBar: AppBar(
+          toolbarHeight: 50,
           title: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Image.asset('designs/assets/logo.png', width: 40, height: 40),
               Text(
                 'CampusBite',
-                style: TextStyle(
-                  color: Color.fromARGB(255, 0, 118, 37),
-                  letterSpacing: .5,
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
             ],
           ),
@@ -69,6 +100,7 @@ class _NavigationExampleState extends State<MainScreen> {
           // notification icon- its screen can be found in account_screen.dart file
           actions: <Widget>[
             IconButton(
+              padding: const EdgeInsets.only(right: 10),
               onPressed: () {
                 Navigator.push(
                   context,
@@ -84,7 +116,7 @@ class _NavigationExampleState extends State<MainScreen> {
         body: _pages[currentPageIndex],
 
         // shopping cart icon
-        floatingActionButton: FloatingActionButton(
+        /*floatingActionButton: FloatingActionButton(
           tooltip: 'Cart',
           backgroundColor: Colors.orange,
           shape: CircleBorder(),
@@ -112,7 +144,7 @@ class _NavigationExampleState extends State<MainScreen> {
             );
           },
           child: const Icon(CupertinoIcons.cart),
-        ),
+        ),*/
 
         // bottom navigation bar
         bottomNavigationBar: NavigationBar(
