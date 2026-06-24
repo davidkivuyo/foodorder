@@ -505,7 +505,7 @@ class CardGridCafe2 extends StatelessWidget {
                                   ),
                                   child: const Icon(
                                     Icons.add,
-                                    color: Colors.black,
+                                    color: Colors.white,
                                     size: 20,
                                   ),
                                 ),
@@ -543,34 +543,50 @@ class QuickBites extends StatelessWidget {
             elevation: 0,
             color: Colors.blue,
             child: Padding(
-              padding: const EdgeInsets.all(10),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              padding: const EdgeInsets.all(20),
+              child: SizedBox(
+                height: 100,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
 
-                children: [
-                  Icon(Icons.coffee_outlined),
-                  const SizedBox(height: 15),
-                  Text("Coffee & Tea"),
-                ],
+                  children: [
+                    Icon(Icons.coffee_outlined),
+                    const SizedBox(height: 24),
+                    Text(
+                      "Coffee & Tea",
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
           Card(
             elevation: 0,
             color: Colors.green,
+
             child: Padding(
               padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: SizedBox(
+                height: 120,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
 
-                children: [
-                  Icon(Icons.icecream),
-                  const SizedBox(height: 24),
-                  Text(
-                    "Deserts",
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                ],
+                  children: [
+                    Icon(Icons.icecream),
+                    const SizedBox(height: 24),
+                    Text(
+                      "Deserts",
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
