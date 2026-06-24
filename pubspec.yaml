@@ -1,6 +1,6 @@
 name: campusbite
 description: "A new Flutter project."
-publish_to: 'none'
+publish_to: "none"
 version: 0.1.0+1
 
 environment:
@@ -12,6 +12,7 @@ dependencies:
   font_awesome_flutter: ^11.0.0
   google_fonts: ^8.1.0
   cupertino_icons: ^1.0.9
+  dash_no_internet_screen: ^1.0.0
 
 dev_dependencies:
   flutter_test:
@@ -20,7 +21,7 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-  
+
   assets:
     - designs/
     - designs/assets/
