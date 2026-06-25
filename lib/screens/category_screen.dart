@@ -1,14 +1,20 @@
 import 'package:flutter/material.dart';
+import '../data/food_data.dart';
 
-class CategoryScreen extends StatelessWidget {
+class CategoryScreen extends StatefulWidget {
   const CategoryScreen({super.key});
 
+  @override
+  State<CategoryScreen> createState() => _CategoryScreenState();
+}
+
+class _CategoryScreenState extends State<CategoryScreen> {
   @override
   Widget build(BuildContext context) {
     // Allows scrolling
     return SingleChildScrollView(
       child: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(10.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -27,6 +33,9 @@ class CategoryScreen extends StatelessWidget {
             ),
             const SizedBox(height: 18),
             categories(),
+
+            const SizedBox(height: 18),
+            Cards(),
           ],
         ),
       ),
@@ -42,7 +51,7 @@ Widget categories() {
     'Snacks',
     'Drinks',
   ];
-  final String selectedCategory = 'Launch';
+  final String selectedCategory = 'Lunch';
 
   return SizedBox(
     height: 45,
@@ -88,114 +97,137 @@ Widget categories() {
 
 class Cards extends StatelessWidget {
   const Cards({super.key});
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      // categories food cards
-      body: SafeArea(
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.all(10.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Card(
-                  elevation: 0,
-                  color: Colors.transparent,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+    final List<FoodItem> menuItems = [
+      const FoodItem(
+        image: 'designs/assets/chips.jpg',
+        title: 'Honey Sandwich',
+        subtitle: 'Fresh sandwich for your breakfast',
+        price: 'Tsh 1000',
+        rating: 4.5,
+        category: 'Breakfast',
+      ),
+      const FoodItem(
+        image: 'designs/assets/burgerchips.jpg',
+        title: 'Burger with Fries',
+        subtitle: 'Served with your favourite additive',
+        price: 'Tsh 7000',
+        rating: 4.8,
+        category: 'Lunch',
+      ),
+      const FoodItem(
+        image: 'designs/assets/biriyanimeat.jpg',
+        title: 'Chicken Sandwich',
+        subtitle: 'Loaded with fresh vegetables',
+        price: 'Tsh 4500',
+        rating: 4.3,
+        category: 'Lunch',
+      ),
+      const FoodItem(
+        image: 'designs/assets/ricemeat.jpg',
+        title: 'Cheese Burger',
+        subtitle: 'Extra cheese and crispy fries',
+        price: 'Tsh 8500',
+        rating: 4.9,
+        category: 'Dinner',
+      ),
+    ];
+
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: menuItems.length,
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        childAspectRatio: 0.6,
+      ),
+      itemBuilder: (context, index) {
+        return FoodCard(item: menuItems[index]);
+      },
+    );
+  }
+}
+
+class FoodCard extends StatelessWidget {
+  final FoodItem item;
+
+  const FoodCard({super.key, required this.item});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      elevation: 0,
+      color: Colors.transparent,
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: Image.asset(
+              item.image,
+              height: 110,
+              width: double.infinity,
+              fit: BoxFit.cover,
+            ),
+          ),
+
+          Expanded(
+            flex: 4,
+            child: Padding(
+              padding: const EdgeInsets.all(8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    item.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+
+                  const SizedBox(height: 4),
+
+                  Text(
+                    item.subtitle,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      // Food Image
-                      Expanded(
-                        child: Container(
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
+                      Text(
+                        item.price,
+                        style: const TextStyle(
+                          color: Colors.green,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
-                      const SizedBox(height: 2),
-                      // Card Details
-                      Padding(
-                        padding: const EdgeInsets.all(4),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'title',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 14,
-                                color: Colors.black,
-                              ),
-                            ),
-                            Text(
-                              'subtitle',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: Colors.black,
-                              ),
-                            ),
-                            Row(
-                              children: [
-                                Text(
-                                  '4.5', // Replace with your actual rating map key
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.grey[700],
-                                  ),
-                                ),
-                                Icon(
-                                  Icons.star_rounded,
-                                  color: Colors.amber,
-                                  size: 16,
-                                ),
-                              ],
-                            ),
 
-                            const SizedBox(height: 2),
-
-                            // Price and Add Button Row
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  'price',
-                                  style: const TextStyle(
-                                    color: Color(0xFF0F5132), // Dark green tone
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16,
-                                  ),
-                                ),
-                                Container(
-                                  width: 32,
-                                  height: 32,
-                                  decoration: const BoxDecoration(
-                                    color: Colors.orange,
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: const Icon(
-                                    Icons.add,
-                                    color: Colors.white,
-                                    size: 20,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
+                      Container(
+                        width: 30,
+                        height: 30,
+                        decoration: const BoxDecoration(
+                          color: Colors.orange,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.add,
+                          size: 18,
+                          color: Colors.white,
                         ),
                       ),
                     ],
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
-        ),
+        ],
       ),
     );
   }

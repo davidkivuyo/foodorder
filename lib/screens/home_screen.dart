@@ -41,14 +41,14 @@ class HomeScreen extends StatelessWidget {
                 const SizedBox(height: 18),
 
                 // card grid for cafe 1
-                CardGridCafe1(),
+                CardRowCafe1(),
 
                 // space
                 const SizedBox(height: 20),
                 Divider(),
 
                 // card grid for cafe 2
-                CardGridCafe2(),
+                CardRowCafe2(),
 
                 const SizedBox(height: 20),
                 Divider(),
@@ -184,8 +184,8 @@ class SpecialBannerCard extends StatelessWidget {
   }
 }
 
-class CardGridCafe1 extends StatelessWidget {
-  const CardGridCafe1({super.key});
+class CardRowCafe1 extends StatelessWidget {
+  const CardRowCafe1({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -194,19 +194,19 @@ class CardGridCafe1 extends StatelessWidget {
         'image': 'designs/assets/ricemeat.jpg',
         'title': 'Wali Nyama',
         'subtitle': 'Fresh for your appetite',
-        'price': 'tsh 2500',
+        'price': 'Tsh 2500',
       },
       {
         'image': 'designs/assets/grilled-meat.jpg',
         'title': 'Smoked grilled meat',
         'subtitle': 'Fresh Steak out of the gill',
-        'price': 'tsh 15000',
+        'price': 'Tsh 15000',
       },
       {
         'image': 'designs/assets/chips.jpg',
         'title': 'Chips Mshkaki',
         'subtitle': 'Served with your favourite additive',
-        'price': 'tsh 3000',
+        'price': 'Tsh 3000',
       },
     ];
 
@@ -358,9 +358,9 @@ class CardGridCafe1 extends StatelessWidget {
   }
 }
 
-class CardGridCafe2 extends StatelessWidget {
+class CardRowCafe2 extends StatelessWidget {
   // Constructor
-  const CardGridCafe2({super.key});
+  const CardRowCafe2({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -369,19 +369,19 @@ class CardGridCafe2 extends StatelessWidget {
         'image': 'designs/assets/sandwich.jpg',
         'title': 'Honey Sandwich',
         'subtitle': 'Fresh sandwich for your breakfast',
-        'price': 'tsh 1000',
+        'price': 'Tsh 1000',
       },
       {
         'image': 'designs/assets/burgerchips.jpg',
         'title': 'Burger with fries',
         'subtitle': 'Served with your favourite additive',
-        'price': 'tsh 7000',
+        'price': 'Tsh 7000',
       },
       {
         'image': 'designs/assets/biriyanimeat.jpg',
         'title': 'Biriyani With meat',
         'subtitle': 'full one plate satisfaction',
-        'price': 'tsh 2500',
+        'price': 'Tsh 2500',
       },
     ];
 
