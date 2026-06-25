@@ -1,4 +1,3 @@
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 class HomeScreen extends StatelessWidget {
@@ -190,6 +189,12 @@ class CardGridCafe1 extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final List<Map<String, String>> menuItems = [
+      {
+        'image': 'designs/assets/ricemeat.jpg',
+        'title': 'Wali Nyama',
+        'subtitle': 'Fresh for your appetite',
+        'price': 'tsh 2500',
+      },
       {
         'image': 'designs/assets/grilled-meat.jpg',
         'title': 'Smoked grilled meat',
