@@ -18,12 +18,11 @@ class MainScreen extends StatefulWidget {
 class _NavigationExampleState extends State<MainScreen> {
   int currentPageIndex = 0;
 
-  final List<Widget> _pages = [
-    const HomeScreen(),
-    const CategoryScreen(),
-    const OrdersScreen(),
-    // This is the Account screen from account_screen.dart
-    const AccountScreen(),
+  static const List<Widget> _pages = [
+    HomeScreen(),
+    CategoryScreen(),
+    OrdersScreen(),
+    AccountScreen(),
   ];
 
   @override
@@ -86,18 +85,9 @@ class _NavigationExampleState extends State<MainScreen> {
         // TopBar
         appBar: AppBar(
           toolbarHeight: 50,
-          title: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Image.asset('designs/assets/logo.png', width: 40, height: 40),
-              Text(
-                'CampusBite',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-            ],
-          ),
+          title: const AppLogo(),
 
-          // notification icon- its screen can be found in account_screen.dart file
+          // notification icon, its screen can be found in account_screen.dart file
           actions: <Widget>[
             IconButton(
               padding: const EdgeInsets.only(right: 10),
@@ -114,10 +104,10 @@ class _NavigationExampleState extends State<MainScreen> {
 
         // body
         extendBody: true,
-        body: _pages[currentPageIndex],
+        body: IndexedStack(index: currentPageIndex, children: _pages),
 
         // shopping cart icon
-        /*floatingActionButton: FloatingActionButton(
+        floatingActionButton: FloatingActionButton(
           tooltip: 'Cart',
           backgroundColor: Colors.orange,
           shape: CircleBorder(),
@@ -145,7 +135,7 @@ class _NavigationExampleState extends State<MainScreen> {
             );
           },
           child: const Icon(CupertinoIcons.cart),
-        ),*/
+        ),
 
         // bottom navigation bar
         bottomNavigationBar: Container(
@@ -226,6 +216,24 @@ class _NavigationExampleState extends State<MainScreen> {
           size: 24, // Slightly reduced to fit nicely inside the bordered circle
         ),
       ),
+    );
+  }
+}
+
+class AppLogo extends StatelessWidget {
+  const AppLogo({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Image.asset('designs/assets/logo.png', width: 40, height: 40),
+        Text(
+          'CampusBite',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        ),
+      ],
     );
   }
 }
