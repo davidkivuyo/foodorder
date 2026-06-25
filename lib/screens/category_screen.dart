@@ -45,13 +45,13 @@ class _CategoryScreenState extends State<CategoryScreen> {
 
 Widget categories() {
   final List<String> categoryList = [
-    'Breakfast',
-    'Lunch',
-    'Dinner',
-    'Snacks',
-    'Drinks',
+    '🥞 Breakfast',
+    '🍴 Lunch',
+    '🥮 Dinner',
+    '🍫 Snacks',
+    '🥂 Drinks',
   ];
-  final String selectedCategory = 'Lunch';
+  final String selectedCategory = '🍴 Lunch';
 
   return SizedBox(
     height: 45,
@@ -102,7 +102,7 @@ class Cards extends StatelessWidget {
   Widget build(BuildContext context) {
     final List<FoodItem> menuItems = [
       const FoodItem(
-        image: 'designs/assets/chips.jpg',
+        image: 'designs/assets/sandwich.jpg',
         title: 'Honey Sandwich',
         subtitle: 'Fresh sandwich for your breakfast',
         price: 'Tsh 1000',
@@ -119,15 +119,15 @@ class Cards extends StatelessWidget {
       ),
       const FoodItem(
         image: 'designs/assets/biriyanimeat.jpg',
-        title: 'Chicken Sandwich',
+        title: 'Biriyani meat',
         subtitle: 'Loaded with fresh vegetables',
         price: 'Tsh 4500',
         rating: 4.3,
         category: 'Lunch',
       ),
       const FoodItem(
-        image: 'designs/assets/ricemeat.jpg',
-        title: 'Cheese Burger',
+        image: 'designs/assets/chips.jpg',
+        title: 'Chips Mshkaki',
         subtitle: 'Extra cheese and crispy fries',
         price: 'Tsh 8500',
         rating: 4.9,
@@ -168,7 +168,7 @@ class FoodCard extends StatelessWidget {
             borderRadius: BorderRadius.circular(16),
             child: Image.asset(
               item.image,
-              height: 110,
+              height: 120,
               width: double.infinity,
               fit: BoxFit.cover,
             ),
