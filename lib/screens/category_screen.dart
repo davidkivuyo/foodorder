@@ -37,6 +37,7 @@ class _CategoryScreenState extends State<CategoryScreen> {
             const SizedBox(height: 18),
             Cards(),
 
+            const SizedBox(height: 10),
             BottomBanner(),
           ],
         ),
