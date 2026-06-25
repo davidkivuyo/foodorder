@@ -113,6 +113,7 @@ class _NavigationExampleState extends State<MainScreen> {
         ),
 
         // body
+        extendBody: true,
         body: _pages[currentPageIndex],
 
         // shopping cart icon
@@ -147,36 +148,70 @@ class _NavigationExampleState extends State<MainScreen> {
         ),*/
 
         // bottom navigation bar
-        bottomNavigationBar: NavigationBar(
-          onDestinationSelected: (int index) {
-            /* if (index == 3){
-          Navigator.push(context,
-          MaterialPageRoute(builder: (_) => AboutScreen()));
-          }*/
-            setState(() {
-              currentPageIndex = index;
-            });
-          },
-          indicatorColor: Colors.orange,
-          selectedIndex: currentPageIndex,
-          destinations: [
-            NavigationDestination(
-              icon: const Icon(CupertinoIcons.home),
-              label: 'Home',
+        bottomNavigationBar: Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            border: Border(
+              top: BorderSide(color: Colors.grey.shade200, width: 1.0),
             ),
-            NavigationDestination(
-              icon: const Icon(CupertinoIcons.square_stack_3d_up),
-              label: 'Categories',
+          ),
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+          child: SafeArea(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _buildNavButton(
+                  icon: CupertinoIcons.home,
+                  isSelected: currentPageIndex == 0,
+                  onTap: () => setState(() => currentPageIndex = 0),
+                ),
+                _buildNavButton(
+                  icon: CupertinoIcons.layers_alt,
+                  isSelected: currentPageIndex == 1,
+                  onTap: () => setState(() => currentPageIndex = 1),
+                ),
+                _buildNavButton(
+                  icon: CupertinoIcons.cube_box,
+                  isSelected: currentPageIndex == 2,
+                  onTap: () => setState(() => currentPageIndex = 2),
+                ),
+                _buildNavButton(
+                  icon: CupertinoIcons.person,
+                  isSelected: currentPageIndex == 3,
+                  onTap: () => setState(() => currentPageIndex = 3),
+                ),
+              ],
             ),
-            NavigationDestination(
-              icon: const Icon(CupertinoIcons.cube_box),
-              label: 'Orders',
-            ),
-            NavigationDestination(
-              icon: const Icon(CupertinoIcons.person),
-              label: 'Account',
-            ),
-          ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNavButton({
+    required IconData icon,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 48,
+        height: 48,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          // If selected: solid black. If unselected: slightly gray background.
+          color: isSelected ? Colors.grey : Colors.grey.shade100,
+          // Adds a thin border only when the icon is NOT selected
+          border: isSelected
+              ? null
+              : Border.all(color: Colors.grey.shade300, width: 1.0),
+        ),
+        child: Icon(
+          icon,
+          // If selected: white icon. If unselected: dark grey/black icon.
+          color: isSelected ? Colors.white : Colors.black87,
+          size: 24, // Slightly reduced to fit nicely inside the bordered circle
         ),
       ),
     );
