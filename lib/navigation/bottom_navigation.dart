@@ -4,6 +4,7 @@ import '../screens/home_screen.dart';
 import '../screens/account_screen.dart';
 import '../screens/category_screen.dart';
 import '../screens/order_screen.dart';
+import '../data/search_bar.dart';
 import 'package:dash_no_internet_screen/dash_no_internet_screen.dart';
 
 // home screen
@@ -21,6 +22,7 @@ class _NavigationExampleState extends State<MainScreen> {
   static const List<Widget> _pages = [
     HomeScreen(),
     CategoryScreen(),
+    SearchBarScreen(),
     OrdersScreen(),
     AccountScreen(),
   ];
@@ -162,24 +164,29 @@ class _NavigationExampleState extends State<MainScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
                 _buildNavButton(
-                  icon: CupertinoIcons.home,
+                  icon: Icons.home_outlined,
                   isSelected: currentPageIndex == 0,
                   onTap: () => setState(() => currentPageIndex = 0),
                 ),
                 _buildNavButton(
-                  icon: CupertinoIcons.layers_alt,
+                  icon: Icons.category_outlined,
                   isSelected: currentPageIndex == 1,
                   onTap: () => setState(() => currentPageIndex = 1),
                 ),
                 _buildNavButton(
-                  icon: CupertinoIcons.cube_box,
-                  isSelected: currentPageIndex == 2,
+                  icon: Icons.search_outlined,
+                  isSelected: currentPageIndex == 1,
                   onTap: () => setState(() => currentPageIndex = 2),
                 ),
                 _buildNavButton(
-                  icon: CupertinoIcons.person,
-                  isSelected: currentPageIndex == 3,
+                  icon: Icons.receipt_outlined,
+                  isSelected: currentPageIndex == 2,
                   onTap: () => setState(() => currentPageIndex = 3),
+                ),
+                _buildNavButton(
+                  icon: Icons.person_outline_rounded,
+                  isSelected: currentPageIndex == 3,
+                  onTap: () => setState(() => currentPageIndex = 4),
                 ),
               ],
             ),
@@ -196,18 +203,10 @@ class _NavigationExampleState extends State<MainScreen> {
   }) {
     return GestureDetector(
       onTap: onTap,
-      child: Container(
+      child: SizedBox(
         width: 48,
         height: 48,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          // If selected: solid black. If unselected: slightly gray background.
-          color: isSelected ? Colors.white : Colors.white,
-          // Adds a thin border only when the icon is NOT selected
-          border: isSelected
-              ? Border.all(color: Colors.grey.shade300, width: 1.0)
-              : null,
-        ),
+
         child: Icon(
           icon,
           // If selected: white icon. If unselected: dark grey/black icon.
