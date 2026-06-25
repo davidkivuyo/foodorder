@@ -150,6 +150,18 @@ class _NavigationExampleState extends State<MainScreen> {
         // bottom navigation bar
         bottomNavigationBar: Container(
           decoration: BoxDecoration(
+            borderRadius: const BorderRadius.only(
+              topRight: Radius.circular(30),
+              topLeft: Radius.circular(30),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.grey.withValues(alpha: 0.2),
+                spreadRadius: 2,
+                blurRadius: 5,
+                offset: Offset(0, 3),
+              ),
+            ],
             color: Colors.white,
             border: Border(
               top: BorderSide(color: Colors.grey.shade200, width: 1.0),
@@ -201,16 +213,16 @@ class _NavigationExampleState extends State<MainScreen> {
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           // If selected: solid black. If unselected: slightly gray background.
-          color: isSelected ? Colors.grey : Colors.grey.shade100,
+          color: isSelected ? Colors.white : Colors.white,
           // Adds a thin border only when the icon is NOT selected
           border: isSelected
-              ? null
-              : Border.all(color: Colors.grey.shade300, width: 1.0),
+              ? Border.all(color: Colors.grey.shade300, width: 1.0)
+              : null,
         ),
         child: Icon(
           icon,
           // If selected: white icon. If unselected: dark grey/black icon.
-          color: isSelected ? Colors.white : Colors.black87,
+          color: isSelected ? Colors.black : Colors.black87,
           size: 24, // Slightly reduced to fit nicely inside the bordered circle
         ),
       ),
