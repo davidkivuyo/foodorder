@@ -23,7 +23,7 @@ class _CategoryScreenState extends State<CategoryScreen> {
               style: TextStyle(
                 fontSize: 22,
                 color: Colors.black,
-                fontWeight: FontWeight(600),
+                fontWeight: FontWeight.bold,
                 letterSpacing: .75,
               ),
             ),
@@ -36,6 +36,8 @@ class _CategoryScreenState extends State<CategoryScreen> {
 
             const SizedBox(height: 18),
             Cards(),
+
+            BottomBanner(),
           ],
         ),
       ),
@@ -230,6 +232,91 @@ class FoodCard extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class BottomBanner extends StatelessWidget {
+  const BottomBanner({super.key});
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          // Matching the dark green shade from the design
+          color: const Color(0xFF0F6322),
+
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Stack(
+          children: [
+            // Content Layout
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Flash Deal Tag
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(
+                      0xFFF5820D,
+                    ), // Match your main orange color
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Text(
+                    'FLASH DEAL',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                // Main Heading
+                const Text(
+                  'Late Night Munchies',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                // Subtitle
+                Text(
+                  '30% off after 9 PM',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.8),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+            // Positioned Party Popper Icon on the top-right
+            Positioned(
+              top: 0,
+              right: 0,
+              child: Opacity(
+                opacity: 0.3, // Subtle blending look from the mockup
+                child: Icon(
+                  Icons
+                      .celebration, // Using celebration icon as the party popper
+                  size: 40,
+                  color: Colors.white.withValues(alpha: 0.7),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
