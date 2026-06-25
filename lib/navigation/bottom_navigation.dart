@@ -146,8 +146,9 @@ class _NavigationExampleState extends State<MainScreen> {
               currentPageIndex = index;
             });
           },
-          indicatorColor: Colors.grey.shade200,
-          destinations: const [
+          indicatorColor: Colors.transparent,
+          labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
+          destinations: [
             NavigationDestination(
               icon: Icon(CupertinoIcons.home),
               label: "Home",
@@ -157,15 +158,30 @@ class _NavigationExampleState extends State<MainScreen> {
               label: "Categories",
             ),
             NavigationDestination(
-              icon: Icon(CupertinoIcons.search),
+              icon: Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(CupertinoIcons.search),
+              ),
+              selectedIcon: Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(CupertinoIcons.search),
+              ),
               label: "Search",
             ),
             NavigationDestination(
-              icon: Icon(Icons.receipt_long_outlined),
+              icon: Icon(CupertinoIcons.archivebox),
               label: "Orders",
             ),
             NavigationDestination(
-              icon: Icon(CupertinoIcons.person),
+              icon: Icon(CupertinoIcons.person_circle),
               label: "Profile",
             ),
           ],
