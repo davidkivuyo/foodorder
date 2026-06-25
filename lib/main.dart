@@ -18,7 +18,7 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         useMaterial3: true,
         colorSchemeSeed: Colors.blue,
-        textTheme: GoogleFonts.ralewayTextTheme(Theme.of(context).textTheme),
+        textTheme: GoogleFonts.dmSansTextTheme(Theme.of(context).textTheme),
       ),
       themeMode: ThemeMode.system,
       home: const MainScreen(),

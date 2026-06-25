@@ -154,7 +154,7 @@ class _NavigationExampleState extends State<MainScreen> {
               label: "Home",
             ),
             NavigationDestination(
-              icon: Icon(CupertinoIcons.layers_alt),
+              icon: Icon(CupertinoIcons.layers),
               label: "Categories",
             ),
             NavigationDestination(
