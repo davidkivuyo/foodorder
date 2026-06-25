@@ -142,6 +142,8 @@ class Cards extends StatelessWidget {
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
         childAspectRatio: 0.6,
+        crossAxisSpacing: 8,
+        mainAxisSpacing: 8,
       ),
       itemBuilder: (context, index) {
         return FoodCard(item: menuItems[index]);
@@ -177,7 +179,7 @@ class FoodCard extends StatelessWidget {
           Expanded(
             flex: 4,
             child: Padding(
-              padding: const EdgeInsets.all(8),
+              padding: const EdgeInsets.all(4),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
