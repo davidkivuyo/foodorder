@@ -5,13 +5,22 @@ class OrdersScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Center(
-      child: Text(
-        'Orders',
-        style: TextStyle(
-          fontSize: 20,
-          fontWeight: FontWeight.bold,
-          color: Colors.black,
+    return SingleChildScrollView(
+      child: Padding(
+        padding: const EdgeInsets.all(10.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'My orders',
+              style: TextStyle(
+                fontSize: 22,
+                color: Colors.black,
+                fontWeight: FontWeight.bold,
+                letterSpacing: .75,
+              ),
+            ),
+          ],
         ),
       ),
     );

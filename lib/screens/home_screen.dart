@@ -1,10 +1,65 @@
 import 'package:flutter/material.dart';
+import '../data/food_data.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final List<FoodItem> cafe1Menu = [
+      FoodItem(
+        image: 'designs/assets/ricemeat.jpg',
+        title: 'Wali Nyama',
+        subtitle: 'Fresh for your appetite',
+        price: 'Tsh 2500',
+        rating: 4.5,
+        category: '',
+      ),
+      FoodItem(
+        image: 'designs/assets/grilled-meat.jpg',
+        title: 'Smoked grilled meat',
+        subtitle: 'Fresh Steak out of the gill',
+        price: 'Tsh 15000',
+        rating: 4.8,
+        category: '',
+      ),
+      FoodItem(
+        image: 'designs/assets/chips.jpg',
+        title: 'Chips Mshkaki',
+        subtitle: 'Served with additives',
+        price: 'Tsh 3000',
+        rating: 4.3,
+        category: '',
+      ),
+    ];
+
+    final List<FoodItem> cafe2Menu = [
+      FoodItem(
+        image: 'designs/assets/sandwich.jpg',
+        title: 'Honey Sandwich',
+        subtitle: 'Fresh breakfast choice',
+        price: 'Tsh 1000',
+        rating: 4,
+        category: '',
+      ),
+      FoodItem(
+        image: 'designs/assets/burgerchips.jpg',
+        title: 'Burger with fries',
+        subtitle: 'Served warm and fast',
+        price: 'Tsh 7000',
+        rating: 3.9,
+        category: '',
+      ),
+      FoodItem(
+        image: 'designs/assets/biriyanimeat.jpg',
+        title: 'Biriyani With meat',
+        subtitle: 'Full plate satisfaction',
+        price: 'Tsh 2500',
+        rating: 4.7,
+        category: '',
+      ),
+    ];
+
     return Scaffold(
       // home screen body
       body: SafeArea(
@@ -40,14 +95,22 @@ class HomeScreen extends StatelessWidget {
                 const SizedBox(height: 18),
 
                 // card grid for cafe 1
-                CardRowCafe1(),
-
-                // space
+                CardRowItems(
+                  title: "Today's Menu: CAFE 1",
+                  items: cafe1Menu,
+                  maxItems: 4,
+                ),
                 const SizedBox(height: 20),
-                Divider(),
+                const Divider(),
 
                 // card grid for cafe 2
-                CardRowCafe2(),
+                CardRowItems(
+                  title: "Today's Menu: CAFE 2",
+                  items: cafe2Menu,
+                  maxItems: 4,
+                ),
+                const SizedBox(height: 20),
+                const Divider(),
 
                 const SizedBox(height: 20),
                 Divider(),
@@ -183,31 +246,21 @@ class SpecialBannerCard extends StatelessWidget {
   }
 }
 
-class CardRowCafe1 extends StatelessWidget {
-  const CardRowCafe1({super.key});
+class CardRowItems extends StatelessWidget {
+  final String title;
+  final List<FoodItem> items;
+  final int maxItems;
+
+  const CardRowItems({
+    super.key,
+    required this.title,
+    required this.items,
+    this.maxItems = 5, // Default limit set to 5 items max
+  });
 
   @override
   Widget build(BuildContext context) {
-    final List<Map<String, String>> menuItems = [
-      {
-        'image': 'designs/assets/ricemeat.jpg',
-        'title': 'Wali Nyama',
-        'subtitle': 'Fresh for your appetite',
-        'price': 'Tsh 2500',
-      },
-      {
-        'image': 'designs/assets/grilled-meat.jpg',
-        'title': 'Smoked grilled meat',
-        'subtitle': 'Fresh Steak out of the gill',
-        'price': 'Tsh 15000',
-      },
-      {
-        'image': 'designs/assets/chips.jpg',
-        'title': 'Chips Mshkaki',
-        'subtitle': 'Served with your favourite additive',
-        'price': 'Tsh 3000',
-      },
-    ];
+    final displayedItems = items.take(maxItems).toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -216,8 +269,8 @@ class CardRowCafe1 extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text(
-              "Today's Menu: CAFE 1",
+            Text(
+              title,
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
@@ -242,9 +295,9 @@ class CardRowCafe1 extends StatelessWidget {
           height: 250, // Fixed height for the card container
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
-            itemCount: menuItems.length,
+            itemCount: displayedItems.length,
             itemBuilder: (context, index) {
-              final item = menuItems[index];
+              final item = displayedItems[index];
               return Container(
                 width: 220, // Fixed width for each card
                 margin: const EdgeInsets.only(right: 14),
@@ -263,7 +316,7 @@ class CardRowCafe1 extends StatelessWidget {
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(16),
                             image: DecorationImage(
-                              image: AssetImage(item['image']!),
+                              image: AssetImage(item.image),
                               fit: BoxFit.cover,
                             ),
                           ),
@@ -278,7 +331,7 @@ class CardRowCafe1 extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              item['title']!,
+                              item.title,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
@@ -288,7 +341,7 @@ class CardRowCafe1 extends StatelessWidget {
                               ),
                             ),
                             Text(
-                              item['subtitle']!,
+                              item.subtitle,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
@@ -299,7 +352,7 @@ class CardRowCafe1 extends StatelessWidget {
                             Row(
                               children: [
                                 Text(
-                                  '4.5', // Replace with your actual rating map key
+                                  item.rating.toString(),
                                   style: TextStyle(
                                     fontSize: 12,
                                     fontWeight: FontWeight.bold,
@@ -320,182 +373,7 @@ class CardRowCafe1 extends StatelessWidget {
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Text(
-                                  item['price']!,
-                                  style: const TextStyle(
-                                    color: Color(0xFF0F5132), // Dark green tone
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16,
-                                  ),
-                                ),
-                                Container(
-                                  width: 32,
-                                  height: 32,
-                                  decoration: const BoxDecoration(
-                                    color: Colors.orange,
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: const Icon(
-                                    Icons.add,
-                                    color: Colors.white,
-                                    size: 20,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class CardRowCafe2 extends StatelessWidget {
-  // Constructor
-  const CardRowCafe2({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    final List<Map<String, String>> menuItems = [
-      {
-        'image': 'designs/assets/sandwich.jpg',
-        'title': 'Honey Sandwich',
-        'subtitle': 'Fresh sandwich for your breakfast',
-        'price': 'Tsh 1000',
-      },
-      {
-        'image': 'designs/assets/burgerchips.jpg',
-        'title': 'Burger with fries',
-        'subtitle': 'Served with your favourite additive',
-        'price': 'Tsh 7000',
-      },
-      {
-        'image': 'designs/assets/biriyanimeat.jpg',
-        'title': 'Biriyani With meat',
-        'subtitle': 'full one plate satisfaction',
-        'price': 'Tsh 2500',
-      },
-    ];
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Menu Header Row
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Text(
-              "Today's Menu: CAFE 2",
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF1E1E1E),
-              ),
-            ),
-            IconButton(
-              onPressed: () {},
-              icon: Icon(Icons.arrow_forward),
-              style: IconButton.styleFrom(
-                backgroundColor: Colors.grey[200],
-                padding: EdgeInsets.zero,
-                iconSize:
-                    19, // Shrinks the background wrapper tight around the icon
-              ),
-            ),
-          ],
-        ),
-
-        // Horizontal Scrollable Cards List
-        SizedBox(
-          height: 250, // Fixed height for the card container
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            itemCount: menuItems.length,
-            itemBuilder: (context, index) {
-              final item = menuItems[index];
-              return Container(
-                width: 220, // Fixed width for each card
-                margin: const EdgeInsets.only(right: 14),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Card(
-                  elevation: 0,
-                  color: Colors.transparent,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Food Image
-                      Expanded(
-                        child: Container(
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(16),
-                            image: DecorationImage(
-                              image: AssetImage(item['image']!),
-                              fit: BoxFit.cover,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      // Card Details
-                      Padding(
-                        padding: const EdgeInsets.all(4),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              item['title']!,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 14,
-                                color: Colors.black,
-                              ),
-                            ),
-                            Text(
-                              item['subtitle']!,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: Colors.black,
-                              ),
-                            ),
-                            Row(
-                              children: [
-                                Text(
-                                  '4.5', // Replace with your actual rating map key
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.grey[700],
-                                  ),
-                                ),
-                                Icon(
-                                  Icons.star_rounded,
-                                  color: Colors.amber,
-                                  size: 16,
-                                ),
-                              ],
-                            ),
-
-                            const SizedBox(height: 2),
-
-                            // Price and Add Button Row
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  item['price']!,
+                                  item.price,
                                   style: const TextStyle(
                                     color: Color(0xFF0F5132), // Dark green tone
                                     fontWeight: FontWeight.bold,
@@ -622,7 +500,7 @@ class QuickBites extends StatelessWidget {
                   ),
                 ],
               ),
-              Icon(Icons.arrow_forward, color: const Color(0xFF663300)),
+              Icon(Icons.arrow_forward, color: Colors.red),
             ],
           ),
         ),
