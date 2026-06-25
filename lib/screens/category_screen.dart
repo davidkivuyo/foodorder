@@ -306,14 +306,11 @@ class BottomBanner extends StatelessWidget {
             Positioned(
               top: 0,
               right: 0,
-              child: Opacity(
-                opacity: 0.3, // Subtle blending look from the mockup
-                child: Icon(
-                  Icons
-                      .celebration, // Using celebration icon as the party popper
-                  size: 40,
-                  color: Colors.white.withValues(alpha: 0.7),
-                ),
+
+              child: Icon(
+                Icons.celebration, // Using celebration icon as the party popper
+                size: 40,
+                color: Colors.white.withValues(alpha: 0.7),
               ),
             ),
           ],

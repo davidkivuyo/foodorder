@@ -103,7 +103,6 @@ class _NavigationExampleState extends State<MainScreen> {
         ),
 
         // body
-        extendBody: true,
         body: IndexedStack(index: currentPageIndex, children: _pages),
 
         // shopping cart icon
