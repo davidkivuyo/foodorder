@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 class HomeScreen extends StatelessWidget {
@@ -537,67 +538,96 @@ class QuickBites extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: GridView.count(
-        crossAxisCount: 2,
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        padding: EdgeInsets.symmetric(vertical: 2),
+    return Column(
+      children: [
+        GridView.count(
+          crossAxisCount: 2,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          padding: EdgeInsets.symmetric(vertical: 2),
 
-        children: [
-          Card(
-            elevation: 0,
-            color: Colors.blue,
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: SizedBox(
-                height: 100,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Card(
+              elevation: 0,
+              color: Colors.blue,
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: SizedBox(
+                  height: 100,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
 
-                  children: [
-                    Icon(Icons.coffee_outlined),
-                    const SizedBox(height: 24),
-                    Text(
-                      "Coffee & Tea",
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
+                    children: [
+                      Icon(Icons.coffee_outlined),
+                      const SizedBox(height: 24),
+                      Text(
+                        "Coffee & Tea",
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
-          Card(
-            elevation: 0,
-            color: Colors.green,
+            Card(
+              elevation: 0,
+              color: Colors.green,
 
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: SizedBox(
-                height: 120,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: SizedBox(
+                  height: 120,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
 
-                  children: [
-                    Icon(Icons.icecream),
-                    const SizedBox(height: 24),
-                    Text(
-                      "Deserts",
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
+                    children: [
+                      Icon(Icons.icecream),
+                      const SizedBox(height: 24),
+                      Text(
+                        "Deserts",
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
+          ],
+        ),
+
+        Container(
+          width: double.infinity,
+          margin: const EdgeInsets.symmetric(horizontal: 4),
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: const Color(
+              0xFFFFE5CC,
+            ), // Peach / Light Orange shade matching the design
+            borderRadius: BorderRadius.circular(12),
           ),
-        ],
-      ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.wine_bar_sharp),
+                  Text(
+                    'Fresh smothies',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+              Icon(Icons.arrow_forward, color: const Color(0xFF663300)),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
