@@ -4,6 +4,7 @@ import '../screens/home_screen.dart';
 import '../screens/account_screen.dart';
 import '../screens/category_screen.dart';
 import '../screens/order_screen.dart';
+import '../data/search_bar.dart';
 import 'package:dash_no_internet_screen/dash_no_internet_screen.dart';
 
 // home screen
@@ -21,6 +22,7 @@ class _NavigationExampleState extends State<MainScreen> {
   static const List<Widget> _pages = [
     HomeScreen(),
     CategoryScreen(),
+    SearchBarScreen(),
     OrdersScreen(),
     AccountScreen(),
   ];
@@ -137,82 +139,36 @@ class _NavigationExampleState extends State<MainScreen> {
         ),
 
         // bottom navigation bar
-        bottomNavigationBar: Container(
-          decoration: BoxDecoration(
-            borderRadius: const BorderRadius.only(
-              topRight: Radius.circular(30),
-              topLeft: Radius.circular(30),
+        bottomNavigationBar: NavigationBar(
+          selectedIndex: currentPageIndex,
+          onDestinationSelected: (index) {
+            setState(() {
+              currentPageIndex = index;
+            });
+          },
+          indicatorColor: Colors.grey.shade200,
+          destinations: const [
+            NavigationDestination(
+              icon: Icon(CupertinoIcons.home),
+              label: "Home",
             ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.grey.withValues(alpha: 0.2),
-                spreadRadius: 2,
-                blurRadius: 5,
-                offset: Offset(0, 3),
-              ),
-            ],
-            color: Colors.white,
-            border: Border(
-              top: BorderSide(color: Colors.grey.shade200, width: 1.0),
+            NavigationDestination(
+              icon: Icon(CupertinoIcons.layers_alt),
+              label: "Categories",
             ),
-          ),
-          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
-          child: SafeArea(
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _buildNavButton(
-                  icon: CupertinoIcons.home,
-                  isSelected: currentPageIndex == 0,
-                  onTap: () => setState(() => currentPageIndex = 0),
-                ),
-                _buildNavButton(
-                  icon: CupertinoIcons.layers_alt,
-                  isSelected: currentPageIndex == 1,
-                  onTap: () => setState(() => currentPageIndex = 1),
-                ),
-                _buildNavButton(
-                  icon: CupertinoIcons.cube_box,
-                  isSelected: currentPageIndex == 2,
-                  onTap: () => setState(() => currentPageIndex = 2),
-                ),
-                _buildNavButton(
-                  icon: CupertinoIcons.person,
-                  isSelected: currentPageIndex == 3,
-                  onTap: () => setState(() => currentPageIndex = 3),
-                ),
-              ],
+            NavigationDestination(
+              icon: Icon(CupertinoIcons.search),
+              label: "Search",
             ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildNavButton({
-    required IconData icon,
-    required bool isSelected,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 48,
-        height: 48,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          // If selected: solid black. If unselected: slightly gray background.
-          color: isSelected ? Colors.white : Colors.white,
-          // Adds a thin border only when the icon is NOT selected
-          border: isSelected
-              ? Border.all(color: Colors.grey.shade300, width: 1.0)
-              : null,
-        ),
-        child: Icon(
-          icon,
-          // If selected: white icon. If unselected: dark grey/black icon.
-          color: isSelected ? Colors.black : Colors.black87,
-          size: 24, // Slightly reduced to fit nicely inside the bordered circle
+            NavigationDestination(
+              icon: Icon(Icons.receipt_long_outlined),
+              label: "Orders",
+            ),
+            NavigationDestination(
+              icon: Icon(CupertinoIcons.person),
+              label: "Profile",
+            ),
+          ],
         ),
       ),
     );
