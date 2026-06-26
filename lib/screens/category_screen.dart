@@ -107,7 +107,7 @@ class Cards extends StatelessWidget {
         image: 'designs/assets/sandwich.jpg',
         title: 'Honey Sandwich',
         subtitle: 'Fresh sandwich for your breakfast',
-        price: 'Tsh 1000',
+        price: 1000,
         rating: 4.5,
         category: 'Breakfast',
       ),
@@ -115,7 +115,7 @@ class Cards extends StatelessWidget {
         image: 'designs/assets/burgerchips.jpg',
         title: 'Burger with Fries',
         subtitle: 'Served with your favourite additive',
-        price: 'Tsh 7000',
+        price: 7000,
         rating: 4.8,
         category: 'Lunch',
       ),
@@ -123,7 +123,7 @@ class Cards extends StatelessWidget {
         image: 'designs/assets/biriyanimeat.jpg',
         title: 'Biriyani meat',
         subtitle: 'Loaded with fresh vegetables',
-        price: 'Tsh 4500',
+        price: 4500,
         rating: 4.3,
         category: 'Lunch',
       ),
@@ -131,7 +131,7 @@ class Cards extends StatelessWidget {
         image: 'designs/assets/chips.jpg',
         title: 'Chips Mshkaki',
         subtitle: 'Extra cheese and crispy fries',
-        price: 'Tsh 8500',
+        price: 8500,
         rating: 4.9,
         category: 'Dinner',
       ),
@@ -143,7 +143,7 @@ class Cards extends StatelessWidget {
       itemCount: menuItems.length,
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
-        childAspectRatio: 0.6,
+        childAspectRatio: 0.75,
         crossAxisSpacing: 8,
         mainAxisSpacing: 8,
       ),
@@ -168,67 +168,64 @@ class FoodCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: Image.asset(
-              item.image,
-              height: 120,
-              width: double.infinity,
-              fit: BoxFit.cover,
-            ),
+          Stack(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: Image.asset(
+                  item.image,
+                  height: 120,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                ),
+              ),
+
+              Positioned(
+                right: 5,
+                top: 5,
+                child: Container(
+                  width: 30,
+                  height: 30,
+                  decoration: const BoxDecoration(
+                    color: Colors.orange,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.add, size: 18, color: Colors.white),
+                ),
+              ),
+            ],
           ),
 
-          Expanded(
-            flex: 4,
-            child: Padding(
-              padding: const EdgeInsets.all(4),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    item.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
+          Padding(
+            padding: const EdgeInsets.all(4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
 
-                  const SizedBox(height: 4),
-
-                  Text(
-                    item.subtitle,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 12, color: Colors.grey),
-                  ),
-
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        item.price,
-                        style: const TextStyle(
-                          color: Colors.green,
-                          fontWeight: FontWeight.bold,
-                        ),
+                Row(
+                  children: [
+                    Text(
+                      item.rating.toString(),
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey[700],
                       ),
-
-                      Container(
-                        width: 30,
-                        height: 30,
-                        decoration: const BoxDecoration(
-                          color: Colors.orange,
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(
-                          Icons.add,
-                          size: 18,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
+                    ),
+                    Icon(Icons.star_rounded, color: Colors.amber, size: 16),
+                  ],
+                ),
+                Text(
+                  'Tsh${item.price}',
+                  style: const TextStyle(color: Colors.black, fontSize: 13),
+                ),
+              ],
             ),
           ),
         ],

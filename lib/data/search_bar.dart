@@ -18,11 +18,11 @@ class SearchBarScreen extends StatelessWidget {
         ),
       ),
 
-      body: Padding(
-        padding: const EdgeInsets.all(10),
+      body: SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Divider(),
             Container(
               padding: EdgeInsets.symmetric(horizontal: 14),
               child: Center(),

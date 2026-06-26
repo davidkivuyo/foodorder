@@ -2,7 +2,7 @@ class FoodItem {
   final String image;
   final String title;
   final String subtitle;
-  final String price;
+  final double price;
   final double rating;
   final String category;
 
