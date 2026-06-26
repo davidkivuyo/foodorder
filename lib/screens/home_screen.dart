@@ -290,7 +290,7 @@ class CardRowItems extends StatelessWidget {
 
         // Horizontal Scrollable Cards List
         SizedBox(
-          height: 250, // Fixed height for the card container
+          height: 200, // Fixed height for the card container
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             itemCount: displayedItems.length,
@@ -337,9 +337,29 @@ class CardRowItems extends StatelessWidget {
                               ),
                             ),
                           ),
+                          Positioned(
+                            left: 5,
+                            top: 5,
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.star_rounded,
+                                  color: Colors.amber,
+                                  size: 16,
+                                ),
+                                Text(
+                                  item.rating.toString(),
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ],
                       ),
-                      const SizedBox(height: 2),
 
                       // Card Details
                       Padding(
@@ -362,32 +382,14 @@ class CardRowItems extends StatelessWidget {
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(fontSize: 11),
                             ),
-                            Row(
-                              children: [
-                                Text(
-                                  item.rating.toString(),
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.grey[700],
-                                  ),
-                                ),
-                                Icon(
-                                  Icons.star_rounded,
-                                  color: Colors.amber,
-                                  size: 16,
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 2),
 
-                            // Price and Add Button Row
+                            // Price
                             Text(
                               'Tsh${item.price}',
                               style: const TextStyle(
-                                color: Colors.black, // Dark green tone
+                                color: Colors.black,
+                                fontSize: 13,
                                 fontWeight: FontWeight.bold,
-                                fontSize: 16,
                               ),
                             ),
                           ],
@@ -415,6 +417,7 @@ class QuickBites extends StatelessWidget {
         GridView.count(
           crossAxisCount: 2,
           shrinkWrap: true,
+          childAspectRatio: 1.3,
           physics: const NeverScrollableScrollPhysics(),
           padding: EdgeInsets.symmetric(vertical: 2),
 
