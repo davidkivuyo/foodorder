@@ -22,7 +22,7 @@ class SearchBarScreen extends StatelessWidget {
             Container(
               padding: EdgeInsets.symmetric(horizontal: 14),
               decoration: BoxDecoration(
-                color: Colors.grey,
+                color: Colors.grey.shade300,
                 borderRadius: BorderRadius.circular(16),
               ),
               child: const TextField(
