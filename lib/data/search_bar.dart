@@ -4,30 +4,23 @@ class SearchBarScreen extends StatelessWidget {
   const SearchBarScreen({super.key});
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      child: Padding(
-        padding: const EdgeInsets.all(10.0),
+    return Scaffold(
+      appBar: AppBar(title: Text('Search')),
+      body: Padding(
+        padding: const EdgeInsets.all(10),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Search you meal',
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-                letterSpacing: .75,
-              ),
-            ),
-            const SizedBox(height: 10),
             Container(
               padding: EdgeInsets.symmetric(horizontal: 14),
               decoration: BoxDecoration(
-                color: Colors.grey.shade300,
-                borderRadius: BorderRadius.circular(16),
+                color: Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(25),
               ),
               child: const TextField(
                 decoration: InputDecoration(
-                  hintText: 'Search foods, snacks and drinks',
+                  hintText: 'Search your next meal',
+                  hintStyle: TextStyle(fontSize: 15),
                   fillColor: Colors.white,
                   border: InputBorder.none,
                   icon: Icon(Icons.search),

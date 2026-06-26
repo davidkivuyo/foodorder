@@ -142,11 +142,23 @@ class _NavigationExampleState extends State<MainScreen> {
         bottomNavigationBar: NavigationBar(
           selectedIndex: currentPageIndex,
           onDestinationSelected: (index) {
-            setState(() {
-              currentPageIndex = index;
-            });
+            if (index == 2) {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const SearchBarScreen(),
+                ),
+              );
+            } else {
+              // For all other tabs, switch the index normally
+              setState(() {
+                currentPageIndex = index;
+              });
+            }
           },
+
           indicatorColor: Colors.transparent,
+
           labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
           destinations: [
             NavigationDestination(
@@ -158,22 +170,8 @@ class _NavigationExampleState extends State<MainScreen> {
               label: "Categories",
             ),
             NavigationDestination(
-              icon: Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(CupertinoIcons.search),
-              ),
-              selectedIcon: Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(CupertinoIcons.search, color: Colors.black),
-              ),
+              icon: Icon(CupertinoIcons.search),
+
               label: "Search",
             ),
             NavigationDestination(

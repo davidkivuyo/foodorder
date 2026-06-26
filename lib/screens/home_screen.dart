@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../data/food_data.dart';
+import '../data/search_bar.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -73,15 +74,26 @@ class HomeScreen extends StatelessWidget {
                 Container(
                   padding: EdgeInsets.symmetric(horizontal: 14),
                   decoration: BoxDecoration(
-                    color: Colors.grey,
+                    color: Colors.grey.shade100,
                     borderRadius: BorderRadius.circular(16),
                   ),
-                  child: const TextField(
+                  child: TextField(
+                    readOnly: true,
                     decoration: InputDecoration(
-                      hintText: 'Search foods, snacks and drinks',
+                      hintText: 'Search your next meal',
+                      hintStyle: TextStyle(fontSize: 15),
+                      fillColor: Colors.white,
                       border: InputBorder.none,
                       icon: Icon(Icons.search),
                     ),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (BuildContext context) => SearchBarScreen(),
+                        ),
+                      );
+                    },
                   ),
                 ),
 
