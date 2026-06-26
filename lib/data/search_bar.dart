@@ -11,7 +11,7 @@ class SearchBarScreen extends StatelessWidget {
           child: TextField(
             decoration: InputDecoration(
               hintText: 'Search your next meal',
-              hintStyle: TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
+              hintStyle: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
               border: InputBorder.none,
             ),
           ),
