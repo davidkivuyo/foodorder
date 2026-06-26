@@ -143,7 +143,7 @@ class Cards extends StatelessWidget {
       itemCount: menuItems.length,
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
-        childAspectRatio: 0.75,
+        childAspectRatio: 1.0,
         crossAxisSpacing: 8,
         mainAxisSpacing: 8,
       ),
@@ -174,7 +174,7 @@ class FoodCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(16),
                 child: Image.asset(
                   item.image,
-                  height: 120,
+                  height: 100,
                   width: double.infinity,
                   fit: BoxFit.cover,
                 ),
@@ -193,40 +193,46 @@ class FoodCard extends StatelessWidget {
                   child: const Icon(Icons.add, size: 18, color: Colors.white),
                 ),
               ),
-            ],
-          ),
 
-          Padding(
-            padding: const EdgeInsets.all(4),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  item.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-
-                Row(
+              Positioned(
+                left: 5,
+                top: 5,
+                child: Row(
                   children: [
+                    Icon(Icons.star_rounded, color: Colors.amber, size: 16),
                     Text(
                       item.rating.toString(),
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.bold,
-                        color: Colors.grey[700],
+                        color: Colors.white,
                       ),
                     ),
-                    Icon(Icons.star_rounded, color: Colors.amber, size: 16),
                   ],
                 ),
-                Text(
-                  'Tsh${item.price}',
-                  style: const TextStyle(color: Colors.black, fontSize: 13),
+              ),
+            ],
+          ),
+
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                item.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+
+              Text(
+                'Tsh${item.price}',
+                style: const TextStyle(
+                  color: Colors.black,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ],
       ),
