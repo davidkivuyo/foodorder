@@ -66,7 +66,7 @@ class HomeScreen extends StatelessWidget {
       body: SafeArea(
         child: SingleChildScrollView(
           child: Padding(
-            padding: const EdgeInsets.all(10.0),
+            padding: const EdgeInsets.all(8.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -112,7 +112,6 @@ class HomeScreen extends StatelessWidget {
                   items: cafe1Menu,
                   maxItems: 4,
                 ),
-                const SizedBox(height: 20),
                 const Divider(),
 
                 // card grid for cafe 2
@@ -121,10 +120,8 @@ class HomeScreen extends StatelessWidget {
                   items: cafe2Menu,
                   maxItems: 4,
                 ),
-                const SizedBox(height: 20),
                 const Divider(),
 
-                const SizedBox(height: 10),
                 Text(
                   "Quick Bites",
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
@@ -301,7 +298,6 @@ class CardRowItems extends StatelessWidget {
               final item = displayedItems[index];
               return Container(
                 width: 220, // Fixed width for each card
-                margin: const EdgeInsets.only(right: 14),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(16),
                 ),
@@ -312,16 +308,36 @@ class CardRowItems extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       // Food Image
-                      Expanded(
-                        child: Container(
-                          decoration: BoxDecoration(
+                      Stack(
+                        children: [
+                          ClipRRect(
                             borderRadius: BorderRadius.circular(16),
-                            image: DecorationImage(
-                              image: AssetImage(item.image),
+                            child: Image.asset(
+                              item.image,
+                              height: 120,
+                              width: double.infinity,
                               fit: BoxFit.cover,
                             ),
                           ),
-                        ),
+
+                          Positioned(
+                            right: 5,
+                            bottom: 5,
+                            child: Container(
+                              width: 30,
+                              height: 30,
+                              decoration: const BoxDecoration(
+                                color: Colors.orange,
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.add,
+                                size: 18,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 2),
 
@@ -366,31 +382,13 @@ class CardRowItems extends StatelessWidget {
                             const SizedBox(height: 2),
 
                             // Price and Add Button Row
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  'Tsh${item.price}',
-                                  style: const TextStyle(
-                                    color: Colors.black, // Dark green tone
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16,
-                                  ),
-                                ),
-                                Container(
-                                  width: 32,
-                                  height: 32,
-                                  decoration: const BoxDecoration(
-                                    color: Colors.orange,
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: const Icon(
-                                    Icons.add,
-                                    color: Colors.white,
-                                    size: 20,
-                                  ),
-                                ),
-                              ],
+                            Text(
+                              'Tsh${item.price}',
+                              style: const TextStyle(
+                                color: Colors.black, // Dark green tone
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
                             ),
                           ],
                         ),

@@ -182,7 +182,7 @@ class FoodCard extends StatelessWidget {
 
               Positioned(
                 right: 5,
-                top: 5,
+                bottom: 5,
                 child: Container(
                   width: 30,
                   height: 30,
