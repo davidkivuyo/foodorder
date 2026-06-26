@@ -71,29 +71,44 @@ class HomeScreen extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // search bar
-                Container(
-                  padding: EdgeInsets.symmetric(horizontal: 14),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade100,
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: TextField(
-                    readOnly: true,
-                    decoration: InputDecoration(
-                      hintText: 'Search your next meal',
-                      hintStyle: TextStyle(fontSize: 15),
-                      fillColor: Colors.white,
-                      border: InputBorder.none,
-                      icon: Icon(Icons.search),
+                InkWell(
+                  borderRadius: BorderRadius.circular(10),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const SearchBarScreen(),
+                      ),
+                    );
+                  },
+                  child: Container(
+                    height: 56,
+                    padding: const EdgeInsets.symmetric(horizontal: 18),
+
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade200,
+                      borderRadius: BorderRadius.circular(28),
                     ),
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (BuildContext context) => SearchBarScreen(),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.search,
+                          color: Colors.black87,
+                          size: 24,
                         ),
-                      );
-                    },
+                        const SizedBox(width: 12),
+
+                        Expanded(
+                          child: Text(
+                            "Search your next meal",
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
 
@@ -320,23 +335,6 @@ class CardRowItems extends StatelessWidget {
                             ),
                           ),
 
-                          Positioned(
-                            right: 5,
-                            bottom: 5,
-                            child: Container(
-                              width: 30,
-                              height: 30,
-                              decoration: const BoxDecoration(
-                                color: Colors.orange,
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(
-                                Icons.add,
-                                size: 18,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
                           Positioned(
                             left: 5,
                             top: 5,

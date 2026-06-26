@@ -143,9 +143,9 @@ class Cards extends StatelessWidget {
       itemCount: menuItems.length,
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
-        childAspectRatio: 1.0,
-        crossAxisSpacing: 8,
-        mainAxisSpacing: 8,
+        childAspectRatio: 1.3,
+        crossAxisSpacing: 0,
+        mainAxisSpacing: 0,
       ),
       itemBuilder: (context, index) {
         return FoodCard(item: menuItems[index]);
@@ -181,20 +181,6 @@ class FoodCard extends StatelessWidget {
               ),
 
               Positioned(
-                right: 5,
-                bottom: 5,
-                child: Container(
-                  width: 30,
-                  height: 30,
-                  decoration: const BoxDecoration(
-                    color: Colors.orange,
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(Icons.add, size: 18, color: Colors.white),
-                ),
-              ),
-
-              Positioned(
                 left: 5,
                 top: 5,
                 child: Row(
@@ -211,25 +197,33 @@ class FoodCard extends StatelessWidget {
                   ],
                 ),
               ),
-            ],
-          ),
 
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                item.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-
-              Text(
-                'Tsh${item.price}',
-                style: const TextStyle(
-                  color: Colors.black,
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.3),
+                    borderRadius: const BorderRadius.only(
+                      bottomLeft: Radius.circular(16),
+                      bottomRight: Radius.circular(16),
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item.title,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ],
