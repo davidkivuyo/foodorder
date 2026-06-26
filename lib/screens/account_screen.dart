@@ -42,6 +42,13 @@ class Notify extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(appBar: AppBar(title: Text('Notifications')));
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(
+          'Notifications',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        ),
+      ),
+    );
   }
 }

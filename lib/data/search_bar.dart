@@ -5,7 +5,19 @@ class SearchBarScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Search')),
+      appBar: AppBar(
+        title: SizedBox(
+          height: 20,
+          child: TextField(
+            decoration: InputDecoration(
+              hintText: 'Search your next meal',
+              hintStyle: TextStyle(fontSize: 15),
+              border: InputBorder.none,
+            ),
+          ),
+        ),
+      ),
+
       body: Padding(
         padding: const EdgeInsets.all(10),
         child: Column(
@@ -13,19 +25,7 @@ class SearchBarScreen extends StatelessWidget {
           children: [
             Container(
               padding: EdgeInsets.symmetric(horizontal: 14),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade100,
-                borderRadius: BorderRadius.circular(25),
-              ),
-              child: const TextField(
-                decoration: InputDecoration(
-                  hintText: 'Search your next meal',
-                  hintStyle: TextStyle(fontSize: 15),
-                  fillColor: Colors.white,
-                  border: InputBorder.none,
-                  icon: Icon(Icons.search),
-                ),
-              ),
+              child: Center(),
             ),
           ],
         ),
