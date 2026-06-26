@@ -199,7 +199,7 @@ class AppLogo extends StatelessWidget {
       children: [
         Image.asset('designs/assets/logo.png', width: 40, height: 40),
         Text(
-          'CampusBite',
+          'Campus Bite',
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
         ),
       ],
