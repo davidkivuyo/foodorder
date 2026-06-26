@@ -14,7 +14,6 @@ class SearchBarScreen extends StatelessWidget {
               'Search you meal',
               style: TextStyle(
                 fontSize: 22,
-                color: Colors.black,
                 fontWeight: FontWeight.bold,
                 letterSpacing: .75,
               ),
@@ -23,12 +22,13 @@ class SearchBarScreen extends StatelessWidget {
             Container(
               padding: EdgeInsets.symmetric(horizontal: 14),
               decoration: BoxDecoration(
-                color: const Color.fromARGB(255, 214, 214, 214),
+                color: Colors.grey,
                 borderRadius: BorderRadius.circular(16),
               ),
               child: const TextField(
                 decoration: InputDecoration(
                   hintText: 'Search foods, snacks and drinks',
+                  fillColor: Colors.white,
                   border: InputBorder.none,
                   icon: Icon(Icons.search),
                 ),

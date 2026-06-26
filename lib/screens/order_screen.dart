@@ -15,7 +15,6 @@ class OrdersScreen extends StatelessWidget {
               'My orders',
               style: TextStyle(
                 fontSize: 22,
-                color: Colors.black,
                 fontWeight: FontWeight.bold,
                 letterSpacing: .75,
               ),

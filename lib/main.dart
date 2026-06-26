@@ -17,9 +17,10 @@ class MyApp extends StatelessWidget {
       title: 'Food order app',
       theme: ThemeData(
         useMaterial3: true,
-        colorSchemeSeed: Colors.blue,
+        primarySwatch: Colors.green,
         textTheme: GoogleFonts.dmSansTextTheme(Theme.of(context).textTheme),
       ),
+      darkTheme: ThemeData.dark(),
       themeMode: ThemeMode.system,
       home: const MainScreen(),
     );

@@ -172,7 +172,7 @@ class _NavigationExampleState extends State<MainScreen> {
                   color: Colors.grey.shade300,
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(CupertinoIcons.search),
+                child: const Icon(CupertinoIcons.search, color: Colors.black),
               ),
               label: "Search",
             ),

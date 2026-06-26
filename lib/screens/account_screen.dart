@@ -17,20 +17,12 @@ class AccountScreen extends StatelessWidget {
               children: [
                 Text(
                   'Welcome $firstname!',
-                  style: TextStyle(
-                    color: Colors.orange,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                 ),
 
                 Text(
                   "What's your bite today?",
-                  style: TextStyle(
-                    color: Color.fromARGB(255, 138, 83, 0),
-                    fontSize: 19,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 8),
               ],
@@ -50,11 +42,6 @@ class Notify extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Notifications'),
-        backgroundColor: const Color.fromARGB(255, 230, 230, 230),
-      ),
-    );
+    return Scaffold(appBar: AppBar(title: Text('Notifications')));
   }
 }

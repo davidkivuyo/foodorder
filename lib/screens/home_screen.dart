@@ -73,7 +73,7 @@ class HomeScreen extends StatelessWidget {
                 Container(
                   padding: EdgeInsets.symmetric(horizontal: 14),
                   decoration: BoxDecoration(
-                    color: const Color.fromARGB(255, 214, 214, 214),
+                    color: Colors.grey,
                     borderRadius: BorderRadius.circular(16),
                   ),
                   child: const TextField(
@@ -115,11 +115,7 @@ class HomeScreen extends StatelessWidget {
                 const SizedBox(height: 10),
                 Text(
                   "Quick Bites",
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF1E1E1E),
-                  ),
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
                 QuickBites(),
               ],
@@ -269,17 +265,12 @@ class CardRowItems extends StatelessWidget {
           children: [
             Text(
               title,
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF1E1E1E),
-              ),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             IconButton(
               onPressed: () {},
               icon: Icon(Icons.arrow_forward),
               style: IconButton.styleFrom(
-                backgroundColor: Colors.grey[200],
                 padding: EdgeInsets.zero,
                 iconSize:
                     19, // Shrinks the background wrapper tight around the icon
@@ -335,17 +326,13 @@ class CardRowItems extends StatelessWidget {
                               style: const TextStyle(
                                 fontWeight: FontWeight.bold,
                                 fontSize: 14,
-                                color: Colors.black,
                               ),
                             ),
                             Text(
                               item.subtitle,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: Colors.black,
-                              ),
+                              style: TextStyle(fontSize: 11),
                             ),
                             Row(
                               children: [
@@ -494,11 +481,15 @@ class QuickBites extends StatelessWidget {
                   Icon(Icons.wine_bar_sharp),
                   Text(
                     'Fresh smothies',
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black,
+                    ),
                   ),
                 ],
               ),
-              Icon(Icons.arrow_forward, color: Colors.red),
+              Icon(Icons.arrow_forward, color: Colors.deepOrange),
             ],
           ),
         ),

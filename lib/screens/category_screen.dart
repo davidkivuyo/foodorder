@@ -22,14 +22,13 @@ class _CategoryScreenState extends State<CategoryScreen> {
               'Explore Categories',
               style: TextStyle(
                 fontSize: 22,
-                color: Colors.black,
                 fontWeight: FontWeight.bold,
                 letterSpacing: .75,
               ),
             ),
             Text(
               'Find the best meal for your study break!',
-              style: TextStyle(fontSize: 15, color: Colors.black),
+              style: TextStyle(fontSize: 15),
             ),
             const SizedBox(height: 18),
             categories(),
