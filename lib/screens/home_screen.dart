@@ -500,7 +500,7 @@ class QuickBites extends StatelessWidget {
                   ),
                 ],
               ),
-              Icon(Icons.arrow_forward, color: Colors.deepOrange),
+              Icon(Icons.arrow_forward, color: Colors.orange),
             ],
           ),
         ),
