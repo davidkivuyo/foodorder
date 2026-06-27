@@ -5,6 +5,8 @@ class FoodItem {
   final double price;
   final double rating;
   final String category;
+  final String cafe;
+  final String time;
 
   const FoodItem({
     required this.image,
@@ -13,6 +15,8 @@ class FoodItem {
     required this.price,
     required this.rating,
     required this.category,
+    required this.cafe,
+    required this.time,
   });
 
   factory FoodItem.fromMap(Map<String, dynamic> map) {
@@ -23,6 +27,8 @@ class FoodItem {
       price: map['price'] ?? '',
       rating: (map['rating'] ?? 4.5).toDouble(),
       category: '',
+      cafe: map['cafe'] ?? '',
+      time: map['time'] ?? '',
     );
   }
 }

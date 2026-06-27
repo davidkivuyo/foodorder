@@ -110,6 +110,7 @@ class Cards extends StatelessWidget {
         price: 1000,
         rating: 4.5,
         category: 'Breakfast',
+        time: '5min',
       ),
       const FoodItem(
         image: 'designs/assets/burgerchips.jpg',
@@ -118,6 +119,7 @@ class Cards extends StatelessWidget {
         price: 7000,
         rating: 4.8,
         category: 'Lunch',
+        time: '15min',
       ),
       const FoodItem(
         image: 'designs/assets/biriyanimeat.jpg',
@@ -126,6 +128,7 @@ class Cards extends StatelessWidget {
         price: 4500,
         rating: 4.3,
         category: 'Lunch',
+        time: '10min',
       ),
       const FoodItem(
         image: 'designs/assets/chips.jpg',
@@ -134,21 +137,19 @@ class Cards extends StatelessWidget {
         price: 8500,
         rating: 4.9,
         category: 'Dinner',
+        time: '10min',
       ),
     ];
 
-    return GridView.builder(
+    return ListView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       itemCount: menuItems.length,
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        childAspectRatio: 1.0,
-        crossAxisSpacing: 0,
-        mainAxisSpacing: 0,
-      ),
       itemBuilder: (context, index) {
-        return FoodCard(item: menuItems[index]);
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 24.0),
+          child: FoodCard(item: menuItems[index]),
+        );
       },
     );
   }
@@ -161,66 +162,77 @@ class FoodCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      elevation: 0,
-      color: Colors.transparent,
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Stack(
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(16),
-                child: Image.asset(
-                  item.image,
-                  height: 100,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
-                ),
-              ),
-
-              Positioned(
-                left: 5,
-                top: 5,
-                child: Row(
-                  children: [
-                    Icon(Icons.star_rounded, color: Colors.amber, size: 16),
-                    Text(
-                      item.rating.toString(),
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                child: Container(padding: const EdgeInsets.all(10)),
-              ),
-            ],
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        AspectRatio(
+          aspectRatio: 2.2,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: Image.asset(
+              item.image,
+              height: 100,
+              width: double.infinity,
+              fit: BoxFit.cover,
+            ),
           ),
-          Row(
+        ),
+
+        Padding(
+          padding: EdgeInsets.all(4),
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                item.title,
-                style: const TextStyle(
-                  color: Colors.black,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 15,
-                ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Text(
+                      item.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.black,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  GestureDetector(
+                    onTap: () {},
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: Colors.orange,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.add_rounded,
+                        color: Colors.white,
+                        size: 18,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              Row(
+                children: [
+                  Icon(Icons.star_rounded, color: Colors.amber, size: 16),
+                  Text(
+                    item.rating.toString(),
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

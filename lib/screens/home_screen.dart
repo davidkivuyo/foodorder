@@ -15,6 +15,7 @@ class HomeScreen extends StatelessWidget {
         price: 2500,
         rating: 4.5,
         category: '',
+        time: '10min',
       ),
       FoodItem(
         image: 'designs/assets/grilled-meat.jpg',
@@ -23,6 +24,7 @@ class HomeScreen extends StatelessWidget {
         price: 18000,
         rating: 4.8,
         category: '',
+        time: '5min',
       ),
       FoodItem(
         image: 'designs/assets/chips.jpg',
@@ -31,6 +33,7 @@ class HomeScreen extends StatelessWidget {
         price: 3000,
         rating: 4.3,
         category: '',
+        time: '7min',
       ),
     ];
 
@@ -42,6 +45,7 @@ class HomeScreen extends StatelessWidget {
         price: 1000,
         rating: 4,
         category: '',
+        time: '12min',
       ),
       FoodItem(
         image: 'designs/assets/burgerchips.jpg',
@@ -50,6 +54,7 @@ class HomeScreen extends StatelessWidget {
         price: 7000,
         rating: 3.9,
         category: '',
+        time: '10min',
       ),
       FoodItem(
         image: 'designs/assets/biriyanimeat.jpg',
@@ -58,6 +63,7 @@ class HomeScreen extends StatelessWidget {
         price: 2500,
         rating: 4.7,
         category: '',
+        time: '5min',
       ),
     ];
 
@@ -334,11 +340,55 @@ class CardRowItems extends StatelessWidget {
                               fit: BoxFit.cover,
                             ),
                           ),
+                        ],
+                      ),
 
-                          Positioned(
-                            left: 5,
-                            top: 5,
-                            child: Row(
+                      // Card Details
+                      Padding(
+                        padding: const EdgeInsets.all(4),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    item.title,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: Colors.black,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                ),
+                                GestureDetector(
+                                  onTap: () {},
+                                  child: Container(
+                                    padding: const EdgeInsets.all(6),
+                                    decoration: BoxDecoration(
+                                      color: Colors.orange,
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(
+                                      Icons.add_rounded,
+                                      color: Colors.white,
+                                      size: 18,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            Text(
+                              '${item.subtitle} • ${item.time}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(fontSize: 11),
+                            ),
+
+                            Row(
                               children: [
                                 Icon(
                                   Icons.star_rounded,
@@ -350,45 +400,10 @@ class CardRowItems extends StatelessWidget {
                                   style: TextStyle(
                                     fontSize: 12,
                                     fontWeight: FontWeight.bold,
-                                    color: Colors.white,
+                                    color: Colors.black,
                                   ),
                                 ),
                               ],
-                            ),
-                          ),
-                        ],
-                      ),
-
-                      // Card Details
-                      Padding(
-                        padding: const EdgeInsets.all(4),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              item.title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 14,
-                              ),
-                            ),
-                            Text(
-                              item.subtitle,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(fontSize: 11),
-                            ),
-
-                            // Price
-                            Text(
-                              'Tsh${item.price}',
-                              style: const TextStyle(
-                                color: Colors.black,
-                                fontSize: 13,
-                                fontWeight: FontWeight.bold,
-                              ),
                             ),
                           ],
                         ),
