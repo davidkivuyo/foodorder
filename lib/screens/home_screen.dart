@@ -15,6 +15,7 @@ class HomeScreen extends StatelessWidget {
         price: 2500,
         rating: 4.5,
         category: '',
+        cafe: 1,
         time: '10min',
       ),
       FoodItem(
@@ -24,6 +25,7 @@ class HomeScreen extends StatelessWidget {
         price: 18000,
         rating: 4.8,
         category: '',
+        cafe: 1,
         time: '5min',
       ),
       FoodItem(
@@ -33,6 +35,7 @@ class HomeScreen extends StatelessWidget {
         price: 3000,
         rating: 4.3,
         category: '',
+        cafe: 1,
         time: '7min',
       ),
     ];
@@ -45,6 +48,7 @@ class HomeScreen extends StatelessWidget {
         price: 1000,
         rating: 4,
         category: '',
+        cafe: 2,
         time: '12min',
       ),
       FoodItem(
@@ -54,6 +58,7 @@ class HomeScreen extends StatelessWidget {
         price: 7000,
         rating: 3.9,
         category: '',
+        cafe: 2,
         time: '10min',
       ),
       FoodItem(
@@ -63,6 +68,7 @@ class HomeScreen extends StatelessWidget {
         price: 2500,
         rating: 4.7,
         category: '',
+        cafe: 2,
         time: '5min',
       ),
     ];

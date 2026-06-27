@@ -5,7 +5,7 @@ class FoodItem {
   final double price;
   final double rating;
   final String category;
-  final String cafe;
+  final double cafe;
   final String time;
 
   const FoodItem({

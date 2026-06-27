@@ -110,6 +110,7 @@ class Cards extends StatelessWidget {
         price: 1000,
         rating: 4.5,
         category: 'Breakfast',
+        cafe: 1,
         time: '5min',
       ),
       const FoodItem(
@@ -119,6 +120,7 @@ class Cards extends StatelessWidget {
         price: 7000,
         rating: 4.8,
         category: 'Lunch',
+        cafe: 2,
         time: '15min',
       ),
       const FoodItem(
@@ -128,6 +130,7 @@ class Cards extends StatelessWidget {
         price: 4500,
         rating: 4.3,
         category: 'Lunch',
+        cafe: 2,
         time: '10min',
       ),
       const FoodItem(
@@ -137,6 +140,7 @@ class Cards extends StatelessWidget {
         price: 8500,
         rating: 4.9,
         category: 'Dinner',
+        cafe: 1,
         time: '10min',
       ),
     ];
@@ -216,11 +220,12 @@ class FoodCard extends StatelessWidget {
                   ),
                 ],
               ),
+
               Row(
                 children: [
                   Icon(Icons.star_rounded, color: Colors.amber, size: 16),
                   Text(
-                    item.rating.toString(),
+                    '${item.rating.toString()} • CAFE ${item.cafe}',
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.bold,
