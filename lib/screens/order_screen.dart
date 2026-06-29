@@ -29,6 +29,9 @@ class _OrdersScreenState extends State<OrdersScreen> {
               const SizedBox(height: 10),
 
               OrderCards1(),
+              const SizedBox(height: 10),
+
+              OrderHistory(),
             ],
           ),
         ),
@@ -74,7 +77,7 @@ class _OrderCardsState extends State<OrderCards> {
               ],
             ),
             Text(
-              'The burger joint',
+              'Chips burger',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             Column(
@@ -103,14 +106,12 @@ class _OrderCardsState extends State<OrderCards> {
                   ),
                 ),
                 TextButton(
-                  style: ButtonStyle(
-                    backgroundColor: WidgetStateProperty.all<Color>(
-                      Colors.brown,
-                    ),
+                  style: TextButton.styleFrom(
+                    backgroundColor: Colors.brown[700],
                   ),
                   onPressed: () {},
                   child: Text(
-                    'TextButton',
+                    'Track Order',
                     style: TextStyle(color: Colors.white),
                   ),
                 ),
@@ -150,7 +151,7 @@ class _OrderCards1State extends State<OrderCards1> {
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Text(
-                    '🧺Ready',
+                    '⚡Ready',
                     style: TextStyle(
                       color: Colors.green[800],
                       fontWeight: FontWeight.bold,
@@ -171,7 +172,7 @@ class _OrderCards1State extends State<OrderCards1> {
                   style: TextStyle(fontSize: 13, fontWeight: FontWeight.w200),
                 ),
                 Text(
-                  '1x Vanilla milkshake',
+                  '1x salad',
                   style: TextStyle(fontSize: 13, fontWeight: FontWeight.w200),
                 ),
               ],
@@ -181,7 +182,7 @@ class _OrderCards1State extends State<OrderCards1> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  'Tsh10000',
+                  'Tsh2500',
                   style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.bold,
@@ -189,14 +190,12 @@ class _OrderCards1State extends State<OrderCards1> {
                   ),
                 ),
                 TextButton(
-                  style: ButtonStyle(
-                    backgroundColor: WidgetStateProperty.all<Color>(
-                      Colors.green,
-                    ),
+                  style: TextButton.styleFrom(
+                    backgroundColor: Colors.green[900],
                   ),
                   onPressed: () {},
                   child: Text(
-                    'show code',
+                    'show QR code',
                     style: TextStyle(color: Colors.white),
                   ),
                 ),
@@ -204,6 +203,159 @@ class _OrderCards1State extends State<OrderCards1> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class OrderHistory extends StatefulWidget {
+  const OrderHistory({super.key});
+  @override
+  State<OrderHistory> createState() => _OrderHistoryState();
+}
+
+class _OrderHistoryState extends State<OrderHistory> {
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'Order History',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            IconButton(
+              onPressed: () {},
+              icon: Icon(Icons.arrow_forward),
+              style: IconButton.styleFrom(
+                padding: EdgeInsets.zero,
+                iconSize:
+                    19, // Shrinks the background wrapper tight around the icon
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+
+        // History Card 1: Campus Pizza
+        buildHistoryCard(
+          imagePath:
+              'designs/assets/juice.jpg', // Replace with your pizza image path
+          title: 'Big juice',
+          subtitle: '',
+          price: 'Tsh1000',
+          date: 'Oct 24',
+        ),
+        const SizedBox(height: 12),
+
+        // History Card 2: The Study Grind
+        buildHistoryCard(
+          imagePath:
+              'designs/assets/rice.jpg', // Replace with your coffee image path
+          title: 'The Study Grind',
+          subtitle: 'Iced Caramel Macchiato, Blueberry...',
+          price: '\$8.95',
+          date: 'Oct 22',
+        ),
+      ],
+    );
+  }
+
+  Widget buildHistoryCard({
+    required String imagePath,
+    required String title,
+    required String subtitle,
+    required String price,
+    required String date,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.grey[200], // Light grey background like the image
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // 1. Food Image
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Image.asset(
+              imagePath,
+              height: 60,
+              width: 60,
+              fit: BoxFit.cover,
+            ),
+          ),
+          const SizedBox(width: 16),
+
+          // 2. Center Content (Title, Subtitle, Price)
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  subtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  price,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // 3. Right Content (Date & Reorder Button)
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                date,
+                style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+              ),
+              const SizedBox(height: 16), // Gives spacing matching the design
+              InkWell(
+                onTap: () {},
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.refresh, size: 16, color: Colors.grey[700]),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Reorder',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.grey[700],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

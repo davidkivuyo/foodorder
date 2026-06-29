@@ -125,9 +125,9 @@ class _NavigationExampleState extends State<MainScreen> {
                       mainAxisAlignment: .center,
                       mainAxisSize: .min,
                       children: <Widget>[
-                        const Text('You have an empty cart'),
+                        Icon(Icons.local_pizza_outlined),
                         const SizedBox(height: 10),
-                        Icon(Icons.hourglass_empty),
+                        const Text('You have an empty cart'),
                       ],
                     ),
                   ),
