@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../data/food_data.dart';
 import '../services/cart_service.dart';
+import 'item_description.dart';
 
 class CategoryScreen extends StatefulWidget {
   const CategoryScreen({super.key});
@@ -174,11 +175,24 @@ class FoodCard extends StatelessWidget {
           aspectRatio: 2.2,
           child: ClipRRect(
             borderRadius: BorderRadius.circular(16),
-            child: Image.asset(
-              item.image,
-              height: 100,
-              width: double.infinity,
-              fit: BoxFit.cover,
+            child: GestureDetector(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => ItemDescriptions(item: item),
+                  ),
+                );
+              },
+              child: Hero(
+                tag: item.image,
+                child: Image.asset(
+                  item.image,
+                  height: 100,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                ),
+              ),
             ),
           ),
         ),

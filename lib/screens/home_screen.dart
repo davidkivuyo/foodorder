@@ -412,11 +412,14 @@ class CardRowItems extends StatelessWidget {
                           children: [
                             ClipRRect(
                               borderRadius: BorderRadius.circular(16),
-                              child: Image.asset(
-                                item.image,
-                                height: 120,
-                                width: double.infinity,
-                                fit: BoxFit.cover,
+                              child: Hero(
+                                tag: item.image,
+                                child: Image.asset(
+                                  item.image,
+                                  height: 120,
+                                  width: double.infinity,
+                                  fit: BoxFit.cover,
+                                ),
                               ),
                             ),
                           ],
