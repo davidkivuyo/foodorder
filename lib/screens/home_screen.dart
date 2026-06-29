@@ -73,6 +73,39 @@ class HomeScreen extends StatelessWidget {
       ),
     ];
 
+    final List<FoodItem> drinkDeals = [
+      FoodItem(
+        image: 'designs/assets/juiceavocado.jpg',
+        title: 'Honey Sandwich',
+        subtitle: 'Fresh breakfast choice',
+        price: 1000,
+        rating: 4,
+        category: '',
+        cafe: 2,
+        time: '12min',
+      ),
+      FoodItem(
+        image: 'designs/assets/juicex2.jpg',
+        title: 'Burger with fries',
+        subtitle: 'Served warm and fast',
+        price: 7000,
+        rating: 3.9,
+        category: '',
+        cafe: 2,
+        time: '10min',
+      ),
+      FoodItem(
+        image: 'designs/assets/juice.jpg',
+        title: 'Biriyani With meat',
+        subtitle: 'Full plate satisfaction',
+        price: 2500,
+        rating: 4.7,
+        category: '',
+        cafe: 2,
+        time: '5min',
+      ),
+    ];
+
     return Scaffold(
       // home screen body
       body: SafeArea(
@@ -133,17 +166,17 @@ class HomeScreen extends StatelessWidget {
                 // space
                 const SizedBox(height: 18),
 
-                // card grid for cafe 1
+                // card grid
                 CardRowItems(
-                  title: "Today's Menu: CAFE 1",
+                  title: "Favourite on campus",
                   items: cafe1Menu,
                   maxItems: 4,
                 ),
                 const Divider(),
 
-                // card grid for cafe 2
+                // card grid
                 CardRowItems(
-                  title: "Today's Menu: CAFE 2",
+                  title: "Today's Deals",
                   items: cafe2Menu,
                   maxItems: 4,
                 ),
@@ -154,6 +187,25 @@ class HomeScreen extends StatelessWidget {
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
                 QuickBites(),
+
+                const Divider(),
+
+                // card grid
+                CardRowItems(
+                  title: "Featured on Campus Bite",
+                  items: cafe1Menu,
+                  maxItems: 4,
+                  flipItems: true,
+                ),
+
+                const Divider(),
+
+                CardRowItems(
+                  title: "Drinks Deals!",
+                  items: drinkDeals,
+                  maxItems: 4,
+                  flipItems: true,
+                ),
               ],
             ),
           ),
@@ -280,17 +332,21 @@ class CardRowItems extends StatelessWidget {
   final String title;
   final List<FoodItem> items;
   final int maxItems;
+  final bool flipItems;
 
   const CardRowItems({
     super.key,
     required this.title,
     required this.items,
-    this.maxItems = 5, // Default limit set to 5 items max
+    this.maxItems = 5,
+    this.flipItems = false, // Default limit set to 5 items max
   });
 
   @override
   Widget build(BuildContext context) {
-    final displayedItems = items.take(maxItems).toList();
+    final displayedItems = flipItems
+        ? items.reversed.take(maxItems).toList()
+        : items.take(maxItems).toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -305,11 +361,10 @@ class CardRowItems extends StatelessWidget {
             ),
             IconButton(
               onPressed: () {},
-              icon: Icon(Icons.arrow_forward),
+              icon: Icon(Icons.arrow_forward, semanticLabel: 'more items'),
               style: IconButton.styleFrom(
                 padding: EdgeInsets.zero,
-                iconSize:
-                    19, // Shrinks the background wrapper tight around the icon
+                iconSize: 19,
               ),
             ),
           ],
@@ -402,7 +457,7 @@ class CardRowItems extends StatelessWidget {
                                   size: 16,
                                 ),
                                 Text(
-                                  item.rating.toString(),
+                                  '${item.rating.toString()} • CAFE ${item.cafe}',
                                   style: TextStyle(
                                     fontSize: 12,
                                     fontWeight: FontWeight.bold,

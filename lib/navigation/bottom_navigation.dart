@@ -99,7 +99,10 @@ class _NavigationExampleState extends State<MainScreen> {
                   MaterialPageRoute(builder: (_) => Notify()),
                 );
               },
-              icon: const Icon(CupertinoIcons.bell),
+              icon: const Icon(
+                CupertinoIcons.bell,
+                semanticLabel: 'notification bell',
+              ),
             ),
           ],
         ),
@@ -135,7 +138,7 @@ class _NavigationExampleState extends State<MainScreen> {
               },
             );
           },
-          child: const Icon(CupertinoIcons.cart),
+          child: const Icon(CupertinoIcons.cart, semanticLabel: 'cart'),
         ),
 
         // bottom navigation bar
@@ -162,24 +165,27 @@ class _NavigationExampleState extends State<MainScreen> {
           labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
           destinations: [
             NavigationDestination(
-              icon: Icon(CupertinoIcons.home),
+              icon: Icon(CupertinoIcons.home, semanticLabel: 'home'),
               label: "Home",
             ),
             NavigationDestination(
-              icon: Icon(CupertinoIcons.layers),
+              icon: Icon(CupertinoIcons.layers, semanticLabel: 'categories'),
               label: "Categories",
             ),
             NavigationDestination(
-              icon: Icon(CupertinoIcons.search),
+              icon: Icon(CupertinoIcons.search, semanticLabel: 'search food'),
 
               label: "Search",
             ),
             NavigationDestination(
-              icon: Icon(CupertinoIcons.archivebox),
+              icon: Icon(CupertinoIcons.archivebox, semanticLabel: 'my orders'),
               label: "Orders",
             ),
             NavigationDestination(
-              icon: Icon(CupertinoIcons.person_circle),
+              icon: Icon(
+                CupertinoIcons.person_circle,
+                semanticLabel: 'my profile',
+              ),
               label: "Profile",
             ),
           ],

@@ -215,6 +215,7 @@ class FoodCard extends StatelessWidget {
                         Icons.add_rounded,
                         color: Colors.white,
                         size: 18,
+                        semanticLabel: 'add item',
                       ),
                     ),
                   ),
@@ -223,7 +224,12 @@ class FoodCard extends StatelessWidget {
 
               Row(
                 children: [
-                  Icon(Icons.star_rounded, color: Colors.amber, size: 16),
+                  Icon(
+                    Icons.star_rounded,
+                    color: Colors.amber,
+                    size: 16,
+                    semanticLabel: 'star ratings',
+                  ),
                   Text(
                     '${item.rating.toString()} • CAFE ${item.cafe}',
                     style: TextStyle(
