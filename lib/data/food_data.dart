@@ -5,7 +5,7 @@ class FoodItem {
   final double price;
   final double rating;
   final String category;
-  final int cafe;
+  final String cafe;
   final String time;
 
   const FoodItem({
@@ -27,7 +27,7 @@ class FoodItem {
       price: map['price'] ?? '',
       rating: (map['rating'] ?? 4.5).toDouble(),
       category: '',
-      cafe: map['cafe'] ?? '',
+      cafe: map['cafe'] ?? 'all',
       time: map['time'] ?? '',
     );
   }
