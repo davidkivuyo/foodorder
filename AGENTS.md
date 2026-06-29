@@ -135,53 +135,22 @@ PHASE 1
 
 Goal:
 
-Create application skeleton and navigation.
+make **add to cart** ordering logic
 
 Requirements:
 
-* Flutter project setup
-* Bottom navigation bar
-* Home screen
-* Categories screen
-* Orders screen
-* Account screen
-
-Home Screen
-
-Display:
-
-* App title
-* Daily available foods (mock data only)
-* The images must stayed on the designs folder on the root of the project
-
-Categories Screen
-
-Display:
-
-* Food categories (mock data)
-
-Orders Screen
-
-Display:
-
-* Placeholder for future orders
-
-Account Screen
-
-Display:
-
-* Placeholder for future account features
+* add to cart functionality
+* update cart
+* delete cart
+* add more items to cart
 
 Restrictions:
 
 * No Firebase
 * No authentication
 * No registration
-* No ordering logic
 * No database
 * No admin functionality
-
-Use local mock data only.
 
 ---
 
