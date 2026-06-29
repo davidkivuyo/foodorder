@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../data/food_data.dart';
+import '../services/cart_service.dart';
 
 class CategoryScreen extends StatefulWidget {
   const CategoryScreen({super.key});
@@ -204,7 +205,17 @@ class FoodCard extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
                   GestureDetector(
-                    onTap: () {},
+                    onTap: () {
+                      CartService().addToCart(item);
+                      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('${item.title} added to cart!'),
+                          duration: const Duration(seconds: 1),
+                          backgroundColor: Colors.orange,
+                        ),
+                      );
+                    },
                     child: Container(
                       padding: const EdgeInsets.all(6),
                       decoration: BoxDecoration(
@@ -231,12 +242,8 @@ class FoodCard extends StatelessWidget {
                     semanticLabel: 'star ratings',
                   ),
                   Text(
-                    '${item.rating.toString()} • CAFE ${item.cafe}',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black,
-                    ),
+                    '${item.rating.toString()} • CAFE(${item.cafe})',
+                    style: TextStyle(fontSize: 12, color: Colors.black),
                   ),
                 ],
               ),

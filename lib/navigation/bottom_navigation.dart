@@ -6,6 +6,8 @@ import '../screens/category_screen.dart';
 import '../screens/order_screen.dart';
 import '../data/search_bar.dart';
 import 'package:dash_no_internet_screen/dash_no_internet_screen.dart';
+import '../services/cart_service.dart';
+import '../widgets/cart_bottom_sheet.dart';
 
 // home screen
 class MainScreen extends StatefulWidget {
@@ -103,31 +105,64 @@ class _NavigationExampleState extends State<MainScreen> {
                 semanticLabel: 'notification bell',
               ),
             ),
-            IconButton(
-              onPressed: () {
-                //Drag handle
-                showModalBottomSheet<void>(
-                  context: context,
-                  showDragHandle: true,
-                  builder: (BuildContext context) {
-                    return SizedBox(
-                      height: 140,
-                      child: Center(
-                        child: Column(
-                          mainAxisAlignment: .center,
-                          mainAxisSize: .min,
-                          children: <Widget>[
-                            Icon(Icons.local_pizza_outlined),
-                            const SizedBox(height: 10),
-                            const Text('You have an empty cart'),
-                          ],
+            ListenableBuilder(
+              listenable: CartService(),
+              builder: (context, child) {
+                final cartItemsCount = CartService().totalItemsCount;
+                return Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    IconButton(
+                      onPressed: () {
+                        showModalBottomSheet<void>(
+                          context: context,
+                          isScrollControlled: true,
+                          showDragHandle: true,
+                          builder: (BuildContext context) {
+                            return CartBottomSheet(
+                              onOrderPlaced: () {
+                                setState(() {
+                                  currentPageIndex =
+                                      3; // Navigate to Orders Screen (index 3)
+                                });
+                              },
+                            );
+                          },
+                        );
+                      },
+                      icon: const Icon(
+                        CupertinoIcons.cart,
+                        semanticLabel: 'cart',
+                      ),
+                    ),
+                    if (cartItemsCount > 0)
+                      Positioned(
+                        right: 8,
+                        top: 8,
+                        child: Container(
+                          padding: const EdgeInsets.all(2),
+                          decoration: BoxDecoration(
+                            color: Colors.red,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          constraints: const BoxConstraints(
+                            minWidth: 16,
+                            minHeight: 16,
+                          ),
+                          child: Text(
+                            '$cartItemsCount',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
                         ),
                       ),
-                    );
-                  },
+                  ],
                 );
               },
-              icon: const Icon(CupertinoIcons.cart, semanticLabel: 'cart'),
             ),
           ],
         ),
@@ -154,7 +189,7 @@ class _NavigationExampleState extends State<MainScreen> {
             }
           },
 
-          indicatorColor: Colors.transparent,
+          indicatorColor: Colors.orange,
 
           labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
           destinations: [
