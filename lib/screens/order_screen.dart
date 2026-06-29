@@ -245,7 +245,6 @@ class _OrderHistoryState extends State<OrderHistory> {
           imagePath:
               'designs/assets/juice.jpg', // Replace with your pizza image path
           title: 'Big juice',
-          subtitle: '',
           price: 'Tsh1000',
           date: 'Oct 24',
         ),
@@ -254,10 +253,9 @@ class _OrderHistoryState extends State<OrderHistory> {
         // History Card 2: The Study Grind
         buildHistoryCard(
           imagePath:
-              'designs/assets/rice.jpg', // Replace with your coffee image path
+              'designs/assets/chipskavu.jpg', // Replace with your coffee image path
           title: 'The Study Grind',
-          subtitle: 'Iced Caramel Macchiato, Blueberry...',
-          price: '\$8.95',
+          price: 'Tsh2500',
           date: 'Oct 22',
         ),
       ],
@@ -267,14 +265,13 @@ class _OrderHistoryState extends State<OrderHistory> {
   Widget buildHistoryCard({
     required String imagePath,
     required String title,
-    required String subtitle,
     required String price,
     required String date,
   }) {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.grey[200], // Light grey background like the image
+        color: Colors.grey[200],
         borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
@@ -297,21 +294,24 @@ class _OrderHistoryState extends State<OrderHistory> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black,
-                  ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black,
+                      ),
+                    ),
+                    Text(
+                      date,
+                      style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  subtitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 14, color: Colors.grey[600]),
-                ),
+
                 const SizedBox(height: 6),
                 Text(
                   price,
@@ -323,37 +323,6 @@ class _OrderHistoryState extends State<OrderHistory> {
                 ),
               ],
             ),
-          ),
-
-          // 3. Right Content (Date & Reorder Button)
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                date,
-                style: TextStyle(fontSize: 13, color: Colors.grey[600]),
-              ),
-              const SizedBox(height: 16), // Gives spacing matching the design
-              InkWell(
-                onTap: () {},
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.refresh, size: 16, color: Colors.grey[700]),
-                    const SizedBox(width: 4),
-                    Text(
-                      'Reorder',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        color: Colors.grey[700],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
           ),
         ],
       ),
