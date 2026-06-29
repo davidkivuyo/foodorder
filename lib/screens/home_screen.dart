@@ -1,3 +1,4 @@
+import 'package:campusbite/screens/item_description.dart';
 import 'package:flutter/material.dart';
 import '../data/food_data.dart';
 import '../data/search_bar.dart';
@@ -198,15 +199,13 @@ class HomeScreen extends StatelessWidget {
                 const Divider(),
 
                 // card grid
-                CardRowItems(
+                /*CardRowItems(
                   title: "Featured on Campus Bite",
                   items: cafe1Menu,
                   maxItems: 4,
                   flipItems: true,
                 ),
-
-                const Divider(),
-
+                const Divider(),*/
                 CardRowItems(
                   title: "Drinks Deals!",
                   items: drinkDeals,
@@ -412,13 +411,24 @@ class CardRowItems extends StatelessWidget {
                           children: [
                             ClipRRect(
                               borderRadius: BorderRadius.circular(16),
-                              child: Hero(
-                                tag: item.image,
-                                child: Image.asset(
-                                  item.image,
-                                  height: 120,
-                                  width: double.infinity,
-                                  fit: BoxFit.cover,
+                              child: GestureDetector(
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) =>
+                                          ItemDescriptions(item: item),
+                                    ),
+                                  );
+                                },
+                                child: Hero(
+                                  tag: '${item.title}_${item.image}',
+                                  child: Image.asset(
+                                    item.image,
+                                    height: 120,
+                                    width: double.infinity,
+                                    fit: BoxFit.cover,
+                                  ),
                                 ),
                               ),
                             ),

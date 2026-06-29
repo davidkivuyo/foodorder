@@ -185,7 +185,7 @@ class FoodCard extends StatelessWidget {
                 );
               },
               child: Hero(
-                tag: item.image,
+                tag: item.title,
                 child: Image.asset(
                   item.image,
                   height: 100,
