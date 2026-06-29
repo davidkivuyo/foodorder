@@ -299,9 +299,7 @@ class CartBottomSheet extends StatelessWidget {
                           children: const [
                             Icon(Icons.check_circle, color: Colors.white),
                             SizedBox(width: 8),
-                            Text(
-                              'Order placed successfully! Sent to Cafe Admin.',
-                            ),
+                            Text('Order placed successfully!.'),
                           ],
                         ),
                         backgroundColor: Colors.green[800],
