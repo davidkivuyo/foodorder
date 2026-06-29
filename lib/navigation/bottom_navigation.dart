@@ -92,7 +92,6 @@ class _NavigationExampleState extends State<MainScreen> {
           // notification icon, its screen can be found in account_screen.dart file
           actions: <Widget>[
             IconButton(
-              padding: const EdgeInsets.only(right: 10),
               onPressed: () {
                 Navigator.push(
                   context,
@@ -104,42 +103,37 @@ class _NavigationExampleState extends State<MainScreen> {
                 semanticLabel: 'notification bell',
               ),
             ),
+            IconButton(
+              onPressed: () {
+                //Drag handle
+                showModalBottomSheet<void>(
+                  context: context,
+                  showDragHandle: true,
+                  builder: (BuildContext context) {
+                    return SizedBox(
+                      height: 140,
+                      child: Center(
+                        child: Column(
+                          mainAxisAlignment: .center,
+                          mainAxisSize: .min,
+                          children: <Widget>[
+                            Icon(Icons.local_pizza_outlined),
+                            const SizedBox(height: 10),
+                            const Text('You have an empty cart'),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                );
+              },
+              icon: const Icon(CupertinoIcons.cart, semanticLabel: 'cart'),
+            ),
           ],
         ),
 
         // body
         body: IndexedStack(index: currentPageIndex, children: _pages),
-
-        // shopping cart icon
-        floatingActionButton: FloatingActionButton(
-          tooltip: 'Cart',
-          backgroundColor: Colors.orange,
-          shape: CircleBorder(),
-          onPressed: () {
-            //Drag handle
-            showModalBottomSheet<void>(
-              context: context,
-              showDragHandle: true,
-              builder: (BuildContext context) {
-                return SizedBox(
-                  height: 140,
-                  child: Center(
-                    child: Column(
-                      mainAxisAlignment: .center,
-                      mainAxisSize: .min,
-                      children: <Widget>[
-                        Icon(Icons.local_pizza_outlined),
-                        const SizedBox(height: 10),
-                        const Text('You have an empty cart'),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            );
-          },
-          child: const Icon(CupertinoIcons.cart, semanticLabel: 'cart'),
-        ),
 
         // bottom navigation bar
         bottomNavigationBar: NavigationBar(
