@@ -241,7 +241,7 @@ class _OrderHistoryState extends State<OrderHistory> {
         const SizedBox(height: 10),
 
         // History Card 1: Campus Pizza
-        buildHistoryCard(
+        _buildHistoryCard(
           imagePath:
               'designs/assets/juice.jpg', // Replace with your pizza image path
           title: 'Big juice',
@@ -251,7 +251,7 @@ class _OrderHistoryState extends State<OrderHistory> {
         const SizedBox(height: 12),
 
         // History Card 2: The Study Grind
-        buildHistoryCard(
+        _buildHistoryCard(
           imagePath:
               'designs/assets/chipskavu.jpg', // Replace with your coffee image path
           title: 'The Study Grind',
@@ -262,7 +262,7 @@ class _OrderHistoryState extends State<OrderHistory> {
     );
   }
 
-  Widget buildHistoryCard({
+  Widget _buildHistoryCard({
     required String imagePath,
     required String title,
     required String price,
@@ -271,7 +271,7 @@ class _OrderHistoryState extends State<OrderHistory> {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.grey[200],
+        color: Colors.grey.shade200,
         borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
