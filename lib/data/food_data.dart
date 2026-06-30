@@ -178,6 +178,41 @@ class FoodData {
       time: '20min',
       section: 'off_campus',
     ),
+
+    // ----other items----
+    FoodItem(
+      image: 'designs/assets/chickenwings.jpg',
+      title: 'Chicken wings',
+      subtitle: 'full chicken plate',
+      price: 20000,
+      rating: 4.8,
+      category: 'lunch',
+      cafe: 'other',
+      time: '12min',
+      section: 'other',
+    ),
+    FoodItem(
+      image: 'designs/assets/chipss.jpg',
+      title: 'Chips kavu',
+      subtitle: 'just as good with Cocacola',
+      price: 2000,
+      rating: 4.9,
+      category: 'Dinner',
+      cafe: 'other',
+      time: '10min',
+      section: 'other',
+    ),
+    FoodItem(
+      image: 'designs/assets/chipskavu.jpg',
+      title: 'Chips kavu mayonaise',
+      subtitle: 'served with mayonaise',
+      price: 2000,
+      rating: 4.7,
+      category: 'Dinner',
+      cafe: 'other',
+      time: '10min',
+      section: 'other',
+    ),
   ];
 
   // Named filtered views — used directly by HomeScreen
@@ -192,4 +227,7 @@ class FoodData {
 
   static List<FoodItem> get offCampus =>
       all.where((f) => f.section == 'off_campus').toList();
+
+  static List<FoodItem> get other =>
+      all.where((f) => f.section == 'other').toList();
 }

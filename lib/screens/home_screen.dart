@@ -101,8 +101,8 @@ class HomeScreen extends StatelessWidget {
                 ),
                 const Divider(),
                 CardColumnItems(
-                  title: "All meals",
-                  items: FoodData.all,
+                  title: "Other meal deals",
+                  items: FoodData.other,
                   flipItems: true,
                 ),
               ],
