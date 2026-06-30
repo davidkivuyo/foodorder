@@ -62,12 +62,22 @@ class _CategoryScreenState extends State<CategoryScreen> {
     const FoodItem(
       image: 'designs/assets/pizzaplate.jpg',
       title: 'Pizza pepperoni',
-      subtitle: 'Perfect snack for your study break',
+      subtitle: 'the pizza for your study break',
       price: 5000,
       rating: 4.7,
-      category: 'Snacks',
-      cafe: '2',
-      time: '10min',
+      category: 'Teasers',
+      cafe: 'offcampus',
+      time: '20min',
+    ),
+    const FoodItem(
+      image: 'designs/assets/pizza.jpg',
+      title: 'Pizza plate perfect',
+      subtitle: 'Perfect pizza for you',
+      price: 5000,
+      rating: 4.7,
+      category: 'Teasers',
+      cafe: 'offcampus',
+      time: '20min',
     ),
     const FoodItem(
       image: 'designs/assets/juice.jpg',
@@ -95,7 +105,7 @@ class _CategoryScreenState extends State<CategoryScreen> {
     _Category('🥞 Breakfast', 'Breakfast'),
     _Category('🍴 Lunch', 'Lunch'),
     _Category('🥮 Dinner', 'Dinner'),
-    _Category('🍫 Snacks', 'Snacks'),
+    _Category('🍕 Teasers', 'Teasers'),
     _Category('🥂 Drinks', 'Drinks'),
   ];
 
@@ -160,7 +170,10 @@ class _CategoryScreenState extends State<CategoryScreen> {
                 });
               },
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 5,
+                ),
                 decoration: BoxDecoration(
                   color: isSelected ? const Color(0xFFF5820D) : Colors.white,
                   borderRadius: BorderRadius.circular(25),
@@ -178,7 +191,9 @@ class _CategoryScreenState extends State<CategoryScreen> {
                       color: isSelected
                           ? Colors.white
                           : const Color.fromARGB(255, 61, 61, 61),
-                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                      fontWeight: isSelected
+                          ? FontWeight.bold
+                          : FontWeight.w500,
                       fontSize: 16,
                     ),
                   ),
