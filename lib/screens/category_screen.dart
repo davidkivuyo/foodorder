@@ -191,7 +191,6 @@ class FoodCard extends StatelessWidget {
                   height: 100,
                   width: double.infinity,
                   fit: BoxFit.cover,
-                  cacheHeight: (120 * dpr).round(),
                   cacheWidth: (220 * dpr).round(),
                 ),
               ),
@@ -251,15 +250,13 @@ class FoodCard extends StatelessWidget {
 
               Row(
                 children: [
-                  Icon(
-                    Icons.star_rounded,
-                    color: Colors.amber,
-                    size: 16,
-                    semanticLabel: 'star ratings',
-                  ),
+                  const Icon(Icons.star_rounded, color: Colors.amber, size: 16),
                   Text(
-                    '${item.rating.toString()} • CAFE(${item.cafe})',
-                    style: TextStyle(fontSize: 12, color: Colors.black),
+                    // If cafe is 'offcampus', show 'OFF-CAMPUS', otherwise show 'CAFE(X)'
+                    item.cafe.toLowerCase() == 'offcampus'
+                        ? '${item.rating} • offcampus'
+                        : '${item.rating} • CAFE(${item.cafe})',
+                    style: const TextStyle(fontSize: 12, color: Colors.black),
                   ),
                 ],
               ),

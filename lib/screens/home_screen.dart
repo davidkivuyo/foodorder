@@ -464,7 +464,6 @@ class CardRowItems extends StatelessWidget {
                                     height: 120,
                                     width: double.infinity,
                                     fit: BoxFit.cover,
-                                    cacheHeight: (120 * dpr).round(),
                                     cacheWidth: (220 * dpr).round(),
                                   ),
                                 ),
@@ -535,16 +534,20 @@ class CardRowItems extends StatelessWidget {
                                 style: TextStyle(fontSize: 11),
                               ),
 
+                              // Inside CardRowItems where you display the rating & cafe text:
                               Row(
                                 children: [
-                                  Icon(
+                                  const Icon(
                                     Icons.star_rounded,
                                     color: Colors.amber,
                                     size: 16,
                                   ),
                                   Text(
-                                    '${item.rating.toString()} • CAFE(${item.cafe})',
-                                    style: TextStyle(
+                                    // If cafe is 'offcampus', show 'OFF-CAMPUS', otherwise show 'CAFE(X)'
+                                    item.cafe.toLowerCase() == 'offcampus'
+                                        ? '${item.rating} • offcampus'
+                                        : '${item.rating} • CAFE(${item.cafe})',
+                                    style: const TextStyle(
                                       fontSize: 12,
                                       color: Colors.black,
                                     ),
