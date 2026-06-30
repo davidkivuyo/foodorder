@@ -194,11 +194,11 @@ class HomeScreen extends StatelessWidget {
                   ),
                 ),
 
-                /*   //space
+                //space
                 const SizedBox(height: 18),
 
                 // banner
-                SpecialBannerCard(),*/
+                SpecialBannerCard(),
 
                 // space
                 const SizedBox(height: 18),
@@ -253,7 +253,6 @@ class HomeScreen extends StatelessWidget {
   }
 }
 
-/*
 class SpecialBannerCard extends StatelessWidget {
   // Constructor
   const SpecialBannerCard({super.key});
@@ -373,7 +372,7 @@ class SpecialBannerCard extends StatelessWidget {
     );
   }
 }
-*/
+
 class CardRowItems extends StatelessWidget {
   final String title;
   final List<FoodItem> items;
@@ -836,11 +835,7 @@ class CategoriesTitles extends StatelessWidget {
   final String title;
   final List<FoodItem> items;
 
-  const CategoriesTitles({
-    super.key,
-    required this.title,
-    required this.items,
-  });
+  const CategoriesTitles({super.key, required this.title, required this.items});
 
   @override
   Widget build(BuildContext context) {
@@ -848,10 +843,7 @@ class CategoriesTitles extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          title,
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
         leading: IconButton(
           icon: const Icon(Icons.close),
           onPressed: () {
@@ -920,7 +912,9 @@ class CategoriesTitles extends StatelessWidget {
                           GestureDetector(
                             onTap: () {
                               CartService().addToCart(item);
-                              ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                              ScaffoldMessenger.of(
+                                context,
+                              ).hideCurrentSnackBar();
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
                                   content: Text('${item.title} added to cart!'),
