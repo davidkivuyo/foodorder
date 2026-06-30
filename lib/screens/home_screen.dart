@@ -194,11 +194,11 @@ class HomeScreen extends StatelessWidget {
                   ),
                 ),
 
-                //space
+                /*   //space
                 const SizedBox(height: 18),
 
                 // banner
-                SpecialBannerCard(),
+                SpecialBannerCard(),*/
 
                 // space
                 const SizedBox(height: 18),
@@ -253,6 +253,7 @@ class HomeScreen extends StatelessWidget {
   }
 }
 
+/*
 class SpecialBannerCard extends StatelessWidget {
   // Constructor
   const SpecialBannerCard({super.key});
@@ -372,7 +373,7 @@ class SpecialBannerCard extends StatelessWidget {
     );
   }
 }
-
+*/
 class CardRowItems extends StatelessWidget {
   final String title;
   final List<FoodItem> items;

@@ -62,6 +62,7 @@ Bottom Navigation Bar must contain:
 
 1. Home
 2. Categories
+3. Search
 3. Orders
 4. Account
 
@@ -135,14 +136,13 @@ PHASE 1
 
 Goal:
 
-make **add to cart** ordering logic
+implement **filter by categories logic** in categories screen
 
 Requirements:
 
-* add to cart functionality
-* update cart
-* delete cart
-* add more items to cart
+* filter items by food categories
+* update the food list according to categories
+* add another category **All** on the top of category lists to apply no filter
 
 Restrictions:
 
@@ -159,7 +159,4 @@ Restrictions:
 Phase 1 is complete when:
 
 * App runs successfully.
-* Bottom navigation works.
-* Four screens exist.
-* Home screen displays sample food items.
 * No runtime errors occur.

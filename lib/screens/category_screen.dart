@@ -2,6 +2,12 @@ import 'package:flutter/material.dart';
 import '../data/food_data.dart';
 import '../services/cart_service.dart';
 
+class _Category {
+  final String display;
+  final String value;
+  const _Category(this.display, this.value);
+}
+
 class CategoryScreen extends StatefulWidget {
   const CategoryScreen({super.key});
 
@@ -10,9 +16,91 @@ class CategoryScreen extends StatefulWidget {
 }
 
 class _CategoryScreenState extends State<CategoryScreen> {
+  String _selectedCategory = 'All';
+
+  final List<FoodItem> _allItems = [
+    const FoodItem(
+      image: 'designs/assets/sandwich.jpg',
+      title: 'Honey Sandwich',
+      subtitle: 'Fresh sandwich for your breakfast',
+      price: 1000,
+      rating: 4.5,
+      category: 'Breakfast',
+      cafe: '1',
+      time: '5min',
+    ),
+    const FoodItem(
+      image: 'designs/assets/burgerchips.jpg',
+      title: 'Burger with Fries',
+      subtitle: 'Served with your favourite additive',
+      price: 7000,
+      rating: 4.8,
+      category: 'Lunch',
+      cafe: '2',
+      time: '15min',
+    ),
+    const FoodItem(
+      image: 'designs/assets/biriyanimeat.jpg',
+      title: 'Biriyani meat',
+      subtitle: 'Loaded with fresh vegetables',
+      price: 4500,
+      rating: 4.3,
+      category: 'Lunch',
+      cafe: '2',
+      time: '10min',
+    ),
+    const FoodItem(
+      image: 'designs/assets/chips.jpg',
+      title: 'Chips Mshkaki',
+      subtitle: 'Extra cheese and crispy fries',
+      price: 8500,
+      rating: 4.9,
+      category: 'Dinner',
+      cafe: '1',
+      time: '10min',
+    ),
+    const FoodItem(
+      image: 'designs/assets/pizzaplate.jpg',
+      title: 'Pizza pepperoni',
+      subtitle: 'Perfect snack for your study break',
+      price: 5000,
+      rating: 4.7,
+      category: 'Snacks',
+      cafe: '2',
+      time: '10min',
+    ),
+    const FoodItem(
+      image: 'designs/assets/juice.jpg',
+      title: 'Fresh orange juice',
+      subtitle: 'Fresh from the field',
+      price: 2000,
+      rating: 4.6,
+      category: 'Drinks',
+      cafe: '1',
+      time: '2min',
+    ),
+  ];
+
+  List<FoodItem> get _filteredItems {
+    if (_selectedCategory == 'All') {
+      return _allItems;
+    }
+    return _allItems
+        .where((item) => item.category == _selectedCategory)
+        .toList();
+  }
+
+  static const List<_Category> _categories = [
+    _Category('🍽️ All', 'All'),
+    _Category('🥞 Breakfast', 'Breakfast'),
+    _Category('🍴 Lunch', 'Lunch'),
+    _Category('🥮 Dinner', 'Dinner'),
+    _Category('🍫 Snacks', 'Snacks'),
+    _Category('🥂 Drinks', 'Drinks'),
+  ];
+
   @override
   Widget build(BuildContext context) {
-    // Allows scrolling
     return SingleChildScrollView(
       child: Padding(
         padding: const EdgeInsets.all(10.0),
@@ -32,11 +120,19 @@ class _CategoryScreenState extends State<CategoryScreen> {
               style: TextStyle(fontSize: 15),
             ),
             const SizedBox(height: 18),
-            categories(),
-
+            _buildCategoryChips(),
             const SizedBox(height: 18),
-            Cards(),
-
+            _filteredItems.isEmpty
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(32),
+                      child: Text(
+                        'No items found for $_selectedCategory',
+                        style: TextStyle(fontSize: 16, color: Colors.grey),
+                      ),
+                    ),
+                  )
+                : Cards(items: _filteredItems),
             const SizedBox(height: 10),
             BottomBanner(),
           ],
@@ -44,116 +140,72 @@ class _CategoryScreenState extends State<CategoryScreen> {
       ),
     );
   }
-}
 
-Widget categories() {
-  final List<String> categoryList = [
-    '🥞 Breakfast',
-    '🍴 Lunch',
-    '🥮 Dinner',
-    '🍫 Snacks',
-    '🥂 Drinks',
-  ];
-  final String selectedCategory = '🍴 Lunch';
+  Widget _buildCategoryChips() {
+    return SizedBox(
+      height: 45,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        itemCount: _categories.length,
+        itemBuilder: (context, index) {
+          final category = _categories[index];
+          final isSelected = category.value == _selectedCategory;
 
-  return SizedBox(
-    height: 45,
-    child: ListView.builder(
-      scrollDirection: Axis.horizontal,
-      itemCount: categoryList.length,
-      itemBuilder: (context, index) {
-        final category = categoryList[index];
-        final isSelected = category == selectedCategory;
-
-        return Padding(
-          padding: const EdgeInsets.only(right: 8.0),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-            decoration: BoxDecoration(
-              color: isSelected ? const Color(0xFFF5820D) : Colors.white,
-              borderRadius: BorderRadius.circular(25),
-              border: isSelected
-                  ? null
-                  : Border.all(
-                      color: const Color.fromARGB(255, 237, 237, 237),
-                      width: 1.5,
+          return Padding(
+            padding: const EdgeInsets.only(right: 8.0),
+            child: GestureDetector(
+              onTap: () {
+                setState(() {
+                  _selectedCategory = category.value;
+                });
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                decoration: BoxDecoration(
+                  color: isSelected ? const Color(0xFFF5820D) : Colors.white,
+                  borderRadius: BorderRadius.circular(25),
+                  border: isSelected
+                      ? null
+                      : Border.all(
+                          color: const Color.fromARGB(255, 237, 237, 237),
+                          width: 1.5,
+                        ),
+                ),
+                child: Center(
+                  child: Text(
+                    category.display,
+                    style: TextStyle(
+                      color: isSelected
+                          ? Colors.white
+                          : const Color.fromARGB(255, 61, 61, 61),
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                      fontSize: 16,
                     ),
-            ),
-            child: Center(
-              child: Text(
-                category,
-                style: TextStyle(
-                  color: isSelected
-                      ? Colors.white
-                      : const Color.fromARGB(255, 61, 61, 61),
-                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                  fontSize: 16,
+                  ),
                 ),
               ),
             ),
-          ),
-        );
-      },
-    ),
-  );
+          );
+        },
+      ),
+    );
+  }
 }
 
 class Cards extends StatelessWidget {
-  const Cards({super.key});
+  final List<FoodItem> items;
+  const Cards({super.key, required this.items});
 
   @override
   Widget build(BuildContext context) {
-    final List<FoodItem> menuItems = [
-      const FoodItem(
-        image: 'designs/assets/sandwich.jpg',
-        title: 'Honey Sandwich',
-        subtitle: 'Fresh sandwich for your breakfast',
-        price: 1000,
-        rating: 4.5,
-        category: 'Breakfast',
-        cafe: '1',
-        time: '5min',
-      ),
-      const FoodItem(
-        image: 'designs/assets/burgerchips.jpg',
-        title: 'Burger with Fries',
-        subtitle: 'Served with your favourite additive',
-        price: 7000,
-        rating: 4.8,
-        category: 'Lunch',
-        cafe: '2',
-        time: '15min',
-      ),
-      const FoodItem(
-        image: 'designs/assets/biriyanimeat.jpg',
-        title: 'Biriyani meat',
-        subtitle: 'Loaded with fresh vegetables',
-        price: 4500,
-        rating: 4.3,
-        category: 'Lunch',
-        cafe: '2',
-        time: '10min',
-      ),
-      const FoodItem(
-        image: 'designs/assets/chips.jpg',
-        title: 'Chips Mshkaki',
-        subtitle: 'Extra cheese and crispy fries',
-        price: 8500,
-        rating: 4.9,
-        category: 'Dinner',
-        cafe: '1',
-        time: '10min',
-      ),
-    ];
-
     return ListView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      itemCount: menuItems.length,
+      itemCount: items.length,
       itemBuilder: (context, index) {
         return Padding(
           padding: const EdgeInsets.only(bottom: 24.0),
-          child: FoodCard(item: menuItems[index]),
+          child: FoodCard(item: items[index]),
         );
       },
     );
