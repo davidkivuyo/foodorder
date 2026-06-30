@@ -168,7 +168,7 @@ class _NavigationExampleState extends State<MainScreen> {
         ),
 
         // body
-        body: IndexedStack(index: currentPageIndex, children: _pages),
+        body: _pages[currentPageIndex],
 
         // bottom navigation bar
         bottomNavigationBar: NavigationBar(

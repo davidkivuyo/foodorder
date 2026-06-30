@@ -83,7 +83,7 @@ class HomeScreen extends StatelessWidget {
         rating: 4.5,
         category: '',
         cafe: 'ALL',
-        time: '12min',
+        time: '2min',
       ),
       FoodItem(
         image: 'designs/assets/juicex2.jpg',
@@ -93,7 +93,7 @@ class HomeScreen extends StatelessWidget {
         rating: 4.8,
         category: '',
         cafe: '2',
-        time: '10min',
+        time: '2min',
       ),
       FoodItem(
         image: 'designs/assets/juice.jpg',
@@ -104,6 +104,39 @@ class HomeScreen extends StatelessWidget {
         category: '',
         cafe: '2',
         time: '5min',
+      ),
+    ];
+
+    final List<FoodItem> outsideCampus = [
+      FoodItem(
+        image: 'designs/assets/pizzaplate.jpg',
+        title: 'Pizza pepperoni',
+        subtitle: 'the pizza you want',
+        price: 20000,
+        rating: 4.8,
+        category: '',
+        cafe: '2',
+        time: '12min',
+      ),
+      FoodItem(
+        image: 'designs/assets/friedchicken.jpg',
+        title: 'Chicken wings',
+        subtitle: 'As tasty as it looks',
+        price: 19000,
+        rating: 4.9,
+        category: '',
+        cafe: '1',
+        time: '10min',
+      ),
+      FoodItem(
+        image: 'designs/assets/heavyburger.jpg',
+        title: 'Heavy burger',
+        subtitle: 'Your favourite burger is here',
+        price: 15000,
+        rating: 4.7,
+        category: '',
+        cafe: '2',
+        time: '20min',
       ),
     ];
 
@@ -197,17 +230,18 @@ class HomeScreen extends StatelessWidget {
 
                 const Divider(),
 
-                // card grid
-                /*CardRowItems(
-                  title: "Featured on Campus Bite",
-                  items: cafe1Menu,
-                  maxItems: 4,
-                  flipItems: true,
-                ),
-                const Divider(),*/
                 CardRowItems(
                   title: "Drinks Deals!",
                   items: drinkDeals,
+                  maxItems: 4,
+                ),
+
+                const Divider(),
+
+                // card grid
+                CardRowItems(
+                  title: "Explore deals outside campus",
+                  items: outsideCampus,
                   maxItems: 4,
                 ),
               ],
@@ -358,6 +392,7 @@ class CardRowItems extends StatelessWidget {
     final displayedItems = flipItems
         ? items.reversed.take(maxItems).toList()
         : items.take(maxItems).toList();
+    final dpr = MediaQuery.of(context).devicePixelRatio;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -421,12 +456,16 @@ class CardRowItems extends StatelessWidget {
                                   );
                                 },
                                 child: Hero(
-                                  tag: '${item.title}_${item.image}',
+                                  tag:
+                                      'home_${item.cafe}_${item.title}_${item.image}',
+
                                   child: Image.asset(
                                     item.image,
                                     height: 120,
                                     width: double.infinity,
                                     fit: BoxFit.cover,
+                                    cacheHeight: (120 * dpr).round(),
+                                    cacheWidth: (220 * dpr).round(),
                                   ),
                                 ),
                               ),
@@ -642,84 +681,94 @@ class ItemDescriptionsHome extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Stack(
-              children: [
-                Hero(
-                  tag: '${item.title}_${item.image}',
-                  child: ClipRRect(
-                    child: Image.asset(
-                      item.image,
-                      width: double.infinity,
-                      height: 220,
-                      fit: BoxFit.cover,
-                    ),
-                  ),
-                ),
-
-                SafeArea(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: CircleAvatar(
-                      backgroundColor: Colors.black45,
-                      child: IconButton(
-                        icon: const Icon(Icons.arrow_back, color: Colors.white),
-                        onPressed: () => Navigator.pop(context),
+    return PopScope(
+      canPop: true,
+      onPopInvokedWithResult: (didPop, result) {
+        // no-op: prevents any duplicate pop from propagating to system back / app exit
+      },
+      child: Scaffold(
+        body: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Stack(
+                children: [
+                  Hero(
+                    tag: 'home_${item.cafe}_${item.title}_${item.image}',
+                    child: ClipRRect(
+                      child: Image.asset(
+                        item.image,
+                        width: double.infinity,
+                        height: 220,
+                        fit: BoxFit.cover,
+                        cacheHeight: 660,
                       ),
                     ),
                   ),
-                ),
-              ],
-            ),
 
-            const SizedBox(height: 24),
-
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Text(
-                    item.title,
-                    style: const TextStyle(
-                      fontSize: 30,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-
-                  const SizedBox(height: 8),
-
-                  Text(
-                    item.subtitle,
-                    style: const TextStyle(fontSize: 16, color: Colors.grey),
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  Row(
-                    children: [
-                      const Icon(Icons.star, color: Colors.amber),
-                      const SizedBox(width: 5),
-                      Text("${item.rating}"),
-                      const Spacer(),
-                      Text(
-                        "TZS ${item.price}",
-                        style: const TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.orange,
+                  SafeArea(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: CircleAvatar(
+                        backgroundColor: Colors.black45,
+                        child: IconButton(
+                          icon: const Icon(
+                            Icons.arrow_back,
+                            color: Colors.white,
+                          ),
+                          onPressed: () => Navigator.maybePop(context),
                         ),
                       ),
-                    ],
+                    ),
                   ),
                 ],
               ),
-            ),
-          ],
+
+              const SizedBox(height: 24),
+
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Text(
+                      item.title,
+                      style: const TextStyle(
+                        fontSize: 30,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+
+                    const SizedBox(height: 8),
+
+                    Text(
+                      item.subtitle,
+                      style: const TextStyle(fontSize: 16, color: Colors.grey),
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    Row(
+                      children: [
+                        const Icon(Icons.star, color: Colors.amber),
+                        const SizedBox(width: 5),
+                        Text("${item.rating}"),
+                        const Spacer(),
+                        Text(
+                          "TZS ${item.price}",
+                          style: const TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.orange,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
