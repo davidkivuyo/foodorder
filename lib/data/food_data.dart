@@ -184,7 +184,7 @@ class FoodData {
       image: 'designs/assets/chickenwings.jpg',
       title: 'Chicken wings',
       subtitle: 'full chicken plate',
-      price: 20000,
+      price: 12000,
       rating: 4.8,
       category: 'lunch',
       cafe: 'other',
