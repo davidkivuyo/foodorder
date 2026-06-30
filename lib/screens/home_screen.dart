@@ -767,6 +767,45 @@ class ItemDescriptionsHome extends StatelessWidget {
                         ),
                       ],
                     ),
+                    const SizedBox(height: 10),
+                    Center(
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor:
+                              Colors.orange, // Button background color
+                          foregroundColor: Colors.white, // Text and icon color
+                          elevation: 1, // Shadow depth
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 30,
+                            vertical: 15,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(
+                              10,
+                            ), // Rounded corners
+                          ),
+                        ),
+                        onPressed: () {
+                          CartService().addToCart(item);
+                          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('${item.title} added to cart!'),
+                              duration: const Duration(seconds: 1),
+                              backgroundColor: Colors.orange,
+                            ),
+                          );
+                        },
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: const [
+                            Icon(Icons.shopping_cart),
+                            SizedBox(width: 8),
+                            Text('I want this!🤩'),
+                          ],
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
