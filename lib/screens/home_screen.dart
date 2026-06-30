@@ -115,7 +115,7 @@ class HomeScreen extends StatelessWidget {
         price: 20000,
         rating: 4.8,
         category: '',
-        cafe: '2',
+        cafe: 'offcampus',
         time: '12min',
       ),
       FoodItem(
@@ -125,7 +125,7 @@ class HomeScreen extends StatelessWidget {
         price: 19000,
         rating: 4.9,
         category: '',
-        cafe: '1',
+        cafe: 'offcampus',
         time: '10min',
       ),
       FoodItem(
@@ -135,7 +135,7 @@ class HomeScreen extends StatelessWidget {
         price: 15000,
         rating: 4.7,
         category: '',
-        cafe: '2',
+        cafe: 'offcampus',
         time: '20min',
       ),
     ];
@@ -240,7 +240,7 @@ class HomeScreen extends StatelessWidget {
 
                 // card grid
                 CardRowItems(
-                  title: "Explore deals outside campus",
+                  title: "Deals outside campus",
                   items: outsideCampus,
                   maxItems: 4,
                 ),
