@@ -8,138 +8,6 @@ class HomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final List<FoodItem> cafe1Menu = [
-      FoodItem(
-        image: 'designs/assets/ricemeat.jpg',
-        title: 'Wali Nyama',
-        subtitle: 'Fresh for your appetite',
-        price: 2500,
-        rating: 4.5,
-        category: '',
-        cafe: '1',
-        time: '10min',
-      ),
-      FoodItem(
-        image: 'designs/assets/grilled-meat.jpg',
-        title: 'Smoked grilled meat',
-        subtitle: 'Fresh Steak out of the gill',
-        price: 18000,
-        rating: 4.8,
-        category: '',
-        cafe: '1',
-        time: '5min',
-      ),
-      FoodItem(
-        image: 'designs/assets/chips.jpg',
-        title: 'Chips Mshkaki',
-        subtitle: 'Served with additives',
-        price: 3000,
-        rating: 4.3,
-        category: '',
-        cafe: '1',
-        time: '7min',
-      ),
-    ];
-
-    final List<FoodItem> cafe2Menu = [
-      FoodItem(
-        image: 'designs/assets/sandwich.jpg',
-        title: 'Honey Sandwich',
-        subtitle: 'Fresh breakfast choice',
-        price: 1000,
-        rating: 4,
-        category: '',
-        cafe: '2',
-        time: '12min',
-      ),
-      FoodItem(
-        image: 'designs/assets/burgerchips.jpg',
-        title: 'Burger with fries',
-        subtitle: 'Served warm and fast',
-        price: 7000,
-        rating: 3.9,
-        category: '',
-        cafe: '1',
-        time: '10min',
-      ),
-      FoodItem(
-        image: 'designs/assets/biriyanimeat.jpg',
-        title: 'Biriyani With meat',
-        subtitle: 'Full plate satisfaction',
-        price: 2500,
-        rating: 4.7,
-        category: '',
-        cafe: '2',
-        time: '5min',
-      ),
-    ];
-
-    final List<FoodItem> drinkDeals = [
-      FoodItem(
-        image: 'designs/assets/juiceavocado.jpg',
-        title: 'Avocado juice',
-        subtitle: 'Full orange flavour',
-        price: 1000,
-        rating: 4.5,
-        category: '',
-        cafe: 'ALL',
-        time: '2min',
-      ),
-      FoodItem(
-        image: 'designs/assets/juicex2.jpg',
-        title: 'Mango juice',
-        subtitle: 'True mango',
-        price: 7000,
-        rating: 4.8,
-        category: '',
-        cafe: '2',
-        time: '2min',
-      ),
-      FoodItem(
-        image: 'designs/assets/juice.jpg',
-        title: 'orange juice',
-        subtitle: 'Fresh from field',
-        price: 2500,
-        rating: 4.7,
-        category: '',
-        cafe: '2',
-        time: '5min',
-      ),
-    ];
-
-    final List<FoodItem> outsideCampus = [
-      FoodItem(
-        image: 'designs/assets/pizzaplate.jpg',
-        title: 'Pizza pepperoni',
-        subtitle: 'the pizza you want',
-        price: 20000,
-        rating: 4.8,
-        category: '',
-        cafe: 'offcampus',
-        time: '12min',
-      ),
-      FoodItem(
-        image: 'designs/assets/friedchicken.jpg',
-        title: 'Chicken wings',
-        subtitle: 'As tasty as it looks',
-        price: 19000,
-        rating: 4.9,
-        category: '',
-        cafe: 'offcampus',
-        time: '10min',
-      ),
-      FoodItem(
-        image: 'designs/assets/heavyburger.jpg',
-        title: 'Heavy burger',
-        subtitle: 'Your favourite burger is here',
-        price: 15000,
-        rating: 4.7,
-        category: '',
-        cafe: 'offcampus',
-        time: '20min',
-      ),
-    ];
-
     return Scaffold(
       // home screen body
       body: SafeArea(
@@ -206,16 +74,12 @@ class HomeScreen extends StatelessWidget {
                 // card grid
                 CardRowItems(
                   title: "Favourite on campus",
-                  items: cafe1Menu,
-                  maxItems: 4,
+                  items: FoodData.campusFavourites,
                 ),
                 const Divider(),
-
-                // card grid
                 CardRowItems(
                   title: "Today's Deals",
-                  items: cafe2Menu,
-                  maxItems: 4,
+                  items: FoodData.todaysDeals,
                 ),
                 const Divider(),
 
@@ -229,20 +93,17 @@ class HomeScreen extends StatelessWidget {
                 QuickBites(),
 
                 const Divider(),
-
-                CardRowItems(
-                  title: "Drinks Deals!",
-                  items: drinkDeals,
-                  maxItems: 4,
-                ),
-
+                CardRowItems(title: "Drinks Deals!", items: FoodData.drinks),
                 const Divider(),
-
-                // card grid
                 CardRowItems(
                   title: "Deals outside campus",
-                  items: outsideCampus,
-                  maxItems: 4,
+                  items: FoodData.offCampus,
+                ),
+                const Divider(),
+                CardColumnItems(
+                  title: "All meals",
+                  items: FoodData.all,
+                  flipItems: true,
                 ),
               ],
             ),
@@ -971,6 +832,180 @@ class CategoriesTitles extends StatelessWidget {
           );
         },
       ),
+    );
+  }
+}
+
+class CardColumnItems extends StatelessWidget {
+  final String title;
+  final List<FoodItem> items;
+  final bool flipItems;
+
+  const CardColumnItems({
+    super.key,
+    required this.title,
+    required this.items,
+    this.flipItems = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final dpr = MediaQuery.of(context).devicePixelRatio;
+    final displayedItems = flipItems ? items.reversed.toList() : items;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Section header
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8.0),
+          child: Text(
+            title,
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+        ),
+
+        // Vertical list — shrinkWrap + NeverScrollableScrollPhysics
+        // so it plays nicely inside the parent SingleChildScrollView
+        ListView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          padding: const EdgeInsets.symmetric(horizontal: 8.0),
+          itemCount: displayedItems.length,
+          itemBuilder: (context, index) {
+            final item = displayedItems[index];
+
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 24.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Food image — same AspectRatio as category_screen FoodCard
+                  AspectRatio(
+                    aspectRatio: 2.2,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: GestureDetector(
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => ItemDescriptionsHome(item: item),
+                            ),
+                          );
+                        },
+                        child: Hero(
+                          tag: 'home_${item.cafe}_${item.title}_${item.image}',
+                          child: Image.asset(
+                            item.image,
+                            width: double.infinity,
+                            fit: BoxFit.cover,
+                            cacheWidth: (220 * dpr).round(),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  // Item details
+                  Padding(
+                    padding: const EdgeInsets.all(4.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                item.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Colors.black,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            // Add to cart button
+                            GestureDetector(
+                              onTap: () {
+                                CartService().addToCart(item);
+                                ScaffoldMessenger.of(
+                                  context,
+                                ).hideCurrentSnackBar();
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      '${item.title} added to cart!',
+                                    ),
+                                    duration: const Duration(seconds: 1),
+                                    backgroundColor: Colors.orange,
+                                  ),
+                                );
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.all(6),
+                                decoration: const BoxDecoration(
+                                  color: Colors.orange,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.add_rounded,
+                                  color: Colors.white,
+                                  size: 18,
+                                  semanticLabel: 'add item',
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+
+                        // Subtitle
+                        Text(
+                          item.subtitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey,
+                          ),
+                        ),
+
+                        // Rating and cafe row
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.star_rounded,
+                              color: Colors.amber,
+                              size: 16,
+                            ),
+                            Expanded(
+                              child: Text(
+                                item.cafe.toLowerCase() == 'offcampus'
+                                    ? '${item.rating} • offcampus'
+                                    : '${item.rating} • CAFE(${item.cafe})',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.black,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ],
     );
   }
 }
