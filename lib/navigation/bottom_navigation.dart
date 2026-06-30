@@ -215,7 +215,7 @@ class _NavigationExampleState extends State<MainScreen> {
                 CupertinoIcons.person_circle,
                 semanticLabel: 'my profile',
               ),
-              label: "Profile",
+              label: "Account",
             ),
           ],
         ),
