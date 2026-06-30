@@ -136,13 +136,14 @@ PHASE 1
 
 Goal:
 
-implement **filter by categories logic** in categories screen
+add and update **click to view the full list** on home screen food cards
 
 Requirements:
 
-* filter items by food categories
-* update the food list according to categories
-* add another category **All** on the top of category lists to apply no filter
+* enable user to click the forward arrow iconbutton and view the extended list of food items from the horizontal row of cards
+* in the CategoriesTitles screen instead of using flutter's default back iconbutton navigation use close Iconbutton its the appbar
+* on the appbar make sure the title is the same as in the homescreen horizontal list cards sections
+* in the CategoriesTitles screen, the food cards should be layed out vetically like in the categories_screen.dart file inside screens folder
 
 Restrictions:
 

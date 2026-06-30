@@ -409,7 +409,17 @@ class CardRowItems extends StatelessWidget {
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
               IconButton(
-                onPressed: () {},
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => CategoriesTitles(
+                        title: title,
+                        items: flipItems ? items.reversed.toList() : items,
+                      ),
+                    ),
+                  );
+                },
                 icon: Icon(Icons.arrow_forward, semanticLabel: 'more items'),
                 style: IconButton.styleFrom(
                   padding: EdgeInsets.zero,
@@ -543,14 +553,18 @@ class CardRowItems extends StatelessWidget {
                                     color: Colors.amber,
                                     size: 16,
                                   ),
-                                  Text(
-                                    // If cafe is 'offcampus', show 'OFF-CAMPUS', otherwise show 'CAFE(X)'
-                                    item.cafe.toLowerCase() == 'offcampus'
-                                        ? '${item.rating} • offcampus'
-                                        : '${item.rating} • CAFE(${item.cafe})',
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.black,
+                                  Expanded(
+                                    child: Text(
+                                      // If cafe is 'offcampus', show 'OFF-CAMPUS', otherwise show 'CAFE(X)'
+                                      item.cafe.toLowerCase() == 'offcampus'
+                                          ? '${item.rating} • offcampus'
+                                          : '${item.rating} • CAFE(${item.cafe})',
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.black,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
                                 ],
@@ -813,6 +827,155 @@ class ItemDescriptionsHome extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class CategoriesTitles extends StatelessWidget {
+  final String title;
+  final List<FoodItem> items;
+
+  const CategoriesTitles({
+    super.key,
+    required this.title,
+    required this.items,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final dpr = MediaQuery.of(context).devicePixelRatio;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(
+          title,
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+        leading: IconButton(
+          icon: const Icon(Icons.close),
+          onPressed: () {
+            Navigator.pop(context);
+          },
+        ),
+      ),
+      body: ListView.builder(
+        padding: const EdgeInsets.all(10.0),
+        itemCount: items.length,
+        itemBuilder: (context, index) {
+          final item = items[index];
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 24.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                AspectRatio(
+                  aspectRatio: 2.2,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: GestureDetector(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => ItemDescriptionsHome(item: item),
+                          ),
+                        );
+                      },
+                      child: Hero(
+                        tag: 'home_${item.cafe}_${item.title}_${item.image}',
+                        child: Image.asset(
+                          item.image,
+                          height: 100,
+                          width: double.infinity,
+                          fit: BoxFit.cover,
+                          cacheWidth: (220 * dpr).round(),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+
+                Padding(
+                  padding: const EdgeInsets.all(4),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              item.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Colors.black,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          GestureDetector(
+                            onTap: () {
+                              CartService().addToCart(item);
+                              ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('${item.title} added to cart!'),
+                                  duration: const Duration(seconds: 1),
+                                  backgroundColor: Colors.orange,
+                                ),
+                              );
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                color: Colors.orange,
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.add_rounded,
+                                color: Colors.white,
+                                size: 18,
+                                semanticLabel: 'add item',
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.star_rounded,
+                            color: Colors.amber,
+                            size: 16,
+                          ),
+                          Expanded(
+                            child: Text(
+                              // If cafe is 'offcampus', show 'OFF-CAMPUS', otherwise show 'CAFE(X)'
+                              item.cafe.toLowerCase() == 'offcampus'
+                                  ? '${item.rating} • offcampus'
+                                  : '${item.rating} • CAFE(${item.cafe})',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Colors.black,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }

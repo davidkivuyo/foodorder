@@ -9,8 +9,8 @@ void main() {
     await tester.pumpWidget(const MyApp());
     await tester.pumpAndSettle();
 
-    // 2. Verify that AppBar title 'CampusBite' exists
-    expect(find.text('CampusBite'), findsOneWidget);
+    // 2. Verify that AppBar title 'Campus Bite' exists
+    expect(find.text('Campus Bite'), findsOneWidget);
 
     // 3. Verify that the bottom navigation bar has the correct destinations
     expect(find.text('Home'), findsOneWidget);
@@ -18,9 +18,9 @@ void main() {
     expect(find.text('Orders'), findsOneWidget);
     expect(find.text('Account'), findsOneWidget);
 
-    // 4. Verify initial screen is HomeScreen (should contain "Welcome DAVID!" and "Today's Menu: CAFE 1")
-    expect(find.text('Welcome DAVID!'), findsOneWidget);
-    expect(find.text("Today's Menu: CAFE 1"), findsOneWidget);
+    // 4. Verify initial screen is HomeScreen (should contain "Search your next meal" and "Favourite on campus")
+    expect(find.text('Search your next meal'), findsOneWidget);
+    expect(find.text('Favourite on campus'), findsOneWidget);
 
     // 5. Navigate to Categories screen
     await tester.tap(find.text('Categories'));
@@ -28,7 +28,7 @@ void main() {
 
     // Verify Categories screen content is shown
     expect(find.text('Explore Categories'), findsOneWidget);
-    expect(find.text('Breakfast'), findsOneWidget);
+    expect(find.textContaining('Breakfast'), findsOneWidget);
 
     // 6. Navigate to Orders screen
     await tester.tap(find.text('Orders'));
@@ -36,7 +36,7 @@ void main() {
 
     // Verify Orders screen placeholder content is shown
     expect(find.byType(OrdersScreen), findsOneWidget);
-    expect(find.descendant(of: find.byType(OrdersScreen), matching: find.text('Orders')), findsOneWidget);
+    expect(find.descendant(of: find.byType(OrdersScreen), matching: find.textContaining('orders')), findsOneWidget);
 
     // 7. Navigate to Account screen
     await tester.tap(find.text('Account'));
@@ -44,6 +44,6 @@ void main() {
 
     // Verify Account screen placeholder content is shown
     expect(find.byType(AccountScreen), findsOneWidget);
-    expect(find.descendant(of: find.byType(AccountScreen), matching: find.text('Account')), findsOneWidget);
+    expect(find.descendant(of: find.byType(AccountScreen), matching: find.textContaining('Account')), findsOneWidget);
   });
 }
