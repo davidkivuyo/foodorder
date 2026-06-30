@@ -162,11 +162,12 @@ Phase 1 is complete when:
 * App runs successfully.
 * No runtime errors occur.
 
-----------------------------------------
+---
 
-Good question — and worth stepping back on, since sequencing this wrong is a common way these projects stall. Here's how I'd think about dependency order and risk, based on what your app currently is (a campus food-ordering app with cart, categories, orders, search UI already scaffolded with hardcoded data).
 
-**Recommended order, and why**
+
+
+# The following below words are out of scope for the app, **PLEASE do not read or use this implement anything**
 
 **1. Firebase setup + data layer first (not last)**
 
