@@ -189,7 +189,7 @@ class _NavigationExampleState extends State<MainScreen> {
             }
           },
 
-          indicatorColor: Colors.orange,
+          indicatorColor: Colors.green,
 
           labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
           destinations: [
