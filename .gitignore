@@ -44,3 +44,19 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Firebase / FlutterFire configuration files
+.firebaserc
+
+# Firebase Admin
+service-account.json
+firebase-adminsdk-*.json
+
+# Environment variables
+.env
+.env.*
+
+# Android signing
+*.jks
+*.keystore
+key.properties
