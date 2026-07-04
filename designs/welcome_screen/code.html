@@ -1,11 +1,15 @@
-<!DOCTYPE html><html lang="en"><head>
-<meta charset="utf-8">
-<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
 <title>Campus Bite - Welcome</title>
 <!-- Plus Jakarta Sans Font -->
-<link href="https://fonts.googleapis.com" rel="preconnect">
-<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect">
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<!-- Material Symbols for the checkmark -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/>
 <!-- Tailwind CSS v3 CDN -->
 <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
 <script>
@@ -49,11 +53,19 @@
     .overlay-gradient {
       background: linear-gradient(to bottom, rgba(0,0,0,0.4) 0%, rgba(0,0,0,0) 25%, rgba(0,0,0,0) 60%, rgba(0,0,0,0.7) 100%);
     }
+
+    /* Floating card frosted glass effect */
+    .glass-effect {
+      background: rgba(255, 255, 255, 0.2);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+    }
   </style>
 </head>
 <body class="bg-brand-surface antialiased">
 <!-- BEGIN: HeroBackgroundContainer -->
-<main class="relative h-screen w-full hero-bg" data-purpose="onboarding-container">
+<main class="relative h-screen w-full hero-bg" data-purpose="onboarding-container" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuCqonE2QvFxkfjlUTRLEFw2uIfSXronnxyUmm9y7DIXhMArAf2ZEk-cdC9WvQS72WHBizFb-jzJK4x7llCFAzZTrJy-ZkTpNOB54rYXrk11NcBjv7Yts70zB55dShck8zuCoU5rLQowGUlkgXHcCCWmEUlt2CztvLqzgus8sO5_wjmxITJbKdIA2_fytrfN3LB3gfxbgvtDjXm-msl_IgbIqdpXG1As-IyxtXTyi_rpR9cQxJE8QA7Z-D3jXv24zSnm9bZUwSHicc8d'); background-size: cover; background-position: center top; background-repeat: no-repeat;">
 <!-- Gradient for text contrast -->
 <div class="absolute inset-0 overlay-gradient"></div>
 <!-- BEGIN: HeaderSection -->
@@ -61,7 +73,7 @@
 <div class="inline-flex items-center gap-2">
 <!-- Minimalist Fork/Knife Icon Placeholder representing the logo -->
 <div class="bg-brand-green p-2 rounded-eight shadow-lg">
-<svg class="h-6 w-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+<svg class="h-6 w-6 text-white" fill="none" stroke="currentColor" viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
 <path d="M12 6v6m0 0v6m0-6h6m-6 0H6" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
 </svg>
 </div>
@@ -69,9 +81,11 @@
 </div>
 </header>
 <!-- END: HeaderSection -->
-<!-- Note: The "Order Ready!" card is part of the provided IMAGE_7 and is visually centered in the composition -->
+<!-- BEGIN: FloatingCard -->
+<!-- Positioned to avoid cutoff, with margin from right edge -->
+<!-- END: FloatingCard -->
 <!-- BEGIN: BottomActionSection -->
-<section class="absolute bottom-0 left-0 right-0 p-8 pb-12 z-10 flex flex-col items-center px-6" data-purpose="onboarding-actions">
+<section class="absolute bottom-0 left-0 right-0 p-8 pb-12 z-10 flex flex-col items-center" data-purpose="onboarding-actions">
 <!-- Typography Content -->
 <div class="text-center mb-8">
 <h2 class="text-3xl font-bold text-white mb-2 drop-shadow-sm">
@@ -83,8 +97,8 @@
 </div>
 <!-- Action Button -->
 <button class="w-full max-w-sm py-4 bg-brand-green hover:bg-green-800 active:scale-[0.98] transition-all text-white font-bold text-lg rounded-eight shadow-xl flex items-center justify-center gap-2" data-purpose="primary-cta" id="btn-start-ordering">
-<span class="">Start Ordering</span>
-<svg class="h-5 w-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+<span>Start Ordering</span>
+<svg class="h-5 w-5" fill="currentColor" viewbox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
 <path clip-rule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" fill-rule="evenodd"></path>
 </svg>
 </button>
@@ -96,6 +110,15 @@
 <!-- END: BottomActionSection -->
 </main>
 <!-- END: HeroBackgroundContainer -->
+<style>
+    @keyframes bounce {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-10px); }
+    }
+    .animate-bounce-slow {
+      animation: bounce 4s infinite ease-in-out;
+    }
+  </style>
 <script data-purpose="interaction-logic">
     // Simple click handler for the primary button
     document.getElementById('btn-start-ordering').addEventListener('click', function() {
@@ -103,6 +126,4 @@
       // Navigation logic would go here
     });
   </script>
-
-
 </body></html>
