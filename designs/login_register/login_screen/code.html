@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Campus Bite - Login</title>
+<!-- Google Fonts -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Plus+Jakarta+Sans:wght@600;700;800&amp;display=swap" rel="stylesheet"/>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "on-tertiary-container": "#ecf1ff",
+                    "surface-container-lowest": "#ffffff",
+                    "background": "#f8f9fa",
+                    "inverse-on-surface": "#f0f1f2",
+                    "tertiary-fixed-dim": "#a5c8ff",
+                    "on-primary": "#ffffff",
+                    "primary-container": "#2e7d32",
+                    "tertiary": "#00569f",
+                    "surface-container-highest": "#e1e3e4",
+                    "surface": "#f8f9fa",
+                    "surface-container": "#edeeef",
+                    "on-secondary-fixed-variant": "#6d3a00",
+                    "outline-variant": "#bfcaba",
+                    "on-secondary": "#ffffff",
+                    "on-error": "#ffffff",
+                    "secondary-fixed-dim": "#ffb77a",
+                    "secondary": "#8f4e00",
+                    "surface-dim": "#d9dadb",
+                    "secondary-container": "#fea85a",
+                    "surface-variant": "#e1e3e4",
+                    "on-primary-container": "#cbffc2",
+                    "surface-bright": "#f8f9fa",
+                    "on-secondary-container": "#733d00",
+                    "tertiary-container": "#2f6fb9",
+                    "surface-container-low": "#f3f4f5",
+                    "secondary-fixed": "#ffdcc2",
+                    "on-tertiary-fixed": "#001c3a",
+                    "on-error-container": "#93000a",
+                    "primary-fixed": "#a3f69c",
+                    "inverse-surface": "#2e3132",
+                    "on-tertiary": "#ffffff",
+                    "inverse-primary": "#88d982",
+                    "tertiary-fixed": "#d4e3ff",
+                    "primary": "#0e631b",
+                    "on-surface": "#191c1d",
+                    "on-background": "#191c1d",
+                    "on-primary-fixed-variant": "#005312",
+                    "on-tertiary-fixed-variant": "#004785",
+                    "primary-fixed-dim": "#88d982",
+                    "on-secondary-fixed": "#2e1500",
+                    "surface-tint": "#1b6d24",
+                    "on-surface-variant": "#40493d",
+                    "surface-container-high": "#e7e8e9",
+                    "outline": "#707a6c",
+                    "error-container": "#ffdad6",
+                    "on-primary-fixed": "#002203",
+                    "error": "#ba1a1a"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.25rem",
+                    "lg": "0.5rem",
+                    "xl": "0.75rem",
+                    "full": "9999px"
+            },
+            "spacing": {
+                    "gutter": "16px",
+                    "xs": "4px",
+                    "sm": "12px",
+                    "md": "16px",
+                    "container-margin": "16px",
+                    "lg": "24px",
+                    "xl": "32px",
+                    "base": "8px"
+            },
+            "fontFamily": {
+                    "label-sm": ["Inter"],
+                    "headline-md": ["Plus Jakarta Sans"],
+                    "headline-lg": ["Plus Jakarta Sans"],
+                    "title-lg": ["Inter"],
+                    "display-lg": ["Plus Jakarta Sans"],
+                    "body-md": ["Inter"],
+                    "title-md": ["Inter"],
+                    "body-lg": ["Inter"],
+                    "label-lg": ["Inter"],
+                    "headline-sm": ["Plus Jakarta Sans"],
+                    "headline-lg-mobile": ["Plus Jakarta Sans"]
+            },
+            "fontSize": {
+                    "label-sm": ["11px", {"lineHeight": "16px", "letterSpacing": "0.5px", "fontWeight": "500"}],
+                    "headline-md": ["28px", {"lineHeight": "36px", "fontWeight": "600"}],
+                    "headline-lg": ["32px", {"lineHeight": "40px", "fontWeight": "600"}],
+                    "title-lg": ["22px", {"lineHeight": "28px", "fontWeight": "500"}],
+                    "display-lg": ["57px", {"lineHeight": "64px", "letterSpacing": "-0.25px", "fontWeight": "700"}],
+                    "body-md": ["14px", {"lineHeight": "20px", "letterSpacing": "0.25px", "fontWeight": "400"}],
+                    "title-md": ["16px", {"lineHeight": "24px", "letterSpacing": "0.15px", "fontWeight": "600"}],
+                    "body-lg": ["16px", {"lineHeight": "24px", "letterSpacing": "0.5px", "fontWeight": "400"}],
+                    "label-lg": ["14px", {"lineHeight": "20px", "letterSpacing": "0.1px", "fontWeight": "500"}],
+                    "headline-sm": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                    "headline-lg-mobile": ["28px", {"lineHeight": "34px", "fontWeight": "600"}]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .bouncy-focus:focus-within {
+            transform: translateY(-2px);
+            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        .btn-active:active {
+            transform: scale(0.9);
+            transition: transform 0.1s ease;
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background font-body-md min-h-screen flex flex-col selection:bg-primary-fixed selection:text-on-primary-fixed">
+<!-- Screen Suppresses Global Nav Shell due to Task-Focused Intent (Login) -->
+<main class="flex-grow flex items-center justify-center px-container-margin py-xl relative overflow-hidden">
+<!-- Subtle Atmospheric Background Circles -->
+<div class="absolute -top-24 -left-24 w-64 h-64 bg-primary/5 rounded-full blur-3xl pointer-events-none"></div>
+<div class="absolute -bottom-24 -right-24 w-96 h-96 bg-secondary-container/10 rounded-full blur-3xl pointer-events-none"></div>
+<div class="w-full max-w-[400px] flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-700">
+<!-- Brand Identity Section -->
+<div class="flex flex-col items-center mb-xl">
+<div class="w-24 h-24 mb-md rounded-2xl overflow-hidden shadow-sm border border-outline-variant bg-surface-container-lowest p-xs flex items-center justify-center">
+<img alt="Campus Bite Logo" class="w-full h-full object-contain" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDfGRP9xTF-CA_L-jc_QcRFdUPOXdhECjfvakCI6D6I2mEVJJpCt3jkBP0lyeoc_ZCaUxBQ0_rFMH-I4Pko6llmNByxzeKeHV03ZMPtxu-RzrdFun7qxxm4r0uUvpqiz6OLUbvmHWHcwLdiroaIZy_COV6Y5Yr7UYw6kjIrbnhe4vyC0hkEhSIn5bT4XpD1y9r2_MlQ1paICRdZLVmlIvPies45qAPkS4kYzuFzImrRafOAwk1q0yPjs-P3gAKC8GLY4kP-7E0qzBUx"/>
+</div>
+<h1 class="font-headline-lg-mobile text-headline-lg-mobile text-on-surface tracking-tight mb-xs">Welcome Back!</h1>
+<p class="font-body-md text-on-surface-variant text-center opacity-80">Fueling your study sessions with campus-best bites.</p>
+</div>
+<!-- Login Form -->
+<form class="space-y-lg" onsubmit="event.preventDefault();">
+<!-- Email Field -->
+<div class="space-y-xs group bouncy-focus">
+<label class="font-label-lg text-label-lg text-on-surface ml-1" for="email">University Email</label>
+<div class="relative">
+<span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant text-[20px]">alternate_email</span>
+<input class="w-full bg-surface-container-lowest border border-outline-variant rounded-xl py-4 pl-12 pr-4 text-on-surface font-body-lg placeholder:text-outline-variant focus:ring-2 focus:ring-primary focus:border-primary transition-all outline-none" id="email" placeholder="yourname@university.edu" required="" type="email"/>
+</div>
+</div>
+<!-- Password Field -->
+<div class="space-y-xs group bouncy-focus">
+<div class="flex justify-between items-center px-1">
+<label class="font-label-lg text-label-lg text-on-surface" for="password">Password</label>
+<a class="font-label-lg text-label-lg text-primary hover:underline transition-colors" href="#">Forgot Password?</a>
+</div>
+<div class="relative">
+<span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant text-[20px]">lock</span>
+<input class="w-full bg-surface-container-lowest border border-outline-variant rounded-xl py-4 pl-12 pr-12 text-on-surface font-body-lg placeholder:text-outline-variant focus:ring-2 focus:ring-primary focus:border-primary transition-all outline-none" id="password" placeholder="••••••••" required="" type="password"/>
+<button class="absolute right-4 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-on-surface transition-colors" type="button">
+<span class="material-symbols-outlined text-[20px]">visibility</span>
+</button>
+</div>
+</div>
+<!-- Login Button -->
+<button class="w-full bg-primary text-on-primary py-4 rounded-xl font-title-md text-title-md shadow-md hover:bg-primary-container hover:shadow-lg active:scale-95 transition-all duration-200 flex items-center justify-center gap-2 btn-active" type="submit">
+                    Login
+                    <span class="material-symbols-outlined">arrow_forward</span>
+</button>
+</form>
+<!-- Social Login Divider -->
+<div class="flex items-center my-xl gap-4">
+<div class="h-px bg-outline-variant flex-grow"></div>
+<span class="font-label-sm text-label-sm text-outline uppercase tracking-widest">or</span>
+<div class="h-px bg-outline-variant flex-grow"></div>
+</div>
+<!-- Alternative Login -->
+<div class="grid grid-cols-2 gap-md">
+<button class="flex items-center justify-center gap-2 border border-outline-variant bg-surface-container-lowest py-3 rounded-xl hover:bg-surface-container-low transition-colors btn-active">
+<img alt="Google" class="w-5 h-5" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBw0gYLOHQQ4jewSv4ix_xLExjp5vvwJ12sKqFXcLPTpxV3ye7jjDEkf3cMWSnnG0X__kh-h_fiB9qjEzvNcsSUPC1uLAqJLEt4pRZ9qzAhNF5y9LGIaKH4lVxReL0dGvEIGbfwR2QgWMl_SPfFuRfB0NIdPdJSTPOiWZVPEnPsDBja-tDcE4lbWbu9n-mkidTrLCfRoo6QfPozaDjRCyFeZAP1GgJIM3vSm54e8AviNyhYFxlhxIKF6gCnsAS46H6ljLMqCTEqTE-i"/>
+<span class="font-label-lg text-label-lg">Google</span>
+</button>
+<button class="flex items-center justify-center gap-2 border border-outline-variant bg-surface-container-lowest py-3 rounded-xl hover:bg-surface-container-low transition-colors btn-active">
+<span class="material-symbols-outlined text-tertiary">school</span>
+<span class="font-label-lg text-label-lg">UniID</span>
+</button>
+</div>
+<!-- Footer Signup Link -->
+<div class="mt-xl text-center">
+<p class="font-body-md text-on-surface-variant">
+                    Don't have an account? 
+                    <a class="text-primary font-title-md hover:underline" href="#">Sign Up</a>
+</p>
+</div>
+</div>
+</main>
+<!-- App Bottom Safe Area Padding -->
+<div class="pb-safe h-8"></div>
+<script>
+        // Micro-interaction: Password visibility toggle
+        const toggleBtn = document.querySelector('button span:contains("visibility")')?.parentElement;
+        const passwordInput = document.querySelector('#password');
+        
+        if (toggleBtn) {
+            toggleBtn.addEventListener('click', () => {
+                const isPassword = passwordInput.type === 'password';
+                passwordInput.type = isPassword ? 'text' : 'password';
+                toggleBtn.querySelector('span').textContent = isPassword ? 'visibility_off' : 'visibility';
+            });
+        }
+
+        // Custom selector polyfill for the demo
+        document.querySelectorAll('button').forEach(btn => {
+            if(btn.innerHTML.includes('visibility')) {
+                btn.addEventListener('click', (e) => {
+                    const input = btn.previousElementSibling;
+                    const icon = btn.querySelector('span');
+                    if(input.type === 'password') {
+                        input.type = 'text';
+                        icon.innerText = 'visibility_off';
+                    } else {
+                        input.type = 'password';
+                        icon.innerText = 'visibility';
+                    }
+                });
+            }
+        });
+    </script>
+</body></html>
