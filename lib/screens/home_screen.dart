@@ -9,105 +9,137 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // home screen body
       body: SafeArea(
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // search bar
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(10),
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const SearchBarScreen(),
-                        ),
-                      );
-                    },
-                    child: Container(
-                      height: 56,
-                      padding: const EdgeInsets.symmetric(horizontal: 18),
+        child: StreamBuilder<List<FoodItem>>(
+          stream: FoodData.foodItemsStream,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (snapshot.hasError) {
+              return Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(32.0),
+                  child: Text(
+                    'Error loading meals: ${snapshot.error}',
+                    style: const TextStyle(color: Colors.red),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              );
+            }
 
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade200,
-                        borderRadius: BorderRadius.circular(28),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(
-                            Icons.search,
-                            color: Colors.black87,
-                            size: 24,
-                          ),
-                          const SizedBox(width: 12),
+            final allItems = snapshot.data ?? [];
 
-                          Expanded(
-                            child: Text(
-                              "Search your next meal",
-                              style: TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w500,
-                              ),
+            final campusFavourites = allItems
+                .where((f) => f.section == 'campus_favourite')
+                .toList();
+            final todaysDeals = allItems
+                .where((f) => f.section == 'todays_deals')
+                .toList();
+            final drinks = allItems
+                .where((f) => f.section == 'drinks')
+                .toList();
+            final offCampus = allItems
+                .where((f) => f.section == 'off_campus')
+                .toList();
+            final other = allItems.where((f) => f.section == 'other').toList();
+
+            return SingleChildScrollView(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // search bar
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(10),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const SearchBarScreen(),
                             ),
+                          );
+                        },
+                        child: Container(
+                          height: 56,
+                          padding: const EdgeInsets.symmetric(horizontal: 18),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade200,
+                            borderRadius: BorderRadius.circular(28),
                           ),
-                        ],
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.search,
+                                color: Colors.black87,
+                                size: 24,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  "Search your next meal",
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                ),
 
-                //space
-                const SizedBox(height: 18),
+                    //space
+                    /*const SizedBox(height: 18),
 
-                // banner
-                SpecialBannerCard(),
+                    // banner
+                    SpecialBannerCard(),
 
-                // space
-                const SizedBox(height: 18),
+                    // space
+                    const SizedBox(height: 18),*/
 
-                // card grid
-                CardRowItems(
-                  title: "Favourite on campus",
-                  items: FoodData.campusFavourites,
-                ),
-                const Divider(),
-                CardRowItems(
-                  title: "Today's Deals",
-                  items: FoodData.todaysDeals,
-                ),
-                const Divider(),
+                    // card grid
+                    CardRowItems(
+                      title: "Favourite on campus",
+                      items: campusFavourites,
+                    ),
+                    const Divider(),
+                    CardRowItems(title: "Today's Deals", items: todaysDeals),
+                    /*const Divider(),
 
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                  child: Text(
-                    "Quick Bites",
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                      child: Text(
+                        "Quick Bites",
+                        style: TextStyle(
+                            fontSize: 18, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    QuickBites(),
+*/
+                    const Divider(),
+                    CardRowItems(title: "Drinks Deals!", items: drinks),
+                    const Divider(),
+                    CardRowItems(
+                      title: "Deals outside campus",
+                      items: offCampus,
+                    ),
+                    const Divider(),
+                    CardColumnItems(
+                      title: "Other meal deals",
+                      items: other,
+                      flipItems: true,
+                    ),
+                  ],
                 ),
-                QuickBites(),
-
-                const Divider(),
-                CardRowItems(title: "Drinks Deals!", items: FoodData.drinks),
-                const Divider(),
-                CardRowItems(
-                  title: "Deals outside campus",
-                  items: FoodData.offCampus,
-                ),
-                const Divider(),
-                CardColumnItems(
-                  title: "Other meal deals",
-                  items: FoodData.other,
-                  flipItems: true,
-                ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         ),
       ),
     );
@@ -253,7 +285,6 @@ class CardRowItems extends StatelessWidget {
     final displayedItems = flipItems
         ? items.reversed.take(maxItems).toList()
         : items.take(maxItems).toList();
-    final dpr = MediaQuery.of(context).devicePixelRatio;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -329,13 +360,10 @@ class CardRowItems extends StatelessWidget {
                                 child: Hero(
                                   tag:
                                       'home_${item.cafe}_${item.title}_${item.image}',
-
-                                  child: Image.asset(
-                                    item.image,
+                                  child: item.buildImage(
                                     height: 120,
                                     width: double.infinity,
                                     fit: BoxFit.cover,
-                                    cacheWidth: (220 * dpr).round(),
                                   ),
                                 ),
                               ),
@@ -574,12 +602,10 @@ class ItemDescriptionsHome extends StatelessWidget {
                   Hero(
                     tag: 'home_${item.cafe}_${item.title}_${item.image}',
                     child: ClipRRect(
-                      child: Image.asset(
-                        item.image,
+                      child: item.buildImage(
                         width: double.infinity,
                         height: 220,
                         fit: BoxFit.cover,
-                        cacheHeight: 660,
                       ),
                     ),
                   ),
@@ -700,8 +726,6 @@ class CategoriesTitles extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final dpr = MediaQuery.of(context).devicePixelRatio;
-
     return Scaffold(
       appBar: AppBar(
         title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
@@ -737,12 +761,10 @@ class CategoriesTitles extends StatelessWidget {
                       },
                       child: Hero(
                         tag: 'home_${item.cafe}_${item.title}_${item.image}',
-                        child: Image.asset(
-                          item.image,
+                        child: item.buildImage(
                           height: 100,
                           width: double.infinity,
                           fit: BoxFit.cover,
-                          cacheWidth: (220 * dpr).round(),
                         ),
                       ),
                     ),
@@ -850,7 +872,6 @@ class CardColumnItems extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final dpr = MediaQuery.of(context).devicePixelRatio;
     final displayedItems = flipItems ? items.reversed.toList() : items;
 
     return Column(
@@ -896,11 +917,9 @@ class CardColumnItems extends StatelessWidget {
                         },
                         child: Hero(
                           tag: 'home_${item.cafe}_${item.title}_${item.image}',
-                          child: Image.asset(
-                            item.image,
+                          child: item.buildImage(
                             width: double.infinity,
                             fit: BoxFit.cover,
-                            cacheWidth: (220 * dpr).round(),
                           ),
                         ),
                       ),

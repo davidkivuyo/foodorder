@@ -62,3 +62,4 @@ firebase-adminsdk-*.json
 key.properties
 lib/firebase_options.dart
 android/app/google-services.json
+scripts/

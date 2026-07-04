@@ -18,88 +18,6 @@ class CategoryScreen extends StatefulWidget {
 class _CategoryScreenState extends State<CategoryScreen> {
   String _selectedCategory = 'All';
 
-  final List<FoodItem> _allItems = [
-    const FoodItem(
-      image: 'designs/assets/sandwich.jpg',
-      title: 'Honey Sandwich',
-      subtitle: 'Fresh sandwich for your breakfast',
-      price: 1000,
-      rating: 4.5,
-      category: 'Breakfast',
-      cafe: '1',
-      time: '5min',
-    ),
-    const FoodItem(
-      image: 'designs/assets/burgerchips.jpg',
-      title: 'Burger with Fries',
-      subtitle: 'Served with your favourite additive',
-      price: 7000,
-      rating: 4.8,
-      category: 'Lunch',
-      cafe: '2',
-      time: '15min',
-    ),
-    const FoodItem(
-      image: 'designs/assets/biriyanimeat.jpg',
-      title: 'Biriyani meat',
-      subtitle: 'Loaded with fresh vegetables',
-      price: 4500,
-      rating: 4.3,
-      category: 'Lunch',
-      cafe: '2',
-      time: '10min',
-    ),
-    const FoodItem(
-      image: 'designs/assets/chips.jpg',
-      title: 'Chips Mshkaki',
-      subtitle: 'Extra cheese and crispy fries',
-      price: 8500,
-      rating: 4.9,
-      category: 'Dinner',
-      cafe: '1',
-      time: '10min',
-    ),
-    const FoodItem(
-      image: 'designs/assets/pizzaplate.jpg',
-      title: 'Pizza pepperoni',
-      subtitle: 'the pizza for your study break',
-      price: 5000,
-      rating: 4.7,
-      category: 'Teasers',
-      cafe: 'offcampus',
-      time: '20min',
-    ),
-    const FoodItem(
-      image: 'designs/assets/pizza.jpg',
-      title: 'Pizza plate perfect',
-      subtitle: 'Perfect pizza for you',
-      price: 5000,
-      rating: 4.7,
-      category: 'Teasers',
-      cafe: 'offcampus',
-      time: '20min',
-    ),
-    const FoodItem(
-      image: 'designs/assets/juice.jpg',
-      title: 'Fresh orange juice',
-      subtitle: 'Fresh from the field',
-      price: 2000,
-      rating: 4.6,
-      category: 'Drinks',
-      cafe: '1',
-      time: '2min',
-    ),
-  ];
-
-  List<FoodItem> get _filteredItems {
-    if (_selectedCategory == 'All') {
-      return _allItems;
-    }
-    return _allItems
-        .where((item) => item.category == _selectedCategory)
-        .toList();
-  }
-
   static const List<_Category> _categories = [
     _Category('🍽️ All', 'All'),
     _Category('🥞 Breakfast', 'Breakfast'),
@@ -111,43 +29,77 @@ class _CategoryScreenState extends State<CategoryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      child: Padding(
-        padding: const EdgeInsets.all(10.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Explore Categories',
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-                letterSpacing: .75,
+    return StreamBuilder<List<FoodItem>>(
+      stream: FoodData.foodItemsStream,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(
+            child: Padding(
+              padding: EdgeInsets.all(32.0),
+              child: CircularProgressIndicator(),
+            ),
+          );
+        }
+        if (snapshot.hasError) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(32.0),
+              child: Text(
+                'Error loading categories: ${snapshot.error}',
+                style: const TextStyle(color: Colors.red),
               ),
             ),
-            Text(
-              'Find the best meal for your study break!',
-              style: TextStyle(fontSize: 15),
+          );
+        }
+
+        final allItems = snapshot.data ?? [];
+        final filteredItems = _selectedCategory == 'All'
+            ? allItems
+            : allItems
+                .where((item) =>
+                    item.category.toLowerCase() ==
+                    _selectedCategory.toLowerCase())
+                .toList();
+
+        return SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.all(10.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Explore Categories',
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: .75,
+                  ),
+                ),
+                const Text(
+                  'Find the best meal for your study break!',
+                  style: TextStyle(fontSize: 15),
+                ),
+                const SizedBox(height: 18),
+                _buildCategoryChips(),
+                const SizedBox(height: 18),
+                filteredItems.isEmpty
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(32),
+                          child: Text(
+                            'No items found for $_selectedCategory',
+                            style: const TextStyle(fontSize: 16, color: Colors.grey),
+                          ),
+                        ),
+                      )
+                    : Cards(items: filteredItems),
+                const SizedBox(height: 10),
+                BottomBanner(),
+              ],
             ),
-            const SizedBox(height: 18),
-            _buildCategoryChips(),
-            const SizedBox(height: 18),
-            _filteredItems.isEmpty
-                ? Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(32),
-                      child: Text(
-                        'No items found for $_selectedCategory',
-                        style: TextStyle(fontSize: 16, color: Colors.grey),
-                      ),
-                    ),
-                  )
-                : Cards(items: _filteredItems),
-            const SizedBox(height: 10),
-            BottomBanner(),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
@@ -234,7 +186,6 @@ class FoodCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final dpr = MediaQuery.of(context).devicePixelRatio;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -253,12 +204,10 @@ class FoodCard extends StatelessWidget {
               },
               child: Hero(
                 tag: 'category_${item.cafe}_${item.title}_${item.image}',
-                child: Image.asset(
-                  item.image,
+                child: item.buildImage(
                   height: 100,
                   width: double.infinity,
                   fit: BoxFit.cover,
-                  cacheWidth: (220 * dpr).round(),
                 ),
               ),
             ),
@@ -439,12 +388,10 @@ class ItemDescriptionsCategories extends StatelessWidget {
                   Hero(
                     tag: 'category_${item.cafe}_${item.title}_${item.image}',
                     child: ClipRRect(
-                      child: Image.asset(
-                        item.image,
+                      child: item.buildImage(
                         width: double.infinity,
                         height: 220,
                         fit: BoxFit.cover,
-                        cacheHeight: 660,
                       ),
                     ),
                   ),

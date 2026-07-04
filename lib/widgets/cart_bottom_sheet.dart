@@ -108,8 +108,7 @@ class CartBottomSheet extends StatelessWidget {
                           // Food Image
                           ClipRRect(
                             borderRadius: BorderRadius.circular(12),
-                            child: Image.asset(
-                              item.foodItem.image,
+                            child: item.foodItem.buildImage(
                               width: 60,
                               height: 60,
                               fit: BoxFit.cover,
