@@ -132,8 +132,9 @@ class HomeScreen extends StatelessWidget {
                     const Divider(),
                     CardRowItems(title: "Drinks Deals!", items: drinks),
                     const Divider(),
+                    //--------------------------make a separate deals outside university--------------------------------
                     CardRowItems(
-                      title: "Deals outside campus",
+                      title: "Deals outside campus cafes",
                       items: offCampus,
                     ),
                     const Divider(),
