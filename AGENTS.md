@@ -136,13 +136,12 @@ PHASE 1
 
 Goal:
 
-create a **horizontal scrollable list of circular food items** and their titles and prepairing time as layed in the common_food.dart file in the screens folder. And when user clicks the circular images it would navigate them to the corresponding screen with a vertical column layout list of food items just like in the categories screen and when the user clicks one of the images it will navigate to the food items descriptions screen
+create a yellow floating button with basket icon in bottom_navigation.dart file that will appear only when the user adds an item to cart. And make sure that the app doesnot loose state of the cart even if a user leaves the app
 
 Requirements:
 
-* the horizontal scrollable list should have 4 food items titled of Wali, Ugali, chipsi with mockups images which will be fetched from the firestore databse
-* the common_food.dart file should be responsible for all the features
-* the vertical list of the navigated corresponding screen should have layout its items like in the categories screen with the top title same with the horizontal scrollable corresponding titles and a back button. **NO appbar**
+* a yellow floating button with basket icon appears only when the user's cart is not empty
+* maintain app's cart state even when user leaves the app
 
 
 Restrictions:

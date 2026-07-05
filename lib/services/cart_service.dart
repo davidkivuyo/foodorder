@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/cart_item.dart';
 import '../models/order.dart';
 import '../data/food_data.dart';
@@ -8,7 +10,11 @@ class CartService extends ChangeNotifier {
   // Singleton pattern to share state across screens
   static final CartService _instance = CartService._internal();
   factory CartService() => _instance;
-  CartService._internal();
+  CartService._internal() {
+    _loadCart();
+  }
+
+  static const String _cartKey = 'cart_items_v1';
 
   final List<CartItem> _cartItems = [];
   final List<FoodOrder> _orders = [];
@@ -24,6 +30,64 @@ class CartService extends ChangeNotifier {
     return _cartItems.fold(0, (sum, item) => sum + item.quantity);
   }
 
+  // ---------- Persistence ----------
+
+  /// Load persisted cart from shared_preferences on startup.
+  Future<void> _loadCart() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_cartKey);
+    if (raw == null) return;
+
+    try {
+      final List<dynamic> decoded = jsonDecode(raw) as List<dynamic>;
+      for (final entry in decoded) {
+        final map = entry as Map<String, dynamic>;
+        final quantity = (map['quantity'] as num).toInt();
+
+        final foodItem = FoodItem(
+          image: map['image'] as String,
+          title: map['title'] as String,
+          subtitle: map['subtitle'] as String,
+          price: (map['price'] as num).toInt(),
+          rating: (map['rating'] as num).toDouble(),
+          category: map['category'] as String,
+          cafe: map['cafe'] as String,
+          time: map['time'] as String,
+          section: (map['section'] as String?) ?? '',
+        );
+        _cartItems.add(CartItem(foodItem: foodItem, quantity: quantity));
+      }
+      notifyListeners();
+    } catch (_) {
+      // If data is stale or corrupt, start with a fresh cart.
+      _cartItems.clear();
+    }
+  }
+
+  /// Persist the current cart to shared_preferences.
+  Future<void> _saveCart() async {
+    final prefs = await SharedPreferences.getInstance();
+    final encoded = jsonEncode(
+      _cartItems
+          .map((item) => {
+                'title': item.foodItem.title,
+                'subtitle': item.foodItem.subtitle,
+                'image': item.foodItem.image,
+                'price': item.foodItem.price,
+                'rating': item.foodItem.rating,
+                'category': item.foodItem.category,
+                'cafe': item.foodItem.cafe,
+                'time': item.foodItem.time,
+                'section': item.foodItem.section,
+                'quantity': item.quantity,
+              })
+          .toList(),
+    );
+    await prefs.setString(_cartKey, encoded);
+  }
+
+  // ---------- Cart Operations ----------
+
   void addToCart(FoodItem item) {
     final index = _cartItems.indexWhere(
       (element) => element.foodItem.title == item.title && element.foodItem.cafe == item.cafe,
@@ -34,6 +98,7 @@ class CartService extends ChangeNotifier {
       _cartItems.add(CartItem(foodItem: item));
     }
     notifyListeners();
+    _saveCart();
   }
 
   void removeFromCart(FoodItem item) {
@@ -47,6 +112,7 @@ class CartService extends ChangeNotifier {
         _cartItems.removeAt(index);
       }
       notifyListeners();
+      _saveCart();
     }
   }
 
@@ -55,11 +121,13 @@ class CartService extends ChangeNotifier {
       (element) => element.foodItem.title == item.title && element.foodItem.cafe == item.cafe,
     );
     notifyListeners();
+    _saveCart();
   }
 
   void clearCart() {
     _cartItems.clear();
     notifyListeners();
+    _saveCart();
   }
 
   void placeOrder() {
