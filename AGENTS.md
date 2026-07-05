@@ -136,15 +136,14 @@ PHASE 1
 
 Goal:
 
-connect, fetch and display firebase food items from **firebase firestore cloud database** instead of the hardcoded values from the current codebase in both home screen and categories screen
+create a **horizontal scrollable list of circular food items** and their titles and prepairing time as layed in the common_food.dart file in the screens folder. And when user clicks the circular images it would navigate them to the corresponding screen with a vertical column layout list of food items just like in the categories screen and when the user clicks one of the images it will navigate to the food items descriptions screen
 
 Requirements:
 
-* remove the hardcoded data from the current setup and start fetching data from firebase cloud firestore
-* changing the image.asset and prepare for image.network images data
-* sync the app with the firestore database
-* update the fooditems data in the food_data.dart file to accept and receive data from firestore database
-* making sure the images load including displaying non annoying message to the user if the image is not found
+* the horizontal scrollable list should have 4 food items titled of Wali, Ugali, chipsi with mockups images which will be fetched from the firestore databse
+* the common_food.dart file should be responsible for all the features
+* the vertical list of the navigated corresponding screen should have layout its items like in the categories screen with the top title same with the horizontal scrollable corresponding titles and a back button. **NO appbar**
+
 
 Restrictions:
 

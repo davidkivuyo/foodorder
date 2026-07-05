@@ -69,7 +69,8 @@ class FoodItem {
             ),
           ),
         ),
-        errorWidget: (context, url, error) => _buildErrorPlaceholder(width, height),
+        errorWidget: (context, url, error) =>
+            _buildErrorPlaceholder(width, height),
       );
     } else {
       return Image.asset(
@@ -117,10 +118,9 @@ class FoodItem {
 class FoodData {
   /// Stream of all food items from Firestore database to sync app state in real-time
   static Stream<List<FoodItem>> get foodItemsStream {
-    return FirebaseFirestore.instance
-        .collection('food_items')
-        .snapshots()
-        .map((snapshot) {
+    return FirebaseFirestore.instance.collection('food_items').snapshots().map((
+      snapshot,
+    ) {
       return snapshot.docs.map((doc) {
         return FoodItem.fromMap(doc.data());
       }).toList();

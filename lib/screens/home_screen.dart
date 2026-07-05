@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../data/food_data.dart';
 import '../data/search_bar.dart';
 import '../services/cart_service.dart';
+import 'common_food.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -95,13 +96,10 @@ class HomeScreen extends StatelessWidget {
                     ),
 
                     //space
-                    /*const SizedBox(height: 18),
+                    const SizedBox(height: 18),
 
                     // banner
                     SpecialBannerCard(),
-
-                    // space
-                    const SizedBox(height: 18),*/
 
                     // card grid
                     CardRowItems(
@@ -110,18 +108,26 @@ class HomeScreen extends StatelessWidget {
                     ),
                     const Divider(),
                     CardRowItems(title: "Today's Deals", items: todaysDeals),
-                    /*const Divider(),
+                    const Divider(),
 
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                      child: Text(
-                        "Quick Bites",
-                        style: TextStyle(
-                            fontSize: 18, fontWeight: FontWeight.bold),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Common loved foods',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    QuickBites(),
-*/
+                    const SizedBox(height: 18),
+                    CommonFood(),
+
                     const Divider(),
                     CardRowItems(title: "Drinks Deals!", items: drinks),
                     const Divider(),
@@ -162,99 +168,38 @@ class SpecialBannerCard extends StatelessWidget {
             borderRadius: BorderRadius.circular(16),
 
             image: const DecorationImage(
-              image: AssetImage('designs/assets/banner-rice.jpg'),
+              image: NetworkImage(
+                'https://images.unsplash.com/photo-1544025162-d76694265947?w=600',
+              ),
               fit: BoxFit.cover,
             ),
           ),
           child: Stack(
             children: [
-              // Dark gradient overlay matching modern Flutter syntax
-              Container(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(16),
-                  gradient: LinearGradient(
-                    begin: Alignment.centerLeft,
-                    end: Alignment.centerRight,
-                    colors: [
-                      Colors.black.withValues(
-                        alpha: 0.75,
-                      ), // Darker on the left
-                      Colors.black.withValues(
-                        alpha: 0.1,
-                      ), // Clearer on the right
-                    ],
-                  ),
-                ),
-              ),
-
               // Explicitly Positioned Fill layout to guarantee visibility of content
-              Positioned.fill(
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      // Orange "TODAY'S SPECIAL" Badge
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.orange,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Text(
-                          "TODAY'S SPECIAL",
+              Positioned(
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          'Order Food Easily',
                           style: TextStyle(
                             color: Colors.white,
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: 0.5,
+                            fontSize: 22,
+                            fontWeight: FontWeight.w900,
                           ),
                         ),
-                      ),
-                      const SizedBox(height: 8),
 
-                      // Card Title
-                      const Text(
-                        'Harvest Energy Bowl',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
+                        Text(
+                          'Without The Waiting!',
+                          style: TextStyle(color: Colors.white, fontSize: 12),
                         ),
-                      ),
-
-                      // Card Subtitle
-                      const Text(
-                        'Get 20% off during lunch hours!',
-                        style: TextStyle(color: Colors.white, fontSize: 12),
-                      ),
-                      const SizedBox(height: 12),
-
-                      // "Order Now" Button
-                      ElevatedButton(
-                        onPressed: () {},
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.white,
-                          foregroundColor: Colors.black,
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 20,
-                            vertical: 8,
-                          ),
-                        ),
-                        child: const Text(
-                          'Order Now',
-                          style: TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -469,113 +414,6 @@ class CardRowItems extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class QuickBites extends StatelessWidget {
-  const QuickBites({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8.0),
-      child: Column(
-        children: [
-          GridView.count(
-            crossAxisCount: 2,
-            shrinkWrap: true,
-            childAspectRatio: 1.3,
-            physics: const NeverScrollableScrollPhysics(),
-            padding: EdgeInsets.symmetric(vertical: 2),
-
-            children: [
-              Card(
-                elevation: 0,
-                color: Colors.blue,
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: SizedBox(
-                    height: 100,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-
-                      children: [
-                        Icon(Icons.coffee_outlined),
-                        const SizedBox(height: 24),
-                        Text(
-                          "Coffee & Tea",
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              Card(
-                elevation: 0,
-                color: Colors.green,
-
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: SizedBox(
-                    height: 120,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-
-                      children: [
-                        Icon(Icons.icecream),
-                        const SizedBox(height: 24),
-                        Text(
-                          "Deserts",
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-
-          Container(
-            width: double.infinity,
-            margin: const EdgeInsets.symmetric(horizontal: 4),
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: const Color(
-                0xFFFFE5CC,
-              ), // Peach / Light Orange shade matching the design
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  children: [
-                    Icon(Icons.wine_bar_sharp),
-                    Text(
-                      'Fresh smothies',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black,
-                      ),
-                    ),
-                  ],
-                ),
-                Icon(Icons.arrow_forward, color: Colors.orange),
-              ],
-            ),
-          ),
-        ],
-      ),
     );
   }
 }
