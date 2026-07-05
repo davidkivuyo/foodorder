@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../data/food_data.dart';
 import '../services/cart_service.dart';
+import '../widgets/cart_fab.dart';
 
 class _Category {
   final String display;
@@ -379,6 +380,8 @@ class ItemDescriptionsCategories extends StatelessWidget {
         // no-op: prevents any duplicate pop from propagating to system back / app exit
       },
       child: Scaffold(
+        floatingActionButton: const CartFab(),
+        floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
         body: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,

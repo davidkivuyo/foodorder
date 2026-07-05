@@ -8,6 +8,7 @@ import '../data/search_bar.dart';
 import 'package:dash_no_internet_screen/dash_no_internet_screen.dart';
 import '../services/cart_service.dart';
 import '../widgets/cart_bottom_sheet.dart';
+import '../widgets/cart_fab.dart';
 
 // home screen
 class MainScreen extends StatefulWidget {
@@ -168,77 +169,11 @@ class _NavigationExampleState extends State<MainScreen> {
         ),
 
         // Yellow floating basket button — visible only when cart has items
-        floatingActionButton: ListenableBuilder(
-          listenable: CartService(),
-          builder: (context, child) {
-            final cartItemsCount = CartService().totalItemsCount;
-            return AnimatedScale(
-              scale: cartItemsCount > 0 ? 1.0 : 0.0,
-              duration: const Duration(milliseconds: 250),
-              curve: Curves.easeOutBack,
-              child: FloatingActionButton.extended(
-                onPressed: cartItemsCount > 0
-                    ? () {
-                        showModalBottomSheet<void>(
-                          context: context,
-                          isScrollControlled: true,
-                          showDragHandle: true,
-                          builder: (BuildContext context) {
-                            return CartBottomSheet(
-                              onOrderPlaced: () {
-                                setState(() {
-                                  currentPageIndex = 3;
-                                });
-                              },
-                            );
-                          },
-                        );
-                      }
-                    : null,
-                backgroundColor: Colors.orange,
-                foregroundColor: Colors.black87,
-                elevation: 6,
-                icon: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    const Icon(
-                      CupertinoIcons.bag_fill,
-                      size: 24,
-                      semanticLabel: 'basket',
-                    ),
-                    if (cartItemsCount > 0)
-                      Positioned(
-                        right: -6,
-                        top: -6,
-                        child: Container(
-                          padding: const EdgeInsets.all(2),
-                          decoration: const BoxDecoration(
-                            color: Colors.red,
-                            shape: BoxShape.circle,
-                          ),
-                          constraints: const BoxConstraints(
-                            minWidth: 16,
-                            minHeight: 16,
-                          ),
-                          child: Text(
-                            '$cartItemsCount',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 9,
-                              fontWeight: FontWeight.bold,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-                label: const Text(
-                  'View Basket',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                ),
-              ),
-            );
+        floatingActionButton: CartFab(
+          onOrderPlaced: () {
+            setState(() {
+              currentPageIndex = 3;
+            });
           },
         ),
         floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,

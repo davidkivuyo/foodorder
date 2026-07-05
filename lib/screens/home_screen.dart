@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../data/food_data.dart';
 import '../data/search_bar.dart';
 import '../services/cart_service.dart';
+import '../widgets/cart_fab.dart';
 import 'common_food.dart';
 
 class HomeScreen extends StatelessWidget {
@@ -431,6 +432,8 @@ class ItemDescriptionsHome extends StatelessWidget {
         // no-op: prevents any duplicate pop from propagating to system back / app exit
       },
       child: Scaffold(
+        floatingActionButton: const CartFab(),
+        floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
         body: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -574,6 +577,8 @@ class CategoriesTitles extends StatelessWidget {
           },
         ),
       ),
+      floatingActionButton: const CartFab(),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
       body: ListView.builder(
         padding: const EdgeInsets.all(10.0),
         itemCount: items.length,

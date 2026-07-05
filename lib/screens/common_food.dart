@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../data/food_data.dart';
 import '../services/cart_service.dart';
+import '../widgets/cart_fab.dart';
 import 'home_screen.dart';
 
 // ---------------------------------------------------------------------------
@@ -188,6 +189,8 @@ class CommonFoodList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      floatingActionButton: const CartFab(),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
       body: SafeArea(
         child: StreamBuilder<List<FoodItem>>(
           stream: FoodData.foodItemsStream,
