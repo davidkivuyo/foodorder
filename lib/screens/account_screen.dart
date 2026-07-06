@@ -1,6 +1,5 @@
-import 'package:campusbite/screens/login_screen.dart';
 import 'package:flutter/material.dart';
-import 'register_screen.dart';
+import '../services/auth_service.dart';
 
 //account screen
 class AccountScreen extends StatelessWidget {
@@ -8,9 +7,14 @@ class AccountScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    String name = 'Donny wilson';
-    String email = 'donny.wilson@student.udsm.ac.tz';
-    String id = '2025-04-04170';
+    final authService = AuthService();
+    final user = authService.currentUser;
+    String name = (user?.displayName != null && user!.displayName!.isNotEmpty)
+        ? user.displayName!
+        : 'Campus Bite User';
+
+    String email = user?.email ?? 'No email found';
+
     return Scaffold(
       body: SafeArea(
         child: SingleChildScrollView(
@@ -55,7 +59,7 @@ class AccountScreen extends StatelessWidget {
                             Text(email, style: TextStyle(fontSize: 13)),
                           ],
                         ),
-                        Row(
+                        /* Row(
                           crossAxisAlignment: CrossAxisAlignment.center,
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
@@ -63,7 +67,7 @@ class AccountScreen extends StatelessWidget {
                             SizedBox(width: 5),
                             Text(id, style: TextStyle(fontSize: 13)),
                           ],
-                        ),
+                        ),*/
                       ],
                     ),
                   ),
@@ -99,6 +103,39 @@ class AccountScreen extends StatelessWidget {
 
 class AccountSettings extends StatelessWidget {
   const AccountSettings({super.key});
+  // Instantiate the auth service to access signOut
+  static final _authService = AuthService();
+
+  void _handleLogout(BuildContext context) async {
+    // Show a loading indicator dialog while logging out
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      await _authService.signOut();
+
+      if (!context.mounted) return;
+      // Dismiss the loading dialog
+      Navigator.of(context).pop();
+
+      // If your AuthWrapper doesn't automatically pop deep navigation stacks,
+      // resetting the navigation history explicitly ensures a clean layout.
+      Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
+    } catch (e) {
+      if (!context.mounted) return;
+      Navigator.of(context).pop(); // Dismiss loading indicator
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to logout: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -123,17 +160,6 @@ class AccountSettings extends StatelessWidget {
                 background: Colors.green.shade50,
                 title: 'Edit Profile',
                 subtitle: 'Manage your personal information',
-                onTap: () {},
-              ),
-
-              const Divider(height: 1),
-
-              _settingTile(
-                icon: Icons.notifications_none,
-                iconColor: Colors.orange,
-                background: Colors.orange.shade50,
-                title: 'Notification Settings',
-                subtitle: 'Alerts, order updates and promos',
                 onTap: () {},
               ),
 
@@ -179,33 +205,7 @@ class AccountSettings extends StatelessWidget {
                 title: 'Logout',
                 subtitle: 'Securely exit your account',
                 titleColor: Colors.red,
-                onTap: () {},
-              ),
-              _settingTile(
-                icon: Icons.account_circle,
-                iconColor: Colors.grey,
-                background: Colors.grey.shade200,
-                title: 'register',
-                subtitle: 'register',
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => RegisterScreen()),
-                  );
-                },
-              ),
-              _settingTile(
-                icon: Icons.login,
-                iconColor: Colors.grey.shade700,
-                background: Colors.grey.shade200,
-                title: 'Login',
-                subtitle: 'login back to your account',
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => LoginScreen()),
-                  );
-                },
+                onTap: () => _handleLogout(context),
               ),
             ],
           ),

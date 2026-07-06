@@ -1,4 +1,5 @@
 import 'package:campusbite/screens/register_screen.dart';
+import 'package:campusbite/services/auth_service.dart';
 import 'package:campusbite/widgets/auth_fields.dart';
 import 'package:flutter/material.dart';
 
@@ -10,163 +11,219 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  final _authService = AuthService();
+
+  bool _isLoading = false;
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _handleLogin() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() => _isLoading = true);
+
+    final error = await _authService.signIn(
+      email: _emailController.text,
+      password: _passwordController.text,
+    );
+
+    if (!mounted) return;
+    setState(() => _isLoading = false);
+
+    if (error != null) {
+      // Show error — AuthWrapper handles navigation on success automatically.
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error),
+          backgroundColor: Colors.red.shade700,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+    // On success, AuthWrapper's StreamBuilder reacts to auth state change
+    // and automatically navigates to MainScreen — no manual push needed.
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 24.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              const SizedBox(height: 60),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                const SizedBox(height: 60),
 
-              // App Logo Placeholder (Mimicking the Orange Burger/Cap Logo)
-              ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: Image.asset(
-                  'designs/assets/screen.png',
-                  height: 80,
-                  width: 80,
-                ),
-              ),
-              const SizedBox(height: 15),
-
-              // Welcome Text
-              const Text(
-                'Welcome Back!',
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black,
-                ),
-              ),
-
-              // Subtitle Text
-              const Text(
-                'Fuel your study sessions with campus-best bites.',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 15, color: Colors.black54),
-              ),
-              const SizedBox(height: 24),
-
-              // University Email Input Field
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'University Email',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.black.withValues(alpha: 0.8),
+                // App Logo
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: Image.asset(
+                    'designs/assets/screen.png',
+                    height: 80,
+                    width: 80,
                   ),
                 ),
-              ),
-              const SizedBox(height: 8),
+                const SizedBox(height: 15),
 
-              EmailField(),
+                // Welcome Text
+                const Text(
+                  'Welcome Back!',
+                  style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black,
+                  ),
+                ),
 
-              const SizedBox(height: 20),
+                // Subtitle Text
+                const Text(
+                  'Fuel your study sessions with campus-best bites.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 15, color: Colors.black54),
+                ),
+                const SizedBox(height: 24),
 
-              // Password Input Header (Label + Forgot Link)
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Password',
+                // University Email Label
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'University Email',
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
                       color: Colors.black.withValues(alpha: 0.8),
                     ),
                   ),
-                  GestureDetector(
-                    onTap: () {
-                      // Handle Forgot Password tap
-                    },
-                    child: const Text(
-                      'Forgot Password?',
+                ),
+                const SizedBox(height: 8),
+
+                EmailField(controller: _emailController),
+
+                const SizedBox(height: 20),
+
+                // Password Label + Forgot Link
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Password',
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
-                        color: Color(0xFF116522),
+                        color: Colors.black.withValues(alpha: 0.8),
                       ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-
-              // Password Input Field
-              PasswordField(),
-
-              const SizedBox(height: 24),
-
-              // Login Button
-              SizedBox(
-                width: double.infinity,
-                height: 54,
-                child: ElevatedButton(
-                  onPressed: () {
-                    // Handle Login action
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF116522),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    elevation: 0,
-                  ),
-                  child: const Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        'Login',
+                    GestureDetector(
+                      onTap: () {
+                        // TODO: Implement forgot password (future phase)
+                      },
+                      child: const Text(
+                        'Forgot Password?',
                         style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF116522),
                         ),
                       ),
-                      SizedBox(width: 8),
-                      Icon(Icons.arrow_forward, size: 20, color: Colors.white),
-                    ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+
+                PasswordField(controller: _passwordController),
+
+                const SizedBox(height: 24),
+
+                // Login Button
+                SizedBox(
+                  width: double.infinity,
+                  height: 54,
+                  child: ElevatedButton(
+                    onPressed: _isLoading ? null : _handleLogin,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF116522),
+                      disabledBackgroundColor: const Color(
+                        0xFF116522,
+                      ).withValues(alpha: 0.6),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      elevation: 0,
+                    ),
+                    child: _isLoading
+                        ? const SizedBox(
+                            height: 22,
+                            width: 22,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2.5,
+                            ),
+                          )
+                        : const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                'Login',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              SizedBox(width: 8),
+                              Icon(
+                                Icons.arrow_forward,
+                                size: 20,
+                                color: Colors.white,
+                              ),
+                            ],
+                          ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 36),
+                const SizedBox(height: 36),
 
-              // Footer Navigation Text
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Text(
-                    "Don't have an account? ",
-                    style: TextStyle(color: Colors.black54, fontSize: 15),
-                  ),
-                  GestureDetector(
-                    onTap: () {
-                      // Handle Sign Up navigation
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const RegisterScreen(),
+                // Footer — navigate to register
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Text(
+                      "Don't have an account? ",
+                      style: TextStyle(color: Colors.black54, fontSize: 15),
+                    ),
+                    GestureDetector(
+                      onTap: () {
+                        Navigator.pushReplacement(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const RegisterScreen(),
+                          ),
+                        );
+                      },
+                      child: const Text(
+                        'Sign Up',
+                        style: TextStyle(
+                          color: Color(0xFF116522),
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
                         ),
-                      );
-                    },
-                    child: const Text(
-                      'Sign Up',
-                      style: TextStyle(
-                        color: Color(0xFF116522),
-                        fontWeight: FontWeight.bold,
-                        fontSize: 15,
                       ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-            ],
+                  ],
+                ),
+                const SizedBox(height: 24),
+              ],
+            ),
           ),
         ),
       ),

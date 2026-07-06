@@ -1,7 +1,49 @@
 import 'package:flutter/material.dart';
 
+// ── Validators ──────────────────────────────────────────────────────────────
+
+/// Returns an error string if [value] is not a valid UDSM student email,
+/// otherwise returns null.
+String? validateUniversityEmail(String? value) {
+  if (value == null || value.trim().isEmpty) {
+    return 'Email is required.';
+  }
+  final trimmed = value.trim().toLowerCase();
+  // Must match *@student.udsm.ac.tz and be a valid email format.
+  final emailRegex = RegExp(r'^[a-zA-Z0-9._%+\-]+@student\.udsm\.ac\.tz$');
+  if (!emailRegex.hasMatch(trimmed)) {
+    return 'Use your university email';
+  }
+  return null;
+}
+
+/// Returns an error string if [value] does not meet password requirements,
+/// otherwise returns null.
+///
+/// Requirements:
+/// - At least 8 characters
+/// - Contains at least one special character
+String? validatePassword(String? value) {
+  if (value == null || value.isEmpty) {
+    return 'Password is required.';
+  }
+  if (value.length < 8) {
+    return 'Password must be at least 8 characters.';
+  }
+  final hasSpecialChar = RegExp(r'[!@#\$%^&*(),.?":{}|<>_\-+=\[\]\\;/]');
+  if (!hasSpecialChar.hasMatch(value)) {
+    return 'Password must contain at least one special character.';
+  }
+  return null;
+}
+
+// ── Widgets ──────────────────────────────────────────────────────────────────
+
 class FullName extends StatefulWidget {
-  const FullName({super.key});
+  final TextEditingController? controller;
+
+  const FullName({super.key, this.controller});
+
   @override
   State<FullName> createState() => _FullNameState();
 }
@@ -10,9 +52,20 @@ class _FullNameState extends State<FullName> {
   @override
   Widget build(BuildContext context) {
     return TextFormField(
-      keyboardType: TextInputType.emailAddress,
+      controller: widget.controller,
+      keyboardType: TextInputType.name,
+      textCapitalization: TextCapitalization.words,
+      validator: (value) {
+        if (value == null || value.trim().isEmpty) {
+          return 'Full name is required.';
+        }
+        if (value.trim().length < 2) {
+          return 'Please enter your full name.';
+        }
+        return null;
+      },
       decoration: InputDecoration(
-        hintText: 'Donny Wilson',
+        hintText: 'Donny',
         hintStyle: const TextStyle(color: Colors.black38),
         prefixIcon: const Icon(
           Icons.person_outline,
@@ -29,6 +82,14 @@ class _FullNameState extends State<FullName> {
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: Colors.black12),
         ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Colors.red),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Colors.red),
+        ),
         contentPadding: const EdgeInsets.symmetric(vertical: 16),
       ),
     );
@@ -36,7 +97,10 @@ class _FullNameState extends State<FullName> {
 }
 
 class EmailField extends StatefulWidget {
-  const EmailField({super.key});
+  final TextEditingController? controller;
+
+  const EmailField({super.key, this.controller});
+
   @override
   State<EmailField> createState() => _EmailFieldState();
 }
@@ -45,9 +109,12 @@ class _EmailFieldState extends State<EmailField> {
   @override
   Widget build(BuildContext context) {
     return TextFormField(
+      controller: widget.controller,
       keyboardType: TextInputType.emailAddress,
+      autocorrect: false,
+      validator: validateUniversityEmail,
       decoration: InputDecoration(
-        hintText: 'donny.wilson@student.udsm.ac.tz',
+        hintText: 'university email',
         hintStyle: const TextStyle(color: Colors.black38),
         prefixIcon: const Icon(
           Icons.alternate_email,
@@ -64,6 +131,14 @@ class _EmailFieldState extends State<EmailField> {
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: Colors.black12),
         ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Colors.red),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Colors.red),
+        ),
         contentPadding: const EdgeInsets.symmetric(vertical: 16),
       ),
     );
@@ -71,17 +146,46 @@ class _EmailFieldState extends State<EmailField> {
 }
 
 class PasswordField extends StatefulWidget {
-  const PasswordField({super.key});
+  final TextEditingController? controller;
+
+  /// When provided, validates that this field's value matches [matchController].
+  final TextEditingController? matchController;
+
+  /// Label for the match error (e.g. "Passwords do not match").
+  final bool isConfirmField;
+
+  const PasswordField({
+    super.key,
+    this.controller,
+    this.matchController,
+    this.isConfirmField = false,
+  });
+
   @override
   State<PasswordField> createState() => _PasswordFieldState();
 }
 
 class _PasswordFieldState extends State<PasswordField> {
   bool _obscurePassword = true;
+
   @override
   Widget build(BuildContext context) {
     return TextFormField(
+      controller: widget.controller,
       obscureText: _obscurePassword,
+      validator: (value) {
+        if (widget.isConfirmField) {
+          if (value == null || value.isEmpty) {
+            return 'Please confirm your password.';
+          }
+          if (widget.matchController != null &&
+              value != widget.matchController!.text) {
+            return 'Passwords do not match.';
+          }
+          return null;
+        }
+        return validatePassword(value);
+      },
       decoration: InputDecoration(
         hintText: '••••••••',
         hintStyle: const TextStyle(color: Colors.black38),
@@ -113,6 +217,14 @@ class _PasswordFieldState extends State<PasswordField> {
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: Colors.black12),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Colors.red),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Colors.red),
         ),
         contentPadding: const EdgeInsets.symmetric(vertical: 16),
       ),
