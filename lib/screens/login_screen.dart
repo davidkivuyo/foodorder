@@ -1,5 +1,8 @@
 import 'package:campusbite/screens/register_screen.dart';
+<<<<<<< HEAD
 import 'package:campusbite/widgets/auth_fields.dart';
+=======
+>>>>>>> b6e1b79b61bdd3cd1aa77758b5fd238ceaecd727
 import 'package:flutter/material.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -10,6 +13,11 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
+<<<<<<< HEAD
+=======
+  bool _obscurePassword = true;
+
+>>>>>>> b6e1b79b61bdd3cd1aa77758b5fd238ceaecd727
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -63,7 +71,33 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
               const SizedBox(height: 8),
+<<<<<<< HEAD
               EmailField(),
+=======
+              TextFormField(
+                keyboardType: TextInputType.emailAddress,
+                decoration: InputDecoration(
+                  hintText: 'donny.wilson@student.udsm.ac.tz',
+                  hintStyle: const TextStyle(color: Colors.black38),
+                  prefixIcon: const Icon(
+                    Icons.alternate_email,
+                    size: 20,
+                    color: Colors.black,
+                  ),
+                  filled: true,
+                  fillColor: Colors.white,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: Colors.black26),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: Colors.black12),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 16),
+                ),
+              ),
+>>>>>>> b6e1b79b61bdd3cd1aa77758b5fd238ceaecd727
               const SizedBox(height: 20),
 
               // Password Input Header (Label + Forgot Link)
@@ -96,7 +130,47 @@ class _LoginScreenState extends State<LoginScreen> {
               const SizedBox(height: 8),
 
               // Password Input Field
+<<<<<<< HEAD
               PasswordField(),
+=======
+              TextFormField(
+                obscureText: _obscurePassword,
+                decoration: InputDecoration(
+                  hintText: '••••••••',
+                  hintStyle: const TextStyle(color: Colors.black38),
+                  prefixIcon: const Icon(
+                    Icons.lock_outline,
+                    size: 20,
+                    color: Colors.black,
+                  ),
+                  suffixIcon: GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _obscurePassword = !_obscurePassword;
+                      });
+                    },
+                    child: Icon(
+                      _obscurePassword
+                          ? Icons.visibility_outlined
+                          : Icons.visibility_off_outlined,
+                      size: 20,
+                      color: Colors.black,
+                    ),
+                  ),
+                  filled: true,
+                  fillColor: Colors.white,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: Colors.black26),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: Colors.black12),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 16),
+                ),
+              ),
+>>>>>>> b6e1b79b61bdd3cd1aa77758b5fd238ceaecd727
               const SizedBox(height: 24),
 
               // Login Button
