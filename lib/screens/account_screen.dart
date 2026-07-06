@@ -1,4 +1,6 @@
+import 'package:campusbite/screens/login_screen.dart';
 import 'package:flutter/material.dart';
+import 'register_screen.dart';
 
 //account screen
 class AccountScreen extends StatelessWidget {
@@ -178,6 +180,32 @@ class AccountSettings extends StatelessWidget {
                 subtitle: 'Securely exit your account',
                 titleColor: Colors.red,
                 onTap: () {},
+              ),
+              _settingTile(
+                icon: Icons.account_circle,
+                iconColor: Colors.grey,
+                background: Colors.grey.shade200,
+                title: 'register',
+                subtitle: 'register',
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => RegisterScreen()),
+                  );
+                },
+              ),
+              _settingTile(
+                icon: Icons.login,
+                iconColor: Colors.grey.shade700,
+                background: Colors.grey.shade200,
+                title: 'Login',
+                subtitle: 'login back to your account',
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => LoginScreen()),
+                  );
+                },
               ),
             ],
           ),
