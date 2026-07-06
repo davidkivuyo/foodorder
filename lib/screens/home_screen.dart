@@ -170,42 +170,9 @@ class SpecialBannerCard extends StatelessWidget {
             borderRadius: BorderRadius.circular(16),
 
             image: const DecorationImage(
-              image: NetworkImage(
-                'https://images.unsplash.com/photo-1544025162-d76694265947?w=600',
-              ),
+              image: AssetImage('designs/assets/banner2.png'),
               fit: BoxFit.cover,
             ),
-          ),
-          child: Stack(
-            children: [
-              // Explicitly Positioned Fill layout to guarantee visibility of content
-              Positioned(
-                child: Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          'Order Food Easily',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 22,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-
-                        Text(
-                          'Without The Waiting!',
-                          style: TextStyle(color: Colors.white, fontSize: 12),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ],
           ),
         ),
       ),

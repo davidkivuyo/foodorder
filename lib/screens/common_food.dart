@@ -38,7 +38,7 @@ const List<_CommonFoodItem> _commonFoods = [
         'https://upload.wikimedia.org/wikipedia/commons/4/48/Ugali_%26_Sukuma_Wiki.jpg', // will be fetched from Firebase Storage
   ),
   _CommonFoodItem(
-    title: 'Chipsi',
+    title: 'Chips',
     prepTime: '10 min',
     imageUrl:
         'https://firebasestorage.googleapis.com/v0/b/foodorder-8ffcf.firebasestorage.app/o/chips.jpg?alt=media&token=40aefb61-1714-4de3-87a1-f882e5a4b007', // will be fetched from Firebase Storage
