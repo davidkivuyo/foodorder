@@ -136,14 +136,14 @@ PHASE 1
 
 Goal:
 
-intergrate firebase authentication using the email and password method using the already created login and registration screens in the screen folder. The login and registration screens should be able to create a new user and log in an existing user using firebase authentication. The app should also maintain the user's authentication state across app restarts. 
+make a popup modal alert to alert the user when trying to logout of the app
 
 Requirements:
 
-* Implement Firebase Authentication using email and password method.
-* The email and password fields should have validation to ensure that the email is in a valid format ending with **student.udsm.ac.tz** and the password meets minimum security requirements like require for special characters and 8 minimum password length. 
-* The app should display appropriate error messages for failed login or registration attempts.
-
+* from the account page, when the user clicks on the logout button, a popup modal alert should appear asking the user to confirm if they want to logout or not.
+* The alert should have "Yes" and "No" options.
+* If the user clicks "Yes", they should be logged out and redirected to the login page.
+* If the user clicks "No", the popup should close and the user should remain on the account page.
 
 Restrictions:
 

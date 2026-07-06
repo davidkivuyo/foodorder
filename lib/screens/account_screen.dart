@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
+import '../widgets/logout_confirmation_dialog.dart';
 
 //account screen
 class AccountScreen extends StatelessWidget {
@@ -107,7 +108,13 @@ class AccountSettings extends StatelessWidget {
   static final _authService = AuthService();
 
   void _handleLogout(BuildContext context) async {
-    // Show a loading indicator dialog while logging out
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => const LogoutConfirmationDialog(),
+    );
+
+    if (confirmed != true) return;
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -118,15 +125,12 @@ class AccountSettings extends StatelessWidget {
       await _authService.signOut();
 
       if (!context.mounted) return;
-      // Dismiss the loading dialog
       Navigator.of(context).pop();
 
-      // If your AuthWrapper doesn't automatically pop deep navigation stacks,
-      // resetting the navigation history explicitly ensures a clean layout.
       Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
     } catch (e) {
       if (!context.mounted) return;
-      Navigator.of(context).pop(); // Dismiss loading indicator
+      Navigator.of(context).pop();
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
