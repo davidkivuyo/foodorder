@@ -136,19 +136,18 @@ PHASE 1
 
 Goal:
 
-create a yellow floating button with basket icon in bottom_navigation.dart file that will appear only when the user adds an item to cart. And make sure that the app doesnot loose state of the cart even if a user leaves the app
+intergrate firebase authentication using the email and password method using the already created login and registration screens in the screen folder. The login and registration screens should be able to create a new user and log in an existing user using firebase authentication. The app should also maintain the user's authentication state across app restarts. 
 
 Requirements:
 
-* a yellow floating button with basket icon appears only when the user's cart is not empty
-* maintain app's cart state even when user leaves the app
+* Implement Firebase Authentication using email and password method.
+* The email and password fields should have validation to ensure that the email is in a valid format ending with **student.udsm.ac.tz** and the password meets minimum security requirements like require for special characters and 8 minimum password length. 
+* The app should display appropriate error messages for failed login or registration attempts.
 
 
 Restrictions:
 
 * Do not change anything not related to the task in the goal and requirements
-* No authentication
-* No registration
 * No admin functionality
 
 ---
