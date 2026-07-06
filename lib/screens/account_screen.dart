@@ -158,7 +158,7 @@ class AccountSettings extends StatelessWidget {
           clipBehavior: Clip.antiAlias,
           child: Column(
             children: [
-              _settingTile(
+              /* _settingTile(
                 icon: Icons.edit_outlined,
                 iconColor: Colors.green,
                 background: Colors.green.shade50,
@@ -166,9 +166,7 @@ class AccountSettings extends StatelessWidget {
                 subtitle: 'Manage your personal information',
                 onTap: () {},
               ),
-
-              const Divider(height: 1),
-
+              const Divider(height: 1),*/
               _settingTile(
                 icon: Icons.receipt_long_outlined,
                 iconColor: Colors.blue,
