@@ -51,6 +51,7 @@ Backend
 * Firebase Authentication
 * Cloud Firestore
 * Firebase Storage
+* firebase notifications
 
 These features are future phases and must not be implemented unless activated.
 
