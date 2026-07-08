@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 class FoodItem {
+  final String id;
   final String image;
   final String title;
   final String subtitle;
@@ -14,6 +15,7 @@ class FoodItem {
   final String section;
 
   const FoodItem({
+    this.id = '',
     required this.image,
     required this.title,
     required this.subtitle,
@@ -25,8 +27,9 @@ class FoodItem {
     this.section = '',
   });
 
-  factory FoodItem.fromMap(Map<String, dynamic> map) {
+  factory FoodItem.fromMap(Map<String, dynamic> map, {String? id}) {
     return FoodItem(
+      id: id ?? map['id'] ?? '',
       image: map['image'] ?? '',
       title: map['title'] ?? '',
       subtitle: map['subtitle'] ?? '',
@@ -122,7 +125,7 @@ class FoodData {
       snapshot,
     ) {
       return snapshot.docs.map((doc) {
-        return FoodItem.fromMap(doc.data());
+        return FoodItem.fromMap(doc.data(), id: doc.id);
       }).toList();
     });
   }

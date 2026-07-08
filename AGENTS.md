@@ -100,6 +100,7 @@ Use simple Flutter architecture.
 Preferred structure:
 
 lib/
+├── data/
 ├── screens/
 ├── widgets/
 ├── models/
@@ -126,7 +127,7 @@ After completing a feature:
 
 * Verify build succeeds.
 * Verify navigation works.
-* Verify existing features still work.
+* Verify all features still work.
 
 ---
 

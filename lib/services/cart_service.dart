@@ -1,7 +1,7 @@
 import 'dart:async';
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/cart_item.dart';
 import '../models/order.dart';
 import '../data/food_data.dart';
@@ -11,123 +11,192 @@ class CartService extends ChangeNotifier {
   static final CartService _instance = CartService._internal();
   factory CartService() => _instance;
   CartService._internal() {
-    _loadCart();
+    _initAuthListener();
   }
-
-  static const String _cartKey = 'cart_items_v1';
 
   final List<CartItem> _cartItems = [];
   final List<FoodOrder> _orders = [];
+  final Map<String, FoodItem> _foodItemsCache = {};
+
+  StreamSubscription<User?>? _authSubscription;
+  StreamSubscription<QuerySnapshot>? _cartSubscription;
 
   List<CartItem> get cartItems => List.unmodifiable(_cartItems);
   List<FoodOrder> get orders => List.unmodifiable(_orders);
 
   double get totalAmount {
-    return _cartItems.fold(0.0, (sum, item) => sum + (item.foodItem.price * item.quantity));
+    return _cartItems.fold(0.0, (total, item) => total + (item.foodItem.price * item.quantity));
   }
 
   int get totalItemsCount {
-    return _cartItems.fold(0, (sum, item) => sum + item.quantity);
+    return _cartItems.fold(0, (total, item) => total + item.quantity);
   }
 
-  // ---------- Persistence ----------
+  // ---------- Firestore Sync ----------
 
-  /// Load persisted cart from shared_preferences on startup.
-  Future<void> _loadCart() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_cartKey);
-    if (raw == null) return;
-
-    try {
-      final List<dynamic> decoded = jsonDecode(raw) as List<dynamic>;
-      for (final entry in decoded) {
-        final map = entry as Map<String, dynamic>;
-        final quantity = (map['quantity'] as num).toInt();
-
-        final foodItem = FoodItem(
-          image: map['image'] as String,
-          title: map['title'] as String,
-          subtitle: map['subtitle'] as String,
-          price: (map['price'] as num).toInt(),
-          rating: (map['rating'] as num).toDouble(),
-          category: map['category'] as String,
-          cafe: map['cafe'] as String,
-          time: map['time'] as String,
-          section: (map['section'] as String?) ?? '',
-        );
-        _cartItems.add(CartItem(foodItem: foodItem, quantity: quantity));
+  void _initAuthListener() {
+    _authSubscription = FirebaseAuth.instance.authStateChanges().listen((user) {
+      if (user != null) {
+        _listenToCart(user.uid);
+      } else {
+        _cancelCartSubscription();
+        _cartItems.clear();
+        notifyListeners();
       }
-      notifyListeners();
-    } catch (_) {
-      // If data is stale or corrupt, start with a fresh cart.
-      _cartItems.clear();
-    }
+    });
   }
 
-  /// Persist the current cart to shared_preferences.
-  Future<void> _saveCart() async {
-    final prefs = await SharedPreferences.getInstance();
-    final encoded = jsonEncode(
-      _cartItems
-          .map((item) => {
-                'title': item.foodItem.title,
-                'subtitle': item.foodItem.subtitle,
-                'image': item.foodItem.image,
-                'price': item.foodItem.price,
-                'rating': item.foodItem.rating,
-                'category': item.foodItem.category,
-                'cafe': item.foodItem.cafe,
-                'time': item.foodItem.time,
-                'section': item.foodItem.section,
-                'quantity': item.quantity,
-              })
-          .toList(),
-    );
-    await prefs.setString(_cartKey, encoded);
+  void _listenToCart(String userId) {
+    _cancelCartSubscription();
+    _cartSubscription = FirebaseFirestore.instance
+        .collection('users')
+        .doc(userId)
+        .collection('cart')
+        .snapshots()
+        .listen((snapshot) async {
+      final List<CartItem> updatedItems = [];
+
+      for (final doc in snapshot.docs) {
+        final data = doc.data();
+        final foodItemId = data['foodItemId'] as String?;
+        final quantity = (data['quantity'] as num?)?.toInt() ?? 1;
+
+        if (foodItemId == null || foodItemId.isEmpty) continue;
+
+        // Fetch FoodItem details from cache or Firestore
+        FoodItem? foodItem = _foodItemsCache[foodItemId];
+        if (foodItem == null) {
+          try {
+            final foodDoc = await FirebaseFirestore.instance
+                .collection('food_items')
+                .doc(foodItemId)
+                .get();
+            if (foodDoc.exists && foodDoc.data() != null) {
+              foodItem = FoodItem.fromMap(foodDoc.data()!, id: foodDoc.id);
+              _foodItemsCache[foodItemId] = foodItem;
+            }
+          } catch (e) {
+            debugPrint('[CartService] Error fetching food item $foodItemId: $e');
+          }
+        }
+
+        if (foodItem != null) {
+          updatedItems.add(CartItem(
+            id: doc.id,
+            foodItem: foodItem,
+            quantity: quantity,
+          ));
+        }
+      }
+
+      _cartItems.clear();
+      _cartItems.addAll(updatedItems);
+      notifyListeners();
+    });
+  }
+
+  void _cancelCartSubscription() {
+    _cartSubscription?.cancel();
+    _cartSubscription = null;
   }
 
   // ---------- Cart Operations ----------
 
-  void addToCart(FoodItem item) {
-    final index = _cartItems.indexWhere(
-      (element) => element.foodItem.title == item.title && element.foodItem.cafe == item.cafe,
-    );
-    if (index >= 0) {
-      _cartItems[index].quantity++;
-    } else {
-      _cartItems.add(CartItem(foodItem: item));
-    }
-    notifyListeners();
-    _saveCart();
-  }
+  void addToCart(FoodItem item) async {
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null || item.id.isEmpty) return;
 
-  void removeFromCart(FoodItem item) {
-    final index = _cartItems.indexWhere(
-      (element) => element.foodItem.title == item.title && element.foodItem.cafe == item.cafe,
-    );
-    if (index >= 0) {
-      if (_cartItems[index].quantity > 1) {
-        _cartItems[index].quantity--;
+    final cartCollection = FirebaseFirestore.instance
+        .collection('users')
+        .doc(userId)
+        .collection('cart');
+
+    final existingIndex = _cartItems.indexWhere((element) => element.foodItem.id == item.id);
+
+    try {
+      if (existingIndex >= 0) {
+        final existingItem = _cartItems[existingIndex];
+        await cartCollection.doc(existingItem.id).update({
+          'quantity': existingItem.quantity + 1,
+        });
       } else {
-        _cartItems.removeAt(index);
+        await cartCollection.add({
+          'foodItemId': item.id,
+          'quantity': 1,
+        });
       }
-      notifyListeners();
-      _saveCart();
+    } catch (e) {
+      debugPrint('[CartService] Error adding to cart: $e');
     }
   }
 
-  void deleteFromCart(FoodItem item) {
-    _cartItems.removeWhere(
-      (element) => element.foodItem.title == item.title && element.foodItem.cafe == item.cafe,
-    );
-    notifyListeners();
-    _saveCart();
+  void removeFromCart(FoodItem item) async {
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null || item.id.isEmpty) return;
+
+    final cartCollection = FirebaseFirestore.instance
+        .collection('users')
+        .doc(userId)
+        .collection('cart');
+
+    final existingIndex = _cartItems.indexWhere((element) => element.foodItem.id == item.id);
+
+    try {
+      if (existingIndex >= 0) {
+        final existingItem = _cartItems[existingIndex];
+        if (existingItem.quantity > 1) {
+          await cartCollection.doc(existingItem.id).update({
+            'quantity': existingItem.quantity - 1,
+          });
+        } else {
+          await cartCollection.doc(existingItem.id).delete();
+        }
+      }
+    } catch (e) {
+      debugPrint('[CartService] Error removing from cart: $e');
+    }
   }
 
-  void clearCart() {
-    _cartItems.clear();
-    notifyListeners();
-    _saveCart();
+  void deleteFromCart(FoodItem item) async {
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null || item.id.isEmpty) return;
+
+    final cartCollection = FirebaseFirestore.instance
+        .collection('users')
+        .doc(userId)
+        .collection('cart');
+
+    final existingIndex = _cartItems.indexWhere((element) => element.foodItem.id == item.id);
+
+    try {
+      if (existingIndex >= 0) {
+        final existingItem = _cartItems[existingIndex];
+        await cartCollection.doc(existingItem.id).delete();
+      }
+    } catch (e) {
+      debugPrint('[CartService] Error deleting from cart: $e');
+    }
+  }
+
+  void clearCart() async {
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) return;
+
+    final cartCollection = FirebaseFirestore.instance
+        .collection('users')
+        .doc(userId)
+        .collection('cart');
+
+    try {
+      final snapshot = await cartCollection.get();
+      final batch = FirebaseFirestore.instance.batch();
+      for (final doc in snapshot.docs) {
+        batch.delete(doc.reference);
+      }
+      await batch.commit();
+    } catch (e) {
+      debugPrint('[CartService] Error clearing cart: $e');
+    }
   }
 
   void placeOrder() {
@@ -144,7 +213,6 @@ class CartService extends ChangeNotifier {
 
     _orders.insert(0, newOrder);
     clearCart();
-    notifyListeners();
 
     // Simulating Cafe Admin response:
     // After 8 seconds, the order status changes to Ready (simulating admin marking it ready).
@@ -173,5 +241,12 @@ class CartService extends ChangeNotifier {
       _orders[index].status = newStatus;
       notifyListeners();
     }
+  }
+
+  @override
+  void dispose() {
+    _cancelCartSubscription();
+    _authSubscription?.cancel();
+    super.dispose();
   }
 }
