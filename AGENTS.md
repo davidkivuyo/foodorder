@@ -136,19 +136,16 @@ PHASE 1
 
 Goal:
 
-make a popup modal alert to alert the user when trying to logout of the app
+add the user information to firestore database upon registration in a document collection of users/{uid}. the data are kept in fields of fullName, email, role and createdAt. And display firstname and email it on the account page when logged in.
 
 Requirements:
 
-* from the account page, when the user clicks on the logout button, a popup modal alert should appear asking the user to confirm if they want to logout or not.
-* The alert should have "Yes" and "No" options.
-* If the user clicks "Yes", they should be logged out and redirected to the login page.
-* If the user clicks "No", the popup should close and the user should remain on the account page.
+* the user data are kept in fields of fullName, email, role and createdAt.
 
 Restrictions:
 
 * Do not change anything not related to the task in the goal and requirements
-* No admin functionality
+* No cafe admin functionality
 
 ---
 

@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -26,6 +27,23 @@ class AuthService {
           );
       if (credential.user != null) {
         await credential.user!.updateDisplayName(fullName.trim());
+        try {
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(credential.user!.uid)
+              .set({
+            'fullName': fullName.trim(),
+            'email': email.trim(),
+            'role': 'student',
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+        } catch (dbError) {
+          // If Firestore write fails, clean up the authentication user to keep registration atomic
+          try {
+            await credential.user!.delete();
+          } catch (_) {}
+          rethrow;
+        }
       }
       return null; // success
     } catch (e, stack) {

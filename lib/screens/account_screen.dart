@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import '../widgets/logout_confirmation_dialog.dart';
@@ -29,49 +30,69 @@ class AccountScreen extends StatelessWidget {
                   style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 8),
-                Card(
-                  child: Padding(
-                    padding: EdgeInsets.all(10),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(50),
-                          child: Image.asset(
-                            'designs/assets/avatar.jpg',
-                            height: 70.0,
-                            width: 70,
-                          ),
-                        ),
-                        Text(
-                          name,
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        Row(
+                StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+                  stream: user != null
+                      ? FirebaseFirestore.instance
+                          .collection('users')
+                          .doc(user.uid)
+                          .snapshots()
+                      : null,
+                  builder: (context, snapshot) {
+                    String displayName = name;
+                    String displayEmail = email;
+
+                    if (snapshot.hasData && snapshot.data!.exists) {
+                      final data = snapshot.data!.data();
+                      if (data != null) {
+                        final fullName = data['fullName'] as String? ?? '';
+                        if (fullName.isNotEmpty) {
+                          displayName = fullName.split(' ').first;
+                        }
+                        displayEmail = data['email'] as String? ?? displayEmail;
+                      }
+                    } else {
+                      // Fallback to FirebaseAuth user properties if snapshot not ready/doesn't exist
+                      if (user?.displayName != null && user!.displayName!.isNotEmpty) {
+                        displayName = user.displayName!.split(' ').first;
+                      }
+                    }
+
+                    return Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(10),
+                        child: Column(
                           crossAxisAlignment: CrossAxisAlignment.center,
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.email_outlined, size: 15),
-                            SizedBox(width: 5),
-                            Text(email, style: TextStyle(fontSize: 13)),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(50),
+                              child: Image.asset(
+                                'designs/assets/avatar.jpg',
+                                height: 70.0,
+                                width: 70,
+                              ),
+                            ),
+                            Text(
+                              displayName,
+                              style: const TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(Icons.email_outlined, size: 15),
+                                const SizedBox(width: 5),
+                                Text(displayEmail, style: const TextStyle(fontSize: 13)),
+                              ],
+                            ),
                           ],
                         ),
-                        /* Row(
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.perm_identity, size: 15),
-                            SizedBox(width: 5),
-                            Text(id, style: TextStyle(fontSize: 13)),
-                          ],
-                        ),*/
-                      ],
-                    ),
-                  ),
+                      ),
+                    );
+                  },
                 ),
                 const SizedBox(height: 10),
 

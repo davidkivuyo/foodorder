@@ -1,5 +1,4 @@
-import 'package:campusbite/navigation/bottom_navigation.dart';
-import 'package:campusbite/screens/login_screen.dart';
+import 'package:campusbite/navigation/auth_wrapper.dart';
 import 'package:campusbite/services/auth_service.dart';
 import 'package:campusbite/widgets/auth_fields.dart';
 import 'package:flutter/material.dart';
@@ -71,7 +70,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     } else {
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (context) => const MainScreen()),
+        MaterialPageRoute(builder: (context) => const AuthWrapper()),
       );
     }
   }
@@ -379,7 +378,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                   Navigator.pushReplacement(
                                     context,
                                     MaterialPageRoute(
-                                      builder: (context) => const LoginScreen(),
+                                      builder: (context) => const AuthWrapper(),
                                     ),
                                   );
                                 },
