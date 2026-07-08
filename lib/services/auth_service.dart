@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Service that wraps Firebase Authentication for email/password auth.
 class AuthService {
@@ -37,6 +38,10 @@ class AuthService {
             'role': 'student',
             'createdAt': FieldValue.serverTimestamp(),
           });
+
+          // Set welcome screen flag for the newly registered user
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setBool('show_welcome_${credential.user!.uid}', true);
         } catch (dbError) {
           // If Firestore write fails, clean up the authentication user to keep registration atomic
           try {

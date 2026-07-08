@@ -170,7 +170,9 @@ class SpecialBannerCard extends StatelessWidget {
             borderRadius: BorderRadius.circular(16),
 
             image: const DecorationImage(
-              image: AssetImage('designs/assets/banner2.png'),
+              image: NetworkImage(
+                'https://res.cloudinary.com/nrwglbxh/image/upload/v1783345398/banner2_mjqb1u.png',
+              ),
               fit: BoxFit.cover,
             ),
           ),

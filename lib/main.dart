@@ -1,4 +1,7 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:campusbite/navigation/auth_wrapper.dart';
+import 'package:campusbite/screens/register_screen.dart';
+import 'package:campusbite/screens/login_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -23,7 +26,7 @@ class MyApp extends StatelessWidget {
         useMaterial3: true,
         textTheme: GoogleFonts.dmSansTextTheme(Theme.of(context).textTheme),
       ),
-      // AuthWrapper routes to MainScreen (logged in) or LoginScreen (logged out)
+      // AuthWrapper routes to MainScreen (logged in) or WelcomeScreen (logged out)
       home: const AuthWrapper(),
     );
   }
@@ -39,7 +42,11 @@ class WelcomeScreen extends StatelessWidget {
         fit: StackFit.expand,
         children: [
           // Background Image
-          Image.asset("assets/images/welcome.jpg", fit: BoxFit.cover),
+          CachedNetworkImage(
+            imageUrl:
+                "https://res.cloudinary.com/nrwglbxh/image/upload/v1783527034/screen_lyxagp.png",
+            fit: BoxFit.cover,
+          ),
 
           // Dark Overlay
           Container(color: Colors.black.withValues(alpha: 0.35)),
@@ -53,20 +60,6 @@ class WelcomeScreen extends StatelessWidget {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Container(
-                        height: 48,
-                        width: 48,
-                        decoration: BoxDecoration(
-                          color: const Color(0xff2E7D32),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: const Icon(
-                          Icons.add,
-                          color: Colors.white,
-                          size: 30,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
                       const Text(
                         "CampusBite",
                         style: TextStyle(
@@ -119,7 +112,13 @@ class WelcomeScreen extends StatelessWidget {
                         ),
                         elevation: 0,
                       ),
-                      onPressed: () {},
+                      onPressed: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const RegisterScreen(),
+                          ),
+                        );
+                      },
                       child: const Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
@@ -146,7 +145,11 @@ class WelcomeScreen extends StatelessWidget {
 
                   /// Sign In
                   GestureDetector(
-                    onTap: () {},
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const LoginScreen()),
+                      );
+                    },
                     child: RichText(
                       text: const TextSpan(
                         style: TextStyle(color: Colors.white70, fontSize: 18),

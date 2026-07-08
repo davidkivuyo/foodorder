@@ -1,11 +1,11 @@
-import 'package:campusbite/screens/login_screen.dart';
 import 'package:campusbite/navigation/bottom_navigation.dart';
 import 'package:campusbite/services/auth_service.dart';
+import 'package:campusbite/main.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 /// Listens to Firebase auth-state changes and routes the user to either the
-/// authenticated [MainScreen] or the unauthenticated [LoginScreen].
+/// authenticated [MainScreen] or the unauthenticated [WelcomeScreen].
 class AuthWrapper extends StatelessWidget {
   const AuthWrapper({super.key});
 
@@ -30,8 +30,8 @@ class AuthWrapper extends StatelessWidget {
           return const MainScreen();
         }
 
-        // Logged-out → login screen (which navigates to register when needed)
-        return const LoginScreen();
+        // Logged-out → welcome screen (which navigates to register/login when needed)
+        return const WelcomeScreen();
       },
     );
   }

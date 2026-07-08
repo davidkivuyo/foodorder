@@ -29,7 +29,7 @@ const List<_CommonFoodItem> _commonFoods = [
     title: 'Wali',
     prepTime: '15 min',
     imageUrl:
-        'https://firebasestorage.googleapis.com/v0/b/foodorder-8ffcf.firebasestorage.app/o/ricemeat.jpg?alt=media&token=991583e9-c419-4353-ac0d-d0dac890adf9', // will be fetched from Firebase Storage
+        'https://res.cloudinary.com/nrwglbxh/image/upload/v1783345341/ricemeat_vstzgy.jpg', // will be fetched from Firebase Storage
   ),
   _CommonFoodItem(
     title: 'Ugali',
@@ -41,13 +41,13 @@ const List<_CommonFoodItem> _commonFoods = [
     title: 'Chips',
     prepTime: '10 min',
     imageUrl:
-        'https://firebasestorage.googleapis.com/v0/b/foodorder-8ffcf.firebasestorage.app/o/chips.jpg?alt=media&token=40aefb61-1714-4de3-87a1-f882e5a4b007', // will be fetched from Firebase Storage
+        'https://res.cloudinary.com/nrwglbxh/image/upload/v1783345370/chipss_b7junj.jpg', // will be fetched from Firebase Storage
   ),
   _CommonFoodItem(
     title: 'Pilau',
     prepTime: '25 min',
     imageUrl:
-        'https://firebasestorage.googleapis.com/v0/b/foodorder-8ffcf.firebasestorage.app/o/biriyanimeat.jpg?alt=media&token=b69a46d5-d94e-455f-848d-d7dec9ed06fb', // will be fetched from Firebase Storage
+        'https://res.cloudinary.com/nrwglbxh/image/upload/v1783345276/biriyanimeat_bofprw.jpg', // will be fetched from Firebase Storage
   ),
 ];
 
