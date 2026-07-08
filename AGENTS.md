@@ -137,15 +137,11 @@ PHASE 1
 
 Goal:
 
-To Store user cart data and state in firestore database, where each cart food item becomes its own independent document in a collection named "cart" inside users/{userId}/cart, and each cart Item document contains the following fields:
-* A corresponding food item id from the available food items in firestore database
-* Quantity.
+adding welcome screen to the app and displayed only at first time for the new user registration.
 
 Requirements:
 
-* store cart data in Firestore database 
-* store each cart item as an independent document with unique ID in a collection named "cart" inside users/{userId}/cart
-* upon cart data retrieval, fetch the food items information including title, image, price, quantity and cafe corresponding to the food item id from cart and display them to the user screen.
+* Implement a welcome screen that is displayed only the first time a new user registers.
 
 Restrictions:
 
