@@ -1,3 +1,4 @@
+import 'package:campusbite/navigation/bottom_navigation.dart';
 import 'package:campusbite/screens/login_screen.dart';
 import 'package:campusbite/services/auth_service.dart';
 import 'package:campusbite/widgets/auth_fields.dart';
@@ -68,8 +69,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
         ),
       );
     } else {
-      // On success the Firebase auth-state change fires and AuthWrapper
-      // automatically navigates to MainScreen — no manual push needed.
+      // Clear the entire navigation stack and go to MainScreen —
+      // the user must not be able to press back to the welcome/register flow.
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const MainScreen()),
+        (route) => false,
+      );
     }
   }
 

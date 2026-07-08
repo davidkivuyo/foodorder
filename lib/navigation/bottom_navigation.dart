@@ -1,4 +1,3 @@
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import '../screens/home_screen.dart';
 import '../screens/account_screen.dart';
@@ -102,7 +101,7 @@ class _NavigationExampleState extends State<MainScreen> {
                 );
               },
               icon: const Icon(
-                CupertinoIcons.bell,
+                Icons.notifications_outlined,
                 semanticLabel: 'notification bell',
               ),
             ),
@@ -132,7 +131,7 @@ class _NavigationExampleState extends State<MainScreen> {
                         );
                       },
                       icon: const Icon(
-                        CupertinoIcons.cart,
+                        Icons.shopping_cart_outlined,
                         semanticLabel: 'cart',
                       ),
                     ),
@@ -205,27 +204,27 @@ class _NavigationExampleState extends State<MainScreen> {
           labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
           destinations: [
             NavigationDestination(
-              icon: Icon(CupertinoIcons.home, semanticLabel: 'home'),
+              icon: Icon(Icons.home_outlined, semanticLabel: 'home'),
               label: "Home",
             ),
             NavigationDestination(
-              icon: Icon(CupertinoIcons.layers, semanticLabel: 'categories'),
+              icon: Icon(Icons.category_outlined, semanticLabel: 'categories'),
               label: "Categories",
             ),
             NavigationDestination(
-              icon: Icon(CupertinoIcons.search, semanticLabel: 'search food'),
+              icon: Icon(Icons.search, semanticLabel: 'search food'),
 
               label: "Search",
             ),
             NavigationDestination(
-              icon: Icon(CupertinoIcons.archivebox, semanticLabel: 'my orders'),
+              icon: Icon(
+                Icons.receipt_long_outlined,
+                semanticLabel: 'my orders',
+              ),
               label: "Orders",
             ),
             NavigationDestination(
-              icon: Icon(
-                CupertinoIcons.person_circle,
-                semanticLabel: 'my profile',
-              ),
+              icon: Icon(Icons.person_2_rounded, semanticLabel: 'my profile'),
               label: "Account",
             ),
           ],

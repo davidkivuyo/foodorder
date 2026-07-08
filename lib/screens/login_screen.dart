@@ -1,3 +1,4 @@
+import 'package:campusbite/navigation/bottom_navigation.dart';
 import 'package:campusbite/screens/register_screen.dart';
 import 'package:campusbite/services/auth_service.dart';
 import 'package:campusbite/widgets/auth_fields.dart';
@@ -47,9 +48,14 @@ class _LoginScreenState extends State<LoginScreen> {
           behavior: SnackBarBehavior.floating,
         ),
       );
+    } else {
+      // Clear the entire navigation stack and go to MainScreen —
+      // the user must not be able to press back to the welcome/login flow.
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const MainScreen()),
+        (route) => false,
+      );
     }
-    // On success, AuthWrapper's StreamBuilder reacts to auth state change
-    // and automatically navigates to MainScreen — no manual push needed.
   }
 
   @override
