@@ -83,7 +83,7 @@ class AccountScreen extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        'Campus Bite v1.0.0 (stable)',
+                        'Campus Bite v1.0.0 (alpha)',
                         style: TextStyle(fontSize: 10),
                       ),
                       Text(
@@ -114,6 +114,7 @@ class AccountSettings extends StatelessWidget {
     );
 
     if (confirmed != true) return;
+    if (!context.mounted) return;
 
     showDialog(
       context: context,
