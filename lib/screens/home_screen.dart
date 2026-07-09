@@ -42,9 +42,6 @@ class HomeScreen extends StatelessWidget {
             final drinks = allItems
                 .where((f) => f.section == 'drinks')
                 .toList();
-            final offCampus = allItems
-                .where((f) => f.section == 'off_campus')
-                .toList();
             final other = allItems.where((f) => f.section == 'other').toList();
 
             return SingleChildScrollView(
@@ -131,12 +128,6 @@ class HomeScreen extends StatelessWidget {
 
                     const Divider(),
                     CardRowItems(title: "Drinks Deals!", items: drinks),
-                    const Divider(),
-                    //--------------------------make a separate deals outside university--------------------------------
-                    CardRowItems(
-                      title: "Deals outside campus cafes",
-                      items: offCampus,
-                    ),
                     const Divider(),
                     CardColumnItems(
                       title: "Other meal deals",
@@ -359,10 +350,7 @@ class CardRowItems extends StatelessWidget {
                                   ),
                                   Expanded(
                                     child: Text(
-                                      // If cafe is 'offcampus', show 'OFF-CAMPUS', otherwise show 'CAFE(X)'
-                                      item.cafe.toLowerCase() == 'offcampus'
-                                          ? '${item.rating} • offcampus'
-                                          : '${item.rating} • CAFE(${item.cafe})',
+                                      '${item.rating} • CAFE(${item.cafe})',
                                       style: const TextStyle(
                                         fontSize: 12,
                                         color: Colors.black,
@@ -645,10 +633,7 @@ class CategoriesTitles extends StatelessWidget {
                           ),
                           Expanded(
                             child: Text(
-                              // If cafe is 'offcampus', show 'OFF-CAMPUS', otherwise show 'CAFE(X)'
-                              item.cafe.toLowerCase() == 'offcampus'
-                                  ? '${item.rating} • offcampus'
-                                  : '${item.rating} • CAFE(${item.cafe})',
+                              '${item.rating} • CAFE(${item.cafe})',
                               style: const TextStyle(
                                 fontSize: 12,
                                 color: Colors.black,
@@ -816,9 +801,7 @@ class CardColumnItems extends StatelessWidget {
                             ),
                             Expanded(
                               child: Text(
-                                item.cafe.toLowerCase() == 'offcampus'
-                                    ? '${item.rating} • offcampus'
-                                    : '${item.rating} • CAFE(${item.cafe})',
+                                '${item.rating} • CAFE(${item.cafe})',
                                 style: const TextStyle(
                                   fontSize: 12,
                                   color: Colors.black,

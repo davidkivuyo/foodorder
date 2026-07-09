@@ -138,12 +138,12 @@ PHASE 1
 
 Goal:
 
-For offcampus labeled food items the users will only be allowed to call the associated cafe phone number instead of placing an order when added to cart, thus preventing the user from placing an order for offcampus food items. This will also add another field on the food item model to indicate the location of the offcampus cafes.
+Update the cart logic so as for food items labeled ALL in their "cafe" fields, the user will be able to select the cafe they want to order from. This will be done by adding a new field to the food item model to indicate the available cafes for that food item. When a user adds an ALL labeled food item to the cart, they will be prompted to select the cafe they want to order from before proceeding to placing an order.
 
 Requirements:
 
-* Add a new field to the food item model to indicate the location of the offcampus cafes.
-* When a user adds an offcampus food item to the cart, instead of allowing them to place an order, display a message prompting them to call the associated cafe phone number.
+* Add a new field to the food item model to indicate the available cafes for that food item.
+* When a user adds an ALL labeled food item to the cart, they will be prompted to select the cafe they want to order from before proceeding to placing an order.
 
 Restrictions:
 

@@ -269,10 +269,7 @@ class FoodCard extends StatelessWidget {
                 children: [
                   const Icon(Icons.star_rounded, color: Colors.amber, size: 16),
                   Text(
-                    // If cafe is 'offcampus', show 'OFF-CAMPUS', otherwise show 'CAFE(X)'
-                    item.cafe.toLowerCase() == 'offcampus'
-                        ? '${item.rating} • offcampus'
-                        : '${item.rating} • CAFE(${item.cafe})',
+                    '${item.rating} • CAFE(${item.cafe})',
                     style: const TextStyle(fontSize: 12, color: Colors.black),
                   ),
                 ],

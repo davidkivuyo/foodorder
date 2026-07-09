@@ -410,9 +410,7 @@ class _CommonFoodCard extends StatelessWidget {
                   const Icon(Icons.star_rounded, color: Colors.amber, size: 16),
                   Expanded(
                     child: Text(
-                      item.cafe.toLowerCase() == 'offcampus'
-                          ? '${item.rating} • offcampus'
-                          : '${item.rating} • CAFE(${item.cafe})',
+                      '${item.rating} • CAFE(${item.cafe})',
                       style: const TextStyle(fontSize: 12, color: Colors.black),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
