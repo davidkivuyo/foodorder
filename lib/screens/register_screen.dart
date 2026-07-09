@@ -1,10 +1,8 @@
-import 'package:campusbite/navigation/bottom_navigation.dart';
-import 'package:campusbite/screens/login_screen.dart';
-import 'package:campusbite/screens/terms.dart';
 import 'package:campusbite/services/auth_service.dart';
 import 'package:campusbite/widgets/auth_fields.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -71,12 +69,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
         ),
       );
     } else {
-      // Clear the entire navigation stack and go to MainScreen —
-      // the user must not be able to press back to the welcome/register flow.
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const MainScreen()),
-        (route) => false,
-      );
+      // Replace the current location so the user can't press back to register.
+      if (!mounted) return;
+      context.go('/main');
     }
   }
 
@@ -298,15 +293,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                           decoration: TextDecoration.underline,
                                         ),
                                         recognizer: TapGestureRecognizer()
-                                          ..onTap = () {
-                                            Navigator.push(
-                                              context,
-                                              MaterialPageRoute(
-                                                builder: (_) =>
-                                                    const TermsScreen(),
-                                              ),
-                                            );
-                                          },
+                                          ..onTap = () => context.go('/terms'),
                                       ),
                                       const TextSpan(
                                         text:
@@ -390,14 +377,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               const SizedBox(width: 6),
 
                               GestureDetector(
-                                onTap: () {
-                                  Navigator.pushReplacement(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) => const LoginScreen(),
-                                    ),
-                                  );
-                                },
+                                onTap: () => context.go('/login'),
+
                                 child: const Text(
                                   'Login',
                                   style: TextStyle(

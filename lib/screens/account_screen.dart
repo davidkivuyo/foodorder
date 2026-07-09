@@ -1,6 +1,6 @@
-import 'package:campusbite/screens/terms.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import '../services/auth_service.dart';
 import '../widgets/logout_confirmation_dialog.dart';
 
@@ -138,7 +138,6 @@ class AccountSettings extends StatelessWidget {
       context: context,
       builder: (context) => const LogoutConfirmationDialog(),
     );
-
     if (confirmed != true) return;
     if (!context.mounted) return;
 
@@ -150,15 +149,18 @@ class AccountSettings extends StatelessWidget {
 
     try {
       await _authService.signOut();
-
       if (!context.mounted) return;
-      Navigator.of(context).pop();
-
-      Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
+      Navigator.of(
+        context,
+        rootNavigator: true,
+      ).pop(); // close the loading dialog
+      context.go('/');
     } catch (e) {
       if (!context.mounted) return;
-      Navigator.of(context).pop();
-
+      Navigator.of(
+        context,
+        rootNavigator: true,
+      ).pop(); // close the loading dialog
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Failed to logout: $e'),
@@ -211,7 +213,7 @@ class AccountSettings extends StatelessWidget {
                 background: Colors.grey.shade200,
                 title: 'Help & Support',
                 subtitle: 'FAQs and customer support',
-                onTap: () {},
+                onTap: () => context.go('/support'),
               ),
 
               const Divider(height: 1),
@@ -222,14 +224,7 @@ class AccountSettings extends StatelessWidget {
                 background: Colors.grey.shade200,
                 title: 'Terms & Privacy',
                 subtitle: 'Policies and usage guidelines',
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const TermsScreen(),
-                    ),
-                  );
-                },
+                onTap: () => context.go('/terms'),
               ),
 
               const Divider(height: 1),

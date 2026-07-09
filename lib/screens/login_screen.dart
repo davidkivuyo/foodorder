@@ -1,8 +1,7 @@
-import 'package:campusbite/navigation/bottom_navigation.dart';
-import 'package:campusbite/screens/register_screen.dart';
 import 'package:campusbite/services/auth_service.dart';
 import 'package:campusbite/widgets/auth_fields.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -49,12 +48,13 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
       );
     } else {
-      // Clear the entire navigation stack and go to MainScreen —
-      // the user must not be able to press back to the welcome/login flow.
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const MainScreen()),
-        (route) => false,
-      );
+      // Replace the current location so the user can't press back to login.
+      // If you're using the redirect-based AuthNotifier from before, this
+      // fires automatically once the auth stream emits — but calling it
+      // explicitly here keeps the navigation intent clear and avoids any
+      // timing gap before that stream event arrives.
+      if (!mounted) return;
+      context.go('/main');
     }
   }
 
@@ -208,14 +208,8 @@ class _LoginScreenState extends State<LoginScreen> {
                       style: TextStyle(color: Colors.black54, fontSize: 15),
                     ),
                     GestureDetector(
-                      onTap: () {
-                        Navigator.pushReplacement(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const RegisterScreen(),
-                          ),
-                        );
-                      },
+                      onTap: () => context.go('/register'),
+
                       child: const Text(
                         'Sign Up',
                         style: TextStyle(
