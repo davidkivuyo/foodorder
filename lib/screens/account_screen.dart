@@ -1,3 +1,4 @@
+import 'package:campusbite/screens/terms.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
@@ -33,9 +34,9 @@ class AccountScreen extends StatelessWidget {
                 StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
                   stream: user != null
                       ? FirebaseFirestore.instance
-                          .collection('users')
-                          .doc(user.uid)
-                          .snapshots()
+                            .collection('users')
+                            .doc(user.uid)
+                            .snapshots()
                       : null,
                   builder: (context, snapshot) {
                     String displayName = name;
@@ -52,7 +53,8 @@ class AccountScreen extends StatelessWidget {
                       }
                     } else {
                       // Fallback to FirebaseAuth user properties if snapshot not ready/doesn't exist
-                      if (user?.displayName != null && user!.displayName!.isNotEmpty) {
+                      if (user?.displayName != null &&
+                          user!.displayName!.isNotEmpty) {
                         displayName = user.displayName!.split(' ').first;
                       }
                     }
@@ -85,7 +87,10 @@ class AccountScreen extends StatelessWidget {
                               children: [
                                 const Icon(Icons.email_outlined, size: 15),
                                 const SizedBox(width: 5),
-                                Text(displayEmail, style: const TextStyle(fontSize: 13)),
+                                Text(
+                                  displayEmail,
+                                  style: const TextStyle(fontSize: 13),
+                                ),
                               ],
                             ),
                           ],
@@ -217,7 +222,14 @@ class AccountSettings extends StatelessWidget {
                 background: Colors.grey.shade200,
                 title: 'Terms & Privacy',
                 subtitle: 'Policies and usage guidelines',
-                onTap: () {},
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const TermsScreen(),
+                    ),
+                  );
+                },
               ),
 
               const Divider(height: 1),

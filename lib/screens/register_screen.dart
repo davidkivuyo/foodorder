@@ -1,7 +1,9 @@
 import 'package:campusbite/navigation/bottom_navigation.dart';
 import 'package:campusbite/screens/login_screen.dart';
+import 'package:campusbite/screens/terms.dart';
 import 'package:campusbite/services/auth_service.dart';
 import 'package:campusbite/widgets/auth_fields.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 class RegisterScreen extends StatefulWidget {
@@ -279,23 +281,34 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
                               Expanded(
                                 child: RichText(
-                                  text: const TextSpan(
-                                    style: TextStyle(
+                                  text: TextSpan(
+                                    style: const TextStyle(
                                       color: Colors.black87,
                                       fontSize: 15,
                                     ),
                                     children: [
-                                      TextSpan(
+                                      const TextSpan(
                                         text: "Please read & agree to the ",
                                       ),
                                       TextSpan(
                                         text: "Terms of Service",
-                                        style: TextStyle(
+                                        style: const TextStyle(
                                           color: Color(0xff156D27),
                                           fontWeight: FontWeight.bold,
+                                          decoration: TextDecoration.underline,
                                         ),
+                                        recognizer: TapGestureRecognizer()
+                                          ..onTap = () {
+                                            Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (_) =>
+                                                    const TermsScreen(),
+                                              ),
+                                            );
+                                          },
                                       ),
-                                      TextSpan(
+                                      const TextSpan(
                                         text:
                                             " to prevent bans or account suspension.",
                                       ),

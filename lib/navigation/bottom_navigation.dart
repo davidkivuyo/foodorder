@@ -224,7 +224,7 @@ class _NavigationExampleState extends State<MainScreen> {
               label: "Orders",
             ),
             NavigationDestination(
-              icon: Icon(Icons.person_2_rounded, semanticLabel: 'my profile'),
+              icon: Icon(Icons.person_outlined, semanticLabel: 'my profile'),
               label: "Account",
             ),
           ],

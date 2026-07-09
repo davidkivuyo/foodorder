@@ -51,6 +51,7 @@ Backend
 * Firebase Authentication
 * Cloud Firestore
 * Firebase Storage
+* firebase notifications
 
 These features are future phases and must not be implemented unless activated.
 
@@ -137,7 +138,7 @@ PHASE 1
 
 Goal:
 
-adding welcome screen to the app and displayed only at first time for the new user registration.
+Order history implementation
 
 Requirements:
 
