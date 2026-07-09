@@ -62,7 +62,7 @@ For support, contact us at [Support Email Address] or [Support Phone Number].'''
               height: 1.5,
               color: Colors.black,
               fontWeight: FontWeight
-                  .bold, // Adds a little line spacing for better readability
+                  .normal, // Adds a little line spacing for better readability
             ),
           ),
         ),
