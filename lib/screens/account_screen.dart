@@ -213,7 +213,7 @@ class AccountSettings extends StatelessWidget {
                 background: Colors.grey.shade200,
                 title: 'Help & Support',
                 subtitle: 'FAQs and customer support',
-                onTap: () => context.go('/support'),
+                onTap: () => context.push('/support'),
               ),
 
               const Divider(height: 1),
@@ -224,7 +224,7 @@ class AccountSettings extends StatelessWidget {
                 background: Colors.grey.shade200,
                 title: 'Terms & Privacy',
                 subtitle: 'Policies and usage guidelines',
-                onTap: () => context.go('/terms'),
+                onTap: () => context.push('/terms'),
               ),
 
               const Divider(height: 1),
