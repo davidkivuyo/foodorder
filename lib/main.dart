@@ -1,8 +1,8 @@
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:campusbite/navigation/auth_wrapper.dart';
-import 'package:campusbite/screens/register_screen.dart';
-import 'package:campusbite/screens/login_screen.dart';
+import 'package:campusbite/navigation/router.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_web_plugins/url_strategy.dart';
+import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
@@ -10,6 +10,7 @@ import 'firebase_options.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  usePathUrlStrategy();
   runApp(const MyApp());
 }
 
@@ -19,15 +20,14 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
+    return MaterialApp.router(
+      routerConfig: router,
       debugShowCheckedModeBanner: false,
       title: 'Food order app',
       theme: ThemeData(
         useMaterial3: true,
         textTheme: GoogleFonts.dmSansTextTheme(Theme.of(context).textTheme),
       ),
-      // AuthWrapper routes to MainScreen (logged in) or WelcomeScreen (logged out)
-      home: const AuthWrapper(),
     );
   }
 }
@@ -112,13 +112,7 @@ class WelcomeScreen extends StatelessWidget {
                         ),
                         elevation: 0,
                       ),
-                      onPressed: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const RegisterScreen(),
-                          ),
-                        );
-                      },
+                      onPressed: () => context.push('/register'),
                       child: const Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
@@ -145,11 +139,7 @@ class WelcomeScreen extends StatelessWidget {
 
                   /// Sign In
                   GestureDetector(
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const LoginScreen()),
-                      );
-                    },
+                    onTap: () => context.push('/login'),
                     child: RichText(
                       text: const TextSpan(
                         style: TextStyle(color: Colors.white70, fontSize: 18),
