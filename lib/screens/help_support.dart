@@ -52,7 +52,8 @@ class FaqScreen extends StatelessWidget {
               Padding(
                 padding: EdgeInsets.all(16.0),
                 child: Text(
-                    'We currently deliver to all main dorms, the central library, and the student union building. Please ensure you select a valid drop-off zone at checkout.'),
+                  'We currently deliver to all main dorms, the central library, and the student union building. Please ensure you select a valid drop-off zone at checkout.',
+                ),
               ),
             ],
           ),
@@ -62,7 +63,8 @@ class FaqScreen extends StatelessWidget {
               Padding(
                 padding: EdgeInsets.all(16.0),
                 child: Text(
-                    'Yes! You can link your student ID in the account settings to pay using your meal plan or campus dining dollars.'),
+                  'Yes! You can link your student ID in the account settings to pay using your meal plan or campus dining dollars.',
+                ),
               ),
             ],
           ),
@@ -72,7 +74,8 @@ class FaqScreen extends StatelessWidget {
               Padding(
                 padding: EdgeInsets.all(16.0),
                 child: Text(
-                    'Please reach out through our Contact Us page within 2 hours of delivery, and we will review your order for a refund or credit.'),
+                  'Please reach out through our Contact Us page within 2 hours of delivery, and we will review your order for a refund or credit.',
+                ),
               ),
             ],
           ),
@@ -82,7 +85,8 @@ class FaqScreen extends StatelessWidget {
               Padding(
                 padding: EdgeInsets.all(16.0),
                 child: Text(
-                    'Drivers will wait for 10 minutes at the designated drop-off zone. If they cannot reach you, the food may be left at the location or discarded, and you will still be charged.'),
+                  'Drivers will wait for 10 minutes at the designated drop-off zone. If they cannot reach you, the food may be left at the location or discarded, and you will still be charged.',
+                ),
               ),
             ],
           ),
@@ -117,7 +121,7 @@ class ContactScreen extends StatelessWidget {
             ListTile(
               leading: const Icon(Icons.email, color: Colors.blue),
               title: const Text('Email Support'),
-              subtitle: const Text('support@campusbite.edu'),
+              subtitle: const Text('lembotor6@gmail.com'),
               onTap: () {
                 // Add functionality to open default email app
               },
@@ -126,7 +130,7 @@ class ContactScreen extends StatelessWidget {
             ListTile(
               leading: const Icon(Icons.phone, color: Colors.green),
               title: const Text('Call Us'),
-              subtitle: const Text('+255 786 767 431'),
+              subtitle: const Text('**********'),
               onTap: () {
                 // Add functionality to open phone dialer
               },
