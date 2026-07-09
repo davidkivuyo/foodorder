@@ -138,12 +138,13 @@ PHASE 1
 
 Goal:
 
-Update the cart logic so as for food items labeled ALL in their "cafe" fields, the user will be able to select the cafe they want to order from. This will be done by adding a new field to the food item model to indicate the available cafes for that food item. When a user adds an ALL labeled food item to the cart, they will be prompted to select the cafe they want to order from before proceeding to placing an order.
+Remove the current cafe logic and update it so that if a food item's availableCafes field contain one cafe the app will display that cafe name but if the availableCafes field contains multiple cafes, the app will display "ALL" instead of the cafe name. And also update the cart logic so as for food items which are in multiple cafes, the user will be able to select the cafe they want before placing an order.
 
 Requirements:
 
-* Add a new field to the food item model to indicate the available cafes for that food item.
 * When a user adds an ALL labeled food item to the cart, they will be prompted to select the cafe they want to order from before proceeding to placing an order.
+* for food items which are in multiple cafes, the app will display "ALL" instead of the cafe name.
+* For food items which are in one cafe, the app will display that cafe name as written in the availableCafes field.
 
 Restrictions:
 

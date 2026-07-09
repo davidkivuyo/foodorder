@@ -132,7 +132,7 @@ class CartBottomSheet extends StatelessWidget {
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
-                                  'Cafe ${item.foodItem.cafe}',
+                                  'Cafe ${item.displayCafe}',
                                   style: TextStyle(
                                     fontSize: 12,
                                     color: Colors.grey[600],

@@ -25,7 +25,10 @@ class CartService extends ChangeNotifier {
   List<FoodOrder> get orders => List.unmodifiable(_orders);
 
   double get totalAmount {
-    return _cartItems.fold(0.0, (total, item) => total + (item.foodItem.price * item.quantity));
+    return _cartItems.fold(
+      0.0,
+      (total, item) => total + (item.foodItem.price * item.quantity),
+    );
   }
 
   int get totalItemsCount {
@@ -54,45 +57,51 @@ class CartService extends ChangeNotifier {
         .collection('cart')
         .snapshots()
         .listen((snapshot) async {
-      final List<CartItem> updatedItems = [];
+          final List<CartItem> updatedItems = [];
 
-      for (final doc in snapshot.docs) {
-        final data = doc.data();
-        final foodItemId = data['foodItemId'] as String?;
-        final quantity = (data['quantity'] as num?)?.toInt() ?? 1;
+          for (final doc in snapshot.docs) {
+            final data = doc.data();
+            final foodItemId = data['foodItemId'] as String?;
+            final quantity = (data['quantity'] as num?)?.toInt() ?? 1;
+            final selectedCafe = data['selectedCafe'] as String?;
 
-        if (foodItemId == null || foodItemId.isEmpty) continue;
+            if (foodItemId == null || foodItemId.isEmpty) continue;
 
-        // Fetch FoodItem details from cache or Firestore
-        FoodItem? foodItem = _foodItemsCache[foodItemId];
-        if (foodItem == null) {
-          try {
-            final foodDoc = await FirebaseFirestore.instance
-                .collection('food_items')
-                .doc(foodItemId)
-                .get();
-            if (foodDoc.exists && foodDoc.data() != null) {
-              foodItem = FoodItem.fromMap(foodDoc.data()!, id: foodDoc.id);
-              _foodItemsCache[foodItemId] = foodItem;
+            // Fetch FoodItem details from cache or Firestore
+            FoodItem? foodItem = _foodItemsCache[foodItemId];
+            if (foodItem == null) {
+              try {
+                final foodDoc = await FirebaseFirestore.instance
+                    .collection('food_items')
+                    .doc(foodItemId)
+                    .get();
+                if (foodDoc.exists && foodDoc.data() != null) {
+                  foodItem = FoodItem.fromMap(foodDoc.data()!, id: foodDoc.id);
+                  _foodItemsCache[foodItemId] = foodItem;
+                }
+              } catch (e) {
+                debugPrint(
+                  '[CartService] Error fetching food item $foodItemId: $e',
+                );
+              }
             }
-          } catch (e) {
-            debugPrint('[CartService] Error fetching food item $foodItemId: $e');
+
+            if (foodItem != null) {
+              updatedItems.add(
+                CartItem(
+                  id: doc.id,
+                  foodItem: foodItem,
+                  quantity: quantity,
+                  selectedCafe: selectedCafe,
+                ),
+              );
+            }
           }
-        }
 
-        if (foodItem != null) {
-          updatedItems.add(CartItem(
-            id: doc.id,
-            foodItem: foodItem,
-            quantity: quantity,
-          ));
-        }
-      }
-
-      _cartItems.clear();
-      _cartItems.addAll(updatedItems);
-      notifyListeners();
-    });
+          _cartItems.clear();
+          _cartItems.addAll(updatedItems);
+          notifyListeners();
+        });
   }
 
   void _cancelCartSubscription() {
@@ -102,7 +111,7 @@ class CartService extends ChangeNotifier {
 
   // ---------- Cart Operations ----------
 
-  void addToCart(FoodItem item) async {
+  void addToCart(FoodItem item, {String? selectedCafe}) async {
     final userId = FirebaseAuth.instance.currentUser?.uid;
     if (userId == null || item.id.isEmpty) return;
 
@@ -111,7 +120,9 @@ class CartService extends ChangeNotifier {
         .doc(userId)
         .collection('cart');
 
-    final existingIndex = _cartItems.indexWhere((element) => element.foodItem.id == item.id);
+    final existingIndex = _cartItems.indexWhere(
+      (element) => element.foodItem.id == item.id,
+    );
 
     try {
       if (existingIndex >= 0) {
@@ -123,6 +134,7 @@ class CartService extends ChangeNotifier {
         await cartCollection.add({
           'foodItemId': item.id,
           'quantity': 1,
+          'selectedCafe': ?selectedCafe,
         });
       }
     } catch (e) {
@@ -139,7 +151,9 @@ class CartService extends ChangeNotifier {
         .doc(userId)
         .collection('cart');
 
-    final existingIndex = _cartItems.indexWhere((element) => element.foodItem.id == item.id);
+    final existingIndex = _cartItems.indexWhere(
+      (element) => element.foodItem.id == item.id,
+    );
 
     try {
       if (existingIndex >= 0) {
@@ -166,7 +180,9 @@ class CartService extends ChangeNotifier {
         .doc(userId)
         .collection('cart');
 
-    final existingIndex = _cartItems.indexWhere((element) => element.foodItem.id == item.id);
+    final existingIndex = _cartItems.indexWhere(
+      (element) => element.foodItem.id == item.id,
+    );
 
     try {
       if (existingIndex >= 0) {
@@ -202,7 +218,8 @@ class CartService extends ChangeNotifier {
   void placeOrder() {
     if (_cartItems.isEmpty) return;
 
-    final newOrderId = 'CB-${1000 + _orders.length + (DateTime.now().millisecond % 9000)}';
+    final newOrderId =
+        'CB-${1000 + _orders.length + (DateTime.now().millisecond % 9000)}';
     final newOrder = FoodOrder(
       orderId: newOrderId,
       items: List.from(_cartItems),

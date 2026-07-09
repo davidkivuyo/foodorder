@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../data/food_data.dart';
-import '../services/cart_service.dart';
+import '../widgets/cafe_selection_dialog.dart';
 import '../widgets/cart_fab.dart';
 import 'home_screen.dart';
 
@@ -329,7 +329,7 @@ class _CommonFoodCard extends StatelessWidget {
                 );
               },
               child: Hero(
-                tag: 'common_${item.cafe}_${item.title}_${item.image}',
+                tag: 'common_${item.displayCafe}_${item.title}_${item.image}',
                 child: item.buildImage(
                   height: 100,
                   width: double.infinity,
@@ -365,15 +365,7 @@ class _CommonFoodCard extends StatelessWidget {
                   // Add to cart button
                   GestureDetector(
                     onTap: () {
-                      CartService().addToCart(item);
-                      ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('${item.title} added to cart!'),
-                          duration: const Duration(seconds: 1),
-                          backgroundColor: Colors.orange,
-                        ),
-                      );
+                      addToCartWithCafeCheck(context, item);
                     },
                     child: Container(
                       padding: const EdgeInsets.all(6),
@@ -410,7 +402,7 @@ class _CommonFoodCard extends StatelessWidget {
                   const Icon(Icons.star_rounded, color: Colors.amber, size: 16),
                   Expanded(
                     child: Text(
-                      '${item.rating} • CAFE(${item.cafe})',
+                      '${item.rating} • CAFE(${item.displayCafe})',
                       style: const TextStyle(fontSize: 12, color: Colors.black),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,

@@ -10,7 +10,7 @@ class FoodItem {
   final int price;
   final double rating;
   final String category;
-  final String cafe;
+  final List<String> availableCafes;
   final String time;
   final String section;
 
@@ -22,7 +22,7 @@ class FoodItem {
     required this.price,
     required this.rating,
     required this.category,
-    required this.cafe,
+    this.availableCafes = const [],
     required this.time,
     this.section = '',
   });
@@ -38,11 +38,13 @@ class FoodItem {
           : int.tryParse(map['price']?.toString() ?? '') ?? 0,
       rating: (map['rating'] ?? 4.5).toDouble(),
       category: map['category'] ?? '',
-      cafe: map['cafe'] ?? 'all',
+      availableCafes: (map['availableCafes'] as List?)?.cast<String>() ?? [],
       time: map['time'] ?? '',
       section: map['section'] ?? '',
     );
   }
+
+  String get displayCafe => availableCafes.length == 1 ? availableCafes.first : 'Multiple';
 
   /// Builds the food item image from network (if URL) or local asset,
   /// with loading placeholder and a non-annoying error message on failure.

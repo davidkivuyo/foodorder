@@ -86,7 +86,7 @@ Future<void> addToCartWithCafeCheck(
 ) async {
   final cartService = CartService();
 
-  if (item.cafe.toLowerCase() == 'all' && item.availableCafes.isNotEmpty) {
+  if (item.availableCafes.length > 1) {
     final selectedCafe = await showCafeSelectionSheet(
       context,
       availableCafes: item.availableCafes,

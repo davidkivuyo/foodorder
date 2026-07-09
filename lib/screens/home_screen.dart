@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../data/food_data.dart';
 import '../data/search_bar.dart';
-import '../services/cart_service.dart';
+import '../widgets/cafe_selection_dialog.dart';
 import '../widgets/cart_fab.dart';
 import 'common_food.dart';
 
@@ -266,7 +266,7 @@ class CardRowItems extends StatelessWidget {
                                 },
                                 child: Hero(
                                   tag:
-                                      'home_${item.cafe}_${item.title}_${item.image}',
+                                      'home_${item.displayCafe}_${item.title}_${item.image}',
                                   child: item.buildImage(
                                     height: 120,
                                     width: double.infinity,
@@ -302,21 +302,7 @@ class CardRowItems extends StatelessWidget {
                                   ),
                                   GestureDetector(
                                     onTap: () {
-                                      CartService().addToCart(item);
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).hideCurrentSnackBar();
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        SnackBar(
-                                          content: Text(
-                                            '${item.title} added to cart!',
-                                          ),
-                                          duration: const Duration(seconds: 1),
-                                          backgroundColor: Colors.orange,
-                                        ),
-                                      );
+                                      addToCartWithCafeCheck(context, item);
                                     },
                                     child: Container(
                                       padding: const EdgeInsets.all(6),
@@ -350,7 +336,7 @@ class CardRowItems extends StatelessWidget {
                                   ),
                                   Expanded(
                                     child: Text(
-                                      '${item.rating} • CAFE(${item.cafe})',
+                                      '${item.rating} • CAFE(${item.displayCafe})',
                                       style: const TextStyle(
                                         fontSize: 12,
                                         color: Colors.black,
@@ -399,7 +385,7 @@ class ItemDescriptionsHome extends StatelessWidget {
               Stack(
                 children: [
                   Hero(
-                    tag: 'home_${item.cafe}_${item.title}_${item.image}',
+                    tag: 'home_${item.displayCafe}_${item.title}_${item.image}',
                     child: ClipRRect(
                       child: item.buildImage(
                         width: double.infinity,
@@ -486,15 +472,7 @@ class ItemDescriptionsHome extends StatelessWidget {
                           ),
                         ),
                         onPressed: () {
-                          CartService().addToCart(item);
-                          ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('${item.title} added to cart!'),
-                              duration: const Duration(seconds: 1),
-                              backgroundColor: Colors.orange,
-                            ),
-                          );
+                          addToCartWithCafeCheck(context, item);
                         },
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
@@ -561,7 +539,7 @@ class CategoriesTitles extends StatelessWidget {
                         );
                       },
                       child: Hero(
-                        tag: 'home_${item.cafe}_${item.title}_${item.image}',
+                        tag: 'home_${item.displayCafe}_${item.title}_${item.image}',
                         child: item.buildImage(
                           height: 100,
                           width: double.infinity,
@@ -595,17 +573,7 @@ class CategoriesTitles extends StatelessWidget {
                           const SizedBox(width: 8),
                           GestureDetector(
                             onTap: () {
-                              CartService().addToCart(item);
-                              ScaffoldMessenger.of(
-                                context,
-                              ).hideCurrentSnackBar();
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text('${item.title} added to cart!'),
-                                  duration: const Duration(seconds: 1),
-                                  backgroundColor: Colors.orange,
-                                ),
-                              );
+                              addToCartWithCafeCheck(context, item);
                             },
                             child: Container(
                               padding: const EdgeInsets.all(6),
@@ -633,7 +601,7 @@ class CategoriesTitles extends StatelessWidget {
                           ),
                           Expanded(
                             child: Text(
-                              '${item.rating} • CAFE(${item.cafe})',
+                              '${item.rating} • CAFE(${item.displayCafe})',
                               style: const TextStyle(
                                 fontSize: 12,
                                 color: Colors.black,
@@ -714,7 +682,7 @@ class CardColumnItems extends StatelessWidget {
                           );
                         },
                         child: Hero(
-                          tag: 'home_${item.cafe}_${item.title}_${item.image}',
+                          tag: 'home_${item.displayCafe}_${item.title}_${item.image}',
                           child: item.buildImage(
                             width: double.infinity,
                             fit: BoxFit.cover,
@@ -749,19 +717,7 @@ class CardColumnItems extends StatelessWidget {
                             // Add to cart button
                             GestureDetector(
                               onTap: () {
-                                CartService().addToCart(item);
-                                ScaffoldMessenger.of(
-                                  context,
-                                ).hideCurrentSnackBar();
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                      '${item.title} added to cart!',
-                                    ),
-                                    duration: const Duration(seconds: 1),
-                                    backgroundColor: Colors.orange,
-                                  ),
-                                );
+                                addToCartWithCafeCheck(context, item);
                               },
                               child: Container(
                                 padding: const EdgeInsets.all(6),
@@ -801,7 +757,7 @@ class CardColumnItems extends StatelessWidget {
                             ),
                             Expanded(
                               child: Text(
-                                '${item.rating} • CAFE(${item.cafe})',
+                                '${item.rating} • CAFE(${item.displayCafe})',
                                 style: const TextStyle(
                                   fontSize: 12,
                                   color: Colors.black,
