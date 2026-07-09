@@ -11,8 +11,7 @@ class TermsScreen extends StatelessWidget {
         padding: EdgeInsets.all(16.0),
         child: SingleChildScrollView(
           child: Text(
-            '''Terms and Conditions
-
+            '''
 Last Updated: Sept 9, 2026
 
 Welcome to Campus Bite
