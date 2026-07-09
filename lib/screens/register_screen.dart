@@ -293,7 +293,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                           decoration: TextDecoration.underline,
                                         ),
                                         recognizer: TapGestureRecognizer()
-                                          ..onTap = () => context.go('/terms'),
+                                          ..onTap = () =>
+                                              context.push('/terms'),
                                       ),
                                       const TextSpan(
                                         text:
