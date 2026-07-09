@@ -20,6 +20,7 @@ Welcome to Campus Bite
  mobile application. By accessing or using our App, you agree to be bound by these terms.
 
 1. Eligibility and Account Registration
+• User will lose access to their account once they do not collect their orders for 2 consecutive times and their strikes points fall to 0 points.
 • Target Audience: The App is intended primarily for university students, faculty, and staff.
 • Account Creation: You must provide accurate, current, and complete information (e.g., university email, campus delivery location) during registration.
 • Account Security: You are responsible for safeguarding your password and for all activities under your account.
@@ -32,7 +33,7 @@ Welcome to Campus Bite
 
 3. Delivery and Pick-up
 • Campus Zones: Deliveries are restricted to specific designated campus areas (e.g., dorms, library entrances).
-• Delivery Times: Estimated delivery times are provided for convenience and are not guaranteed. 
+• Delivery Times: Estimated delivery times are provided for convenience and are not guaranteed.
 • Unreachable Customers: If a driver cannot reach you at the designated location within 10 minutes, the food may be left or discarded. You will still be charged.
 
 4. Cancellations and Refunds
@@ -58,7 +59,10 @@ These terms shall be governed by and construed in accordance with the laws of th
 For support, contact us at [Support Email Address] or [Support Phone Number].''',
             style: TextStyle(
               fontSize: 14.0,
-              height: 1.5, // Adds a little line spacing for better readability
+              height: 1.5,
+              color: Colors.black,
+              fontWeight: FontWeight
+                  .bold, // Adds a little line spacing for better readability
             ),
           ),
         ),
