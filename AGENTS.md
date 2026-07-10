@@ -138,7 +138,7 @@ PHASE 1
 
 Goal:
 
-make the cart works well with he current food item data model in the admin app inside adminview directory
+make the cart works well with the current food item data model in the admin app inside adminview directory
 
 Requirements:
 
