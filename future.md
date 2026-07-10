@@ -1,13 +1,6 @@
 future implementation plans
-1. Goal1:
 
-For offcampus labeled food items the users will only be allowed to call the associated cafe phone number instead of placing an order when added to cart, thus preventing the user from placing an order for offcampus food items. This will also add another field on the food item model to indicate the location of the offcampus cafes.
-
-Requirements:
-
-* Add a new field to the food item model to indicate the location of the offcampus cafes.
-* When a user adds an offcampus food item to the cart, instead of allowing them to place an order, display a message prompting them to call the associated cafe phone number.
-
+# not fulfilled
 2. Goal2:
 
 add products for off_campus food items. the section field will be changed to off_campus, cafe field to offcampus, and the location field will be added to indicate the location of the offcampus cafes.
@@ -28,3 +21,11 @@ Update the cart logic so as for food items labeled ALL in their "cafe" fields, t
 
 5. Goal5
 display poper messages instead of debugprint eg debugPrint('[CartService] Cannot add unavailable item: ${item.title}
+
+# fulfilled✅
+1. Goal1:
+
+For offcampus labeled food items the users will only be allowed to call the associated cafe phone number instead of placing an order when added to cart, thus preventing the user from placing an order for offcampus food items. This will also add another field on the food item model to indicate the location of the offcampus cafes.
+Requirements:
+* Add a new field to the food item model to indicate the location of the offcampus cafes.
+* When a user adds an offcampus food item to the cart, instead of allowing them to place an order, display a message prompting them to call the associated cafe phone number.
