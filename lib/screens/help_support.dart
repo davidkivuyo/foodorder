@@ -127,8 +127,8 @@ class ContactScreen extends StatelessWidget {
             const Divider(),
             const ListTile(
               leading: Icon(Icons.location_on, color: Colors.red),
-              title: Text('Campus Office'),
-              subtitle: Text('Student Union, Room 104\nMon-Fri, 9 AM - 5 PM'),
+              title: Text('Campus Cafe admins'),
+              subtitle: Text('Cafe 1 or 2, at universitie\'s main campus'),
             ),
           ],
         ),
