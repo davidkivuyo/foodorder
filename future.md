@@ -8,6 +8,10 @@ Requirements:
 * Add a new field to the food item model to indicate the location of the offcampus cafes.
 * When a user adds an offcampus food item to the cart, instead of allowing them to place an order, display a message prompting them to call the associated cafe phone number.
 
+<<<<<<< HEAD
+=======
+# not fulfilled❌
+>>>>>>> feature_branch_1
 2. Goal2:
 
 add products for off_campus food items. the section field will be changed to off_campus, cafe field to offcampus, and the location field will be added to indicate the location of the offcampus cafes.
