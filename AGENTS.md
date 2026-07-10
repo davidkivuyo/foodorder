@@ -138,13 +138,11 @@ PHASE 1
 
 Goal:
 
-Remove the current cafe logic and update it so that if a food item's availableCafes field contain one cafe the app will display that cafe name but if the availableCafes field contains multiple cafes, the app will display "ALL" instead of the cafe name. And also update the cart logic so as for food items which are in multiple cafes, the user will be able to select the cafe they want before placing an order.
+make the cart works well with he current food item data model in the admin app inside adminview directory
 
 Requirements:
 
-* When a user adds an ALL labeled food item to the cart, they will be prompted to select the cafe they want to order from before proceeding to placing an order.
-* for food items which are in multiple cafes, the app will display "ALL" instead of the cafe name.
-* For food items which are in one cafe, the app will display that cafe name as written in the availableCafes field.
+* the cart logics like add item, choose cafe if item is available on multiple cafes, delete item, store on firestore should not be changed or overwritten but updated to allow to work properly with the admin app food item data model.
 
 Restrictions:
 

@@ -86,6 +86,21 @@ Future<void> addToCartWithCafeCheck(
 ) async {
   final cartService = CartService();
 
+  // Check if item is available before adding to cart
+  if (!item.available) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${item.title} is currently unavailable'),
+          duration: const Duration(seconds: 2),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+    return;
+  }
+
   if (item.availableCafes.length > 1) {
     final selectedCafe = await showCafeSelectionSheet(
       context,

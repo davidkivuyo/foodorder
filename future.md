@@ -25,3 +25,6 @@ When user places an order the details of the order will be sent to the database 
 4. Goal4:
 
 Update the cart logic so as for food items labeled ALL in their "cafe" fields, the user will be able to select the cafe they want to order from. This will be done by adding a new field to the food item model to indicate the available cafes for that food item. When a user adds an ALL labeled food item to the cart, they will be prompted to select the cafe they want to order from before proceeding to placing an order.
+
+5. Goal5
+display poper messages instead of debugprint eg debugPrint('[CartService] Cannot add unavailable item: ${item.title}

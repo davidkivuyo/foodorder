@@ -114,6 +114,12 @@ class CartService extends ChangeNotifier {
   void addToCart(FoodItem item, {String? selectedCafe}) async {
     final userId = FirebaseAuth.instance.currentUser?.uid;
     if (userId == null || item.id.isEmpty) return;
+    
+    // Check if item is available before adding to cart
+    if (!item.available) {
+      debugPrint('[CartService] Cannot add unavailable item: ${item.title}');
+      return;
+    }
 
     final cartCollection = FirebaseFirestore.instance
         .collection('users')
@@ -134,7 +140,7 @@ class CartService extends ChangeNotifier {
         await cartCollection.add({
           'foodItemId': item.id,
           'quantity': 1,
-          'selectedCafe': ?selectedCafe,
+          'selectedCafe': selectedCafe,
         });
       }
     } catch (e) {
