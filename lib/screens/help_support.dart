@@ -93,7 +93,7 @@ class ContactScreen extends StatelessWidget {
   Future<void> _launchEmail() async {
     final Uri emailUri = Uri(
       scheme: 'mailto',
-      path: 'support@example.com',
+      path: 'lembotor6@gmail.com',
       queryParameters: {
         'subject': 'App Feedback',
         'body': 'Hello Support team,',
@@ -107,14 +107,23 @@ class ContactScreen extends StatelessWidget {
     }
   }
 
-  // Launch Phone Dialer
-  Future<void> _launchDialer() async {
-    final Uri phoneUri = Uri(scheme: 'tel', path: '+1234567890');
+  /// whatsapp
+  Future<void> _openWhatsApp() async {
+    final String phoneNumber = "255671035765";
+    final String message =
+        "Hello! I am contacting you from the Campus Bite app.";
+    final Uri whatsappUri = Uri.parse(
+      "https://wa.me/$phoneNumber?text=${Uri.encodeComponent(message)}",
+    );
 
-    if (await canLaunchUrl(phoneUri)) {
-      await launchUrl(phoneUri);
-    } else {
-      debugPrint('Could not launch dialer');
+    try {
+      if (await canLaunchUrl(whatsappUri)) {
+        await launchUrl(whatsappUri, mode: LaunchMode.externalApplication);
+      } else {
+        debugPrint('WhatsApp is not installed on this device.');
+      }
+    } catch (e) {
+      debugPrint('Error launching WhatsApp: $e');
     }
   }
 
@@ -146,9 +155,9 @@ class ContactScreen extends StatelessWidget {
             const Divider(),
             ListTile(
               leading: const Icon(Icons.phone, color: Colors.green),
-              title: const Text('Call Us'),
-              subtitle: const Text('**********'),
-              onTap: _launchDialer,
+              title: const Text('Message on whatsapp'),
+              subtitle: Text('+255671035765'),
+              onTap: _openWhatsApp,
             ),
             const Divider(),
             const ListTile(
