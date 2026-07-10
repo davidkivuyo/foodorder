@@ -96,7 +96,7 @@ class ContactScreen extends StatelessWidget {
       path: 'lembotor6@gmail.com',
       queryParameters: {
         'subject': 'App Feedback',
-        'body': 'Hello Support team,',
+        'body': 'Hello Campus Bite Support team,',
       },
     );
 
@@ -154,7 +154,7 @@ class ContactScreen extends StatelessWidget {
             ),
             const Divider(),
             ListTile(
-              leading: const Icon(Icons.phone, color: Colors.green),
+              leading: const Icon(Icons.chat, color: Colors.green),
               title: const Text('Message on whatsapp'),
               subtitle: Text('+255671035765'),
               onTap: _openWhatsApp,
