@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class SupportScreen extends StatelessWidget {
   const SupportScreen({super.key});
@@ -88,6 +89,35 @@ class FaqScreen extends StatelessWidget {
 class ContactScreen extends StatelessWidget {
   const ContactScreen({super.key});
 
+  /// Launch Email Client
+  Future<void> _launchEmail() async {
+    final Uri emailUri = Uri(
+      scheme: 'mailto',
+      path: 'support@example.com',
+      queryParameters: {
+        'subject': 'App Feedback',
+        'body': 'Hello Support team,',
+      },
+    );
+
+    if (await canLaunchUrl(emailUri)) {
+      await launchUrl(emailUri);
+    } else {
+      debugPrint('Could not launch email client');
+    }
+  }
+
+  // Launch Phone Dialer
+  Future<void> _launchDialer() async {
+    final Uri phoneUri = Uri(scheme: 'tel', path: '+1234567890');
+
+    if (await canLaunchUrl(phoneUri)) {
+      await launchUrl(phoneUri);
+    } else {
+      debugPrint('Could not launch dialer');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -111,18 +141,14 @@ class ContactScreen extends StatelessWidget {
               leading: const Icon(Icons.email, color: Colors.blue),
               title: const Text('Email Support'),
               subtitle: const Text('lembotor6@gmail.com'),
-              onTap: () {
-                // Add functionality to open default email app
-              },
+              onTap: _launchEmail,
             ),
             const Divider(),
             ListTile(
               leading: const Icon(Icons.phone, color: Colors.green),
               title: const Text('Call Us'),
               subtitle: const Text('**********'),
-              onTap: () {
-                // Add functionality to open phone dialer
-              },
+              onTap: _launchDialer,
             ),
             const Divider(),
             const ListTile(
