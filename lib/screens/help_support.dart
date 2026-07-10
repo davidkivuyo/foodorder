@@ -47,45 +47,34 @@ class FaqScreen extends StatelessWidget {
         padding: const EdgeInsets.all(16.0),
         children: const [
           ExpansionTile(
-            title: Text('Where do you deliver on campus?'),
+            title: Text('About delivery?'),
             children: [
               Padding(
                 padding: EdgeInsets.all(16.0),
                 child: Text(
-                  'We currently deliver to all main dorms, the central library, and the student union building. Please ensure you select a valid drop-off zone at checkout.',
+                  'We currently DO NOT deliver to any location. the app is a self pick based, users order food and the cafe receives orders to process them and prepare once ready(completed), users go to the corresponding cafe and pick their meals.',
                 ),
               ),
             ],
           ),
           ExpansionTile(
-            title: Text('Can I pay with my Student Meal Plan?'),
+            title: Text('About payment?'),
             children: [
               Padding(
                 padding: EdgeInsets.all(16.0),
                 child: Text(
-                  'Yes! You can link your student ID in the account settings to pay using your meal plan or campus dining dollars.',
+                  'The app is strictly non payment proccessing, it DOES NOT accept, process or make payments. We encourage users to only pay at the cafe in which they ordered their meals',
                 ),
               ),
             ],
           ),
           ExpansionTile(
-            title: Text('What if my order is missing an item?'),
+            title: Text('What happens my account is suspended?'),
             children: [
               Padding(
                 padding: EdgeInsets.all(16.0),
                 child: Text(
-                  'Please reach out through our Contact Us page within 2 hours of delivery, and we will review your order for a refund or credit.',
-                ),
-              ),
-            ],
-          ),
-          ExpansionTile(
-            title: Text('What happens if I miss my delivery driver?'),
-            children: [
-              Padding(
-                padding: EdgeInsets.all(16.0),
-                child: Text(
-                  'Drivers will wait for 10 minutes at the designated drop-off zone. If they cannot reach you, the food may be left at the location or discarded, and you will still be charged.',
+                  'If you accidentally did not take your food and ended up suspended consider appealing to the cafe admins.',
                 ),
               ),
             ],
