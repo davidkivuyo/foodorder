@@ -1,6 +1,6 @@
 future implementation plans
 
-# not fulfilled
+# not fulfilled❌
 2. Goal2:
 
 add products for off_campus food items. the section field will be changed to off_campus, cafe field to offcampus, and the location field will be added to indicate the location of the offcampus cafes.
