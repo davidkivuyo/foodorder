@@ -22,9 +22,8 @@ class CartService extends ChangeNotifier {
 
   List<CartItem> get cartItems => List.unmodifiable(_cartItems);
 
-  /// Cached user name to avoid re-fetching on every order placement.
+  /// Cached user name used when placing orders.
   String _cachedUserName = '';
-  bool _userNameLoaded = false;
 
   double get totalAmount {
     return _cartItems.fold(
@@ -42,6 +41,8 @@ class CartService extends ChangeNotifier {
   void _initAuthListener() {
     _authSubscription = FirebaseAuth.instance.authStateChanges().listen((user) {
       if (user != null) {
+        // Reset cached name so a different user's name is always fetched
+        _resetCachedName();
         _cacheUserName(user);
         _listenToCart(user.uid);
       } else {
@@ -52,9 +53,12 @@ class CartService extends ChangeNotifier {
     });
   }
 
-  /// Fetch and cache the user's display name from Firestore.
+  void _resetCachedName() {
+    _cachedUserName = '';
+  }
+
+  /// Fetch the current user's fullName from Firestore and cache it.
   Future<void> _cacheUserName(User user) async {
-    if (_userNameLoaded) return;
     try {
       final doc = await FirebaseFirestore.instance
           .collection('users')
@@ -68,7 +72,6 @@ class CartService extends ChangeNotifier {
     if (_cachedUserName.isEmpty) {
       _cachedUserName = user.displayName ?? 'Student';
     }
-    _userNameLoaded = true;
   }
 
   void _listenToCart(String userId) {
@@ -256,11 +259,14 @@ class CartService extends ChangeNotifier {
     final randomSuffix = timestamp % 9000;
     final newOrderId = 'CB-${1000 + randomSuffix}';
 
-    // Build the order document
+    // Build the order document — use cached name or fallback to Firebase displayName
+    final displayName = _cachedUserName.isNotEmpty
+        ? _cachedUserName
+        : (FirebaseAuth.instance.currentUser?.displayName ?? 'Student');
     final newOrder = FoodOrder(
       orderId: newOrderId,
       userId: userId,
-      userName: _cachedUserName,
+      userName: displayName,
       items: List.from(_cartItems),
       totalAmount: totalAmount,
       orderTime: DateTime.now(),
