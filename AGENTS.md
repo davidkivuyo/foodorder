@@ -79,6 +79,8 @@ Implement only the active phase.
 
 Do not implement future phases.
 
+All changes made are must be **production ready** hence solve any security and performance issues arise during development.
+
 ---
 
 ## Rule 2
@@ -138,18 +140,17 @@ PHASE 1
 
 Goal:
 
-Migrate the section logic from hardcoded in home screen to read the section collection field "name" from firestore database under section collection. Thus when the admin add a food item under the available section it automatically places the item to its corresponding section in home screen, if the food item section field is empty the food item can still be placed in the category screen according to its category along all other items available at the current moment whether their section name field is empty or not.
+Start implementing order logic, When user places an order, the details of the order will be sent to the database including the food item unique orderid, quantity, userId for the user who ordered and date and time. All under the database collection "orders". Then admin will receive the order and its details including the name of the user who ordered, the order unique ID which is automatically generated in cart_services.dart on a variable on line 227, the status of the order as shown in the order screen in adminview app, the amount and the food item name including the total order price amount. All in order screen in the admin view app.
 
 Requirements:
 
-* migrate the section hardcoded data to use data from firestore database under section collection
-* if the food item section field is empty then the food item can also be placed in category screen by its category, **Along** with all available food items at the current moment.
-* the title of sections in home screen does not associate with the section name feld data. Thus will be leaved as their are for now. example the title "Favourite on campus" must not be confused with the section name field data "campus_favourite"
+* the admin will have the choice to accept and reject the order and after that. with a confirmation pop up message if he or she accidentally press reject button.
+* the order screens of admin app should show choices and status for prepairing when the food is still being cooked, a choice to mark the food ready for pickup, and if it is collected or No show(Where its striking logic will be added in the future phases) if the student has not collected.
+* At the same time the student app order status is updated in real time.
 
 Restrictions:
 
 * Do not change anything not related to the task in the goal and requirements
-* No cafe admin functionality
 
 ---
 

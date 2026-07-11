@@ -284,27 +284,53 @@ class CartBottomSheet extends StatelessWidget {
                 width: double.infinity,
                 height: 50,
                 child: ElevatedButton(
-                  onPressed: () {
-                    // Place the order
-                    cartService.placeOrder();
+                  onPressed: () async {
+                    // Show loading indicator
+                    showDialog(
+                      context: context,
+                      barrierDismissible: false,
+                      builder: (_) => const Center(
+                        child: CircularProgressIndicator(),
+                      ),
+                    );
+
+                    // Place the order (async Firestore write)
+                    final orderId = await cartService.placeOrder();
+
+                    if (!context.mounted) return;
+
+                    // Close loading dialog
+                    Navigator.pop(context);
 
                     // Close Bottom Sheet
                     Navigator.pop(context);
 
-                    // Show dynamic feedback
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Row(
-                          children: const [
-                            Icon(Icons.check_circle, color: Colors.white),
-                            SizedBox(width: 8),
-                            Text('Order placed successfully!.'),
-                          ],
+                    if (orderId != null) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Row(
+                            children: const [
+                              Icon(Icons.check_circle, color: Colors.white),
+                              SizedBox(width: 8),
+                              Text('Order placed successfully!'),
+                            ],
+                          ),
+                          backgroundColor: Colors.green[800],
+                          duration: const Duration(seconds: 4),
                         ),
-                        backgroundColor: Colors.green[800],
-                        duration: const Duration(seconds: 4),
-                      ),
-                    );
+                      );
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: const Text(
+                            'Failed to place order. Please try again.',
+                          ),
+                          backgroundColor: Colors.red,
+                          duration: const Duration(seconds: 4),
+                        ),
+                      );
+                      return;
+                    }
 
                     // Callback to switch to order tracking screen
                     onOrderPlaced();

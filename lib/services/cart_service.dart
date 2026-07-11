@@ -15,14 +15,16 @@ class CartService extends ChangeNotifier {
   }
 
   final List<CartItem> _cartItems = [];
-  final List<FoodOrder> _orders = [];
   final Map<String, FoodItem> _foodItemsCache = {};
 
   StreamSubscription<User?>? _authSubscription;
   StreamSubscription<QuerySnapshot>? _cartSubscription;
 
   List<CartItem> get cartItems => List.unmodifiable(_cartItems);
-  List<FoodOrder> get orders => List.unmodifiable(_orders);
+
+  /// Cached user name to avoid re-fetching on every order placement.
+  String _cachedUserName = '';
+  bool _userNameLoaded = false;
 
   double get totalAmount {
     return _cartItems.fold(
@@ -40,6 +42,7 @@ class CartService extends ChangeNotifier {
   void _initAuthListener() {
     _authSubscription = FirebaseAuth.instance.authStateChanges().listen((user) {
       if (user != null) {
+        _cacheUserName(user);
         _listenToCart(user.uid);
       } else {
         _cancelCartSubscription();
@@ -47,6 +50,25 @@ class CartService extends ChangeNotifier {
         notifyListeners();
       }
     });
+  }
+
+  /// Fetch and cache the user's display name from Firestore.
+  Future<void> _cacheUserName(User user) async {
+    if (_userNameLoaded) return;
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+      if (doc.exists) {
+        final data = doc.data();
+        _cachedUserName = data?['fullName'] as String? ?? '';
+      }
+    } catch (_) {}
+    if (_cachedUserName.isEmpty) {
+      _cachedUserName = user.displayName ?? 'Student';
+    }
+    _userNameLoaded = true;
   }
 
   void _listenToCart(String userId) {
@@ -200,7 +222,7 @@ class CartService extends ChangeNotifier {
     }
   }
 
-  void clearCart() async {
+  Future<void> clearCart() async {
     final userId = FirebaseAuth.instance.currentUser?.uid;
     if (userId == null) return;
 
@@ -211,6 +233,7 @@ class CartService extends ChangeNotifier {
 
     try {
       final snapshot = await cartCollection.get();
+      if (snapshot.docs.isEmpty) return;
       final batch = FirebaseFirestore.instance.batch();
       for (final doc in snapshot.docs) {
         batch.delete(doc.reference);
@@ -221,48 +244,44 @@ class CartService extends ChangeNotifier {
     }
   }
 
-  void placeOrder() {
-    if (_cartItems.isEmpty) return;
+  /// Place the current cart items as an order and save to Firestore.
+  Future<String?> placeOrder() async {
+    if (_cartItems.isEmpty) return null;
 
-    final newOrderId =
-        'CB-${1000 + _orders.length + (DateTime.now().millisecond % 9000)}';
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) return null;
+
+    // Generate a unique order ID
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final randomSuffix = timestamp % 9000;
+    final newOrderId = 'CB-${1000 + randomSuffix}';
+
+    // Build the order document
     final newOrder = FoodOrder(
       orderId: newOrderId,
+      userId: userId,
+      userName: _cachedUserName,
       items: List.from(_cartItems),
       totalAmount: totalAmount,
       orderTime: DateTime.now(),
-      status: OrderStatus.preparing,
+      status: OrderStatus.pending,
     );
 
-    _orders.insert(0, newOrder);
-    clearCart();
+    try {
+      // Save to Firestore under 'orders' collection with the generated ID
+      await FirebaseFirestore.instance
+          .collection('orders')
+          .doc(newOrderId)
+          .set(newOrder.toFirestore());
 
-    // Simulating Cafe Admin response:
-    // After 8 seconds, the order status changes to Ready (simulating admin marking it ready).
-    Timer(const Duration(seconds: 8), () {
-      final index = _orders.indexWhere((o) => o.orderId == newOrderId);
-      if (index >= 0) {
-        _orders[index].status = OrderStatus.ready;
-        notifyListeners();
-      }
-    });
+      // Clear the cart after successful order placement
+      await clearCart();
 
-    // After 18 seconds, the order status changes to Collected (simulating confirmation).
-    Timer(const Duration(seconds: 18), () {
-      final index = _orders.indexWhere((o) => o.orderId == newOrderId);
-      if (index >= 0) {
-        _orders[index].status = OrderStatus.collected;
-        notifyListeners();
-      }
-    });
-  }
-
-  // Helper method to simulate immediate admin status changes from the UI
-  void simulateAdminStatusChange(String orderId, OrderStatus newStatus) {
-    final index = _orders.indexWhere((o) => o.orderId == orderId);
-    if (index >= 0) {
-      _orders[index].status = newStatus;
-      notifyListeners();
+      debugPrint('[CartService] Order placed successfully: $newOrderId');
+      return newOrderId;
+    } catch (e) {
+      debugPrint('[CartService] Error placing order: $e');
+      return null;
     }
   }
 

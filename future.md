@@ -20,9 +20,6 @@ in the striking  system, add the condition for an eligible student to look if he
 7. goal7
 an admin can strike students who donot collect their food by pressing no show button in corresponding orders and this will update the corresponding student's strike field to "no show" and add the strikeQuantity according to number of strikes the student got over time if its 2 the account will read suspended if 1 the app will display a non-annoying message in the corresponding student account screen.
 
-8. goal8.
-Add a section selection dropdown in the add_products screen where the admin can select which section to place the food item, the section information is retrieved from the firestore database under collection section/{sectionId}. also add another list from the dropdown which reads "no section" and if te cafe admin select it the food item will not be placed in any section but will remain organized according to its category
-
 9. goal9.
 save the users passwords in their google account logged in their device and retrieve it upon attempts to login in both adminview and customerview
 
@@ -35,3 +32,6 @@ Requirements:
 
 4. Goal4:
 Update the cart logic so as for food items labeled ALL in their "cafe" fields, the user will be able to select the cafe they want to order from. This will be done by adding a new field to the food item model to indicate the available cafes for that food item. When a user adds an ALL labeled food item to the cart, they will be prompted to select the cafe they want to order from before proceeding to placing an order.
+
+8. goal8.
+Add a section selection dropdown in the add_products screen where the admin can select which section to place the food item into, the section information is retrieved from the firestore database under collection "section". also add another list from the dropdown which reads "no section" and if the cafe admin selects it the food item will not be placed in any section but will still remain organized according to its category in the category screen.
