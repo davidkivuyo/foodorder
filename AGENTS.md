@@ -138,11 +138,13 @@ PHASE 1
 
 Goal:
 
-make the cart works well with the current food item data model in the admin app inside adminview directory
+Migrate the section logic from hardcoded in home screen to read the section collection field "name" from firestore database under section collection. Thus when the admin add a food item under the available section it automatically places the item to its corresponding section in home screen, if the food item section field is empty the food item can still be placed in the category screen according to its category along all other items available at the current moment whether their section name field is empty or not.
 
 Requirements:
 
-* the cart logics like add item, choose cafe if item is available on multiple cafes, delete item, store on firestore should not be changed or overwritten but updated to allow to work properly with the admin app food item data model.
+* migrate the section hardcoded data to use data from firestore database under section collection
+* if the food item section field is empty then the food item can also be placed in category screen by its category, **Along** with all available food items at the current moment.
+* the title of sections in home screen does not associate with the section name feld data. Thus will be leaved as their are for now. example the title "Favourite on campus" must not be confused with the section name field data "campus_favourite"
 
 Restrictions:
 

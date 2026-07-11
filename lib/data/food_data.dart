@@ -194,6 +194,20 @@ class FoodItem {
   }
 }
 
+class Section {
+  final String id;
+  final String name;
+
+  const Section({required this.id, required this.name});
+
+  factory Section.fromMap(Map<String, dynamic> map, {required String id}) {
+    return Section(
+      id: id,
+      name: map['name'] ?? '',
+    );
+  }
+}
+
 class FoodData {
   /// Stream of all food items from Firestore database to sync app state in real-time
   static Stream<List<FoodItem>> get foodItemsStream {
@@ -202,6 +216,17 @@ class FoodData {
     ) {
       return snapshot.docs.map((doc) {
         return FoodItem.fromMap(doc.data(), id: doc.id);
+      }).toList();
+    });
+  }
+
+  /// Stream of all sections from the `section` collection
+  static Stream<List<Section>> get sectionsStream {
+    return FirebaseFirestore.instance.collection('section').snapshots().map((
+      snapshot,
+    ) {
+      return snapshot.docs.map((doc) {
+        return Section.fromMap(doc.data(), id: doc.id);
       }).toList();
     });
   }
