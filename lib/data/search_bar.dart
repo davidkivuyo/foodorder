@@ -15,7 +15,7 @@ class SearchBarScreen extends StatefulWidget {
 class _SearchBarScreenState extends State<SearchBarScreen> {
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
-  
+
   Timer? _debounceTimer;
   List<FoodItem> _searchResults = [];
   bool _isLoading = false;
@@ -79,9 +79,10 @@ class _SearchBarScreenState extends State<SearchBarScreen> {
       if (mounted) {
         String userFriendlyError = 'Search service is temporarily unavailable.';
         if (e.code == 'permission-denied') {
-          userFriendlyError = 'Access denied. Please check Firestore permissions.';
+          userFriendlyError = 'Access denied. Please contact admins.';
         } else if (e.code == 'unavailable') {
-          userFriendlyError = 'Network error. Please check your internet connection.';
+          userFriendlyError =
+              'Network error. Please check your internet connection.';
         }
         setState(() {
           _searchResults = [];
@@ -133,11 +134,15 @@ class _SearchBarScreenState extends State<SearchBarScreen> {
             style: const TextStyle(fontSize: 16, color: Colors.black87),
             decoration: InputDecoration(
               hintText: 'Search for food, tags, category...',
-              hintStyle: TextStyle(fontSize: 14, color: Colors.grey.shade500),
-              prefixIcon: Icon(Icons.search, color: themeColor, size: 20),
+              hintStyle: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+              prefixIcon: Icon(Icons.search, color: Colors.black, size: 20),
               suffixIcon: _searchQuery.isNotEmpty
                   ? IconButton(
-                      icon: const Icon(Icons.clear, color: Colors.black54, size: 18),
+                      icon: const Icon(
+                        Icons.clear,
+                        color: Colors.black54,
+                        size: 18,
+                      ),
                       onPressed: _clearSearch,
                     )
                   : null,
@@ -209,10 +214,7 @@ class _SearchBarScreenState extends State<SearchBarScreen> {
               Text(
                 'Type food name, category (e.g. Burgers, Drinks), or dietary tags (e.g. Spicy, Vegan).',
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey.shade500,
-                ),
+                style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
               ),
             ],
           ),
@@ -247,10 +249,7 @@ class _SearchBarScreenState extends State<SearchBarScreen> {
               Text(
                 'Try checking your spelling or search for something else.',
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey.shade500,
-                ),
+                style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
               ),
             ],
           ),
@@ -285,10 +284,7 @@ class _SearchBarScreenState extends State<SearchBarScreen> {
               Text(
                 _errorMessage ?? 'An unexpected error occurred.',
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey.shade600,
-                ),
+                style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
               ),
               const SizedBox(height: 20),
               ElevatedButton.icon(
@@ -355,7 +351,8 @@ class _SearchBarScreenState extends State<SearchBarScreen> {
                         bottomLeft: Radius.circular(12),
                       ),
                       child: Hero(
-                        tag: 'home_${item.displayCafe}_${item.title}_${item.image}',
+                        tag:
+                            'home_${item.displayCafe}_${item.title}_${item.image}',
                         child: item.buildImage(
                           width: 100,
                           height: 100,
@@ -368,7 +365,11 @@ class _SearchBarScreenState extends State<SearchBarScreen> {
                   // Food Details
                   Expanded(
                     child: Padding(
-                      padding: const EdgeInsets.only(right: 12.0, top: 8.0, bottom: 8.0),
+                      padding: const EdgeInsets.only(
+                        right: 12.0,
+                        top: 8.0,
+                        bottom: 8.0,
+                      ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -391,7 +392,10 @@ class _SearchBarScreenState extends State<SearchBarScreen> {
                               const SizedBox(width: 4),
                               // Availability Badge
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 2,
+                                ),
                                 decoration: BoxDecoration(
                                   color: Colors.green.shade50,
                                   borderRadius: BorderRadius.circular(6),
