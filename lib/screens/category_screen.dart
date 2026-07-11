@@ -57,10 +57,12 @@ class _CategoryScreenState extends State<CategoryScreen> {
         final filteredItems = _selectedCategory == 'All'
             ? allItems
             : allItems
-                .where((item) =>
-                    item.category.toLowerCase() ==
-                    _selectedCategory.toLowerCase())
-                .toList();
+                  .where(
+                    (item) =>
+                        item.category.toLowerCase() ==
+                        _selectedCategory.toLowerCase(),
+                  )
+                  .toList();
 
         return SingleChildScrollView(
           child: Padding(
@@ -89,13 +91,16 @@ class _CategoryScreenState extends State<CategoryScreen> {
                           padding: const EdgeInsets.all(32),
                           child: Text(
                             'No items found for $_selectedCategory',
-                            style: const TextStyle(fontSize: 16, color: Colors.grey),
+                            style: const TextStyle(
+                              fontSize: 16,
+                              color: Colors.grey,
+                            ),
                           ),
                         ),
                       )
                     : Cards(items: filteredItems),
-                const SizedBox(height: 10),
-                BottomBanner(),
+                //const SizedBox(height: 10),
+                //BottomBanner(),
               ],
             ),
           ),
@@ -274,7 +279,7 @@ class FoodCard extends StatelessWidget {
   }
 }
 
-class BottomBanner extends StatelessWidget {
+/*class BottomBanner extends StatelessWidget {
   const BottomBanner({super.key});
   @override
   Widget build(BuildContext context) {
@@ -354,7 +359,7 @@ class BottomBanner extends StatelessWidget {
       ),
     );
   }
-}
+}*/
 
 class ItemDescriptionsCategories extends StatelessWidget {
   final FoodItem item;
@@ -378,7 +383,8 @@ class ItemDescriptionsCategories extends StatelessWidget {
               Stack(
                 children: [
                   Hero(
-                    tag: 'category_${item.displayCafe}_${item.title}_${item.image}',
+                    tag:
+                        'category_${item.displayCafe}_${item.title}_${item.image}',
                     child: ClipRRect(
                       child: item.buildImage(
                         width: double.infinity,
