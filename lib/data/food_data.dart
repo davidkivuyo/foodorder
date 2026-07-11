@@ -6,6 +6,7 @@ class FoodItem {
   final String id;
   final String image;
   final String title;
+  final String titleLower;
   final String subtitle;
   final String description;
   final int price;
@@ -18,6 +19,8 @@ class FoodItem {
   final bool featured;
   final int quantity;
   final List<String> dietaryTags;
+  final List<String> keywords;
+  final List<String> searchPrefixes;
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -25,6 +28,7 @@ class FoodItem {
     this.id = '',
     this.image = '',
     this.title = '',
+    this.titleLower = '',
     this.subtitle = '',
     this.description = '',
     this.price = 0,
@@ -37,6 +41,8 @@ class FoodItem {
     this.featured = false,
     this.quantity = 0,
     this.dietaryTags = const [],
+    this.keywords = const [],
+    this.searchPrefixes = const [],
     this.createdAt,
     this.updatedAt,
   });
@@ -73,6 +79,7 @@ class FoodItem {
       id: id ?? map['id'] ?? '',
       image: map['image'] ?? '',
       title: map['title'] ?? '',
+      titleLower: map['titleLower'] ?? '',
       subtitle: map['subtitle'] ?? '',
       description: map['description'] ?? '',
       price: parsePrice(map['price']),
@@ -88,6 +95,8 @@ class FoodItem {
         return qty is int ? qty : int.tryParse(qty?.toString() ?? '0') ?? 0;
       })(),
       dietaryTags: parseStringList(map['dietaryTags']),
+      keywords: parseStringList(map['keywords']),
+      searchPrefixes: parseStringList(map['searchPrefixes']),
       createdAt: parseTimestamp(map['createdAt']),
       updatedAt: parseTimestamp(map['updatedAt']),
     );
@@ -103,6 +112,7 @@ class FoodItem {
     return {
       'image': image,
       'title': title,
+      'titleLower': titleLower,
       'subtitle': subtitle,
       'description': description,
       'price': price,
@@ -115,6 +125,8 @@ class FoodItem {
       'featured': featured,
       'quantity': quantity,
       'dietaryTags': dietaryTags,
+      'keywords': keywords,
+      'searchPrefixes': searchPrefixes,
       'createdAt': createdAt,
       'updatedAt': updatedAt,
     };

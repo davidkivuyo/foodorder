@@ -138,17 +138,197 @@ After completing a feature:
 
 PHASE 1
 
-Goal:
+## Goal:
 
-Start implementing order logic, When user places an order, the details of the order will be sent to the database including the food item unique orderid, quantity, userId for the user who ordered and date and time. All under the database collection "orders". Then admin will receive the order and its details including the name of the user who ordered, the order unique ID which is automatically generated in cart_services.dart on a variable on line 227, the status of the order as shown in the order screen in adminview app, the amount and the food item name including the total order price amount. All in order screen in the admin view app.
+# Implement Firestore Search in the Campus Bite Flutter App
+
+Implement a complete food search feature using Firebase Firestore only. Do not use Algolia, Typesense, Meilisearch, or any external search service.
+
+## Objective
+
+Users should be able to search for food items by:
+
+* Food name
+* Category
+* Tags
+* Keywords
+* Partial words (prefix search)
+
+The implementation should be responsive and efficient while keeping Firestore read costs low.
+
+## Firestore Structure
+
+The `food_items` collection should include the following searchable fields:
+
+```text
+title
+titleLower
+keywords
+searchPrefixes
+```
+
+Example document:
+
+```json
+{
+  "title": "Chicken Burger",
+  "titleLower": "chicken burger",
+  "category": "Burgers",
+  "price": 3500,
+  "available": true,
+  "keywords": [
+    "chicken",
+    "burger",
+    "burgers",
+    "fast food",
+    "lunch"
+  ],
+  "searchPrefixes": [
+    "c",
+    "ch",
+    "chi",
+    "chic",
+    "chick",
+    "chicke",
+    "chicken",
+    "b",
+    "bu",
+    "bur",
+    "burg",
+    "burge",
+    "burger"
+  ]
+}
+```
+
+## Search Helper
+
+Create a helper class that automatically generates:
+
+* titleLower
+* keywords
+* searchPrefixes
 
 Requirements:
 
-* the admin will have the choice to accept and reject the order and after that. with a confirmation pop up message if he or she accidentally press reject button.
-* the order screens of admin app should show choices and status for prepairing when the food is still being cooked, a choice to mark the food ready for pickup, and if it is collected or No show(Where its striking logic will be added in the future phases) if the student has not collected.
-* At the same time the student app order status is updated in real time.
+* Convert everything to lowercase.
+* Remove duplicate values.
+* Generate prefixes for every word in the title.
+* Generate prefixes for category and tags as well.
 
-Restrictions:
+## Food Model
+
+Update the FoodItem model to support:
+
+* titleLower
+* keywords
+* searchPrefixes
+
+Update both:
+
+* fromMap()
+* toMap()
+
+
+## Admin Side
+
+Modify the Add Food and Edit Food functionality so that every time a food item is created or updated:
+
+* titleLower is generated automatically.
+* keywords are generated automatically.
+* searchPrefixes are generated automatically.
+
+The administrator should never type these fields manually.
+
+the admin app is available in the the /home/davidkivuyo/StudioProjects/foodapp/adminview path alongside this customerview app
+
+## Search Service
+
+Create a new file:
+
+```
+lib/services/search_service.dart
+```
+
+The service should expose:
+
+* searchFoods(String query)
+
+Requirements:
+
+* Trim whitespace.
+* Convert query to lowercase.
+* Return an empty list for an empty query.
+* Query Firestore using searchPrefixes.
+* Only return available food items.
+
+## Search UI
+
+Search bar is in home screen which is read only and when user taps it, it navigates to search screen inside lib/data/search_bar.dart file, where the search operation will take place.
+
+Requirements:
+
+* Search begins while typing.
+* Debounce user input by about 300 milliseconds.
+* Display a loading indicator while querying.
+* Show:
+
+  * Food image
+  * Food title
+  * Category
+  * Price
+  * Availability
+* Tapping a result opens the existing Food Details screen.
+* If no results exist, show:
+  "No matching food found."
+
+## Performance
+
+Implement the following optimizations:
+
+* Debounce typing.
+* Cache previous search results in memory.
+* Avoid duplicate Firestore requests.
+* Dispose controllers and timers correctly.
+* Prevent memory leaks.
+
+
+## Error Handling
+
+Handle:
+
+* Network unavailable
+* Firestore exceptions
+* Permission denied
+* Empty search query
+
+Display friendly messages instead of crashing.
+
+## Code Quality
+
+* Follow the existing project architecture.
+* Keep business logic inside services.
+* Keep widgets clean.
+* Use ChangeNotifier where appropriate.
+* Add comments explaining complex logic.
+* Avoid code duplication.
+* Use null safety throughout.
+
+## Deliverables
+
+Provide complete, production-ready code for:
+
+* Search helper
+* Search service
+* Updated FoodItem model
+* Updated Add/Edit Food logic
+* Search screen
+* Home screen integration
+* Any required Firestore index information
+
+The implementation should compile without errors and integrate seamlessly into the existing Campus Bite application.
+
+## Restrictions:
 
 * Do not change anything not related to the task in the goal and requirements
 

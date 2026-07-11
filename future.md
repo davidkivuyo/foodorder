@@ -8,9 +8,6 @@ add products for off_campus food items. the section field will be changed to off
 // If cafe is 'offcampus', show 'OFF-CAMPUS', otherwise show 'CAFE(X)'
 * item.cafe.toLowerCase() == 'offcampus' ? '${item.rating} • offcampus' : '${item.rating} • CAFE(${item.cafe})',
 
-3. Goal3:
-When user places an order, the details of the order will be sent to the database including the food item unique id, quantity, userId for the user who ordered, time. All under the database collection orders/{orderId}.
-
 5. Goal5
 display poper messages instead of debugprint eg "debugPrint('[CartService] Cannot add unavailable item: ${item.title}"
 
@@ -22,6 +19,9 @@ an admin can strike students who donot collect their food by pressing no show bu
 
 9. goal9.
 save the users passwords in their google account logged in their device and retrieve it upon attempts to login in both adminview and customerview
+
+10. goal10
+display the time which a student is obliged to pickup the food if he or she didnot show on that time the cafe admin can be allowed to strike the student. Also notify the student when order is ready to be collected and show the time required to pickup the food.
 
 # fulfilled✅
 1. Goal1:
@@ -35,3 +35,6 @@ Update the cart logic so as for food items labeled ALL in their "cafe" fields, t
 
 8. goal8.
 Add a section selection dropdown in the add_products screen where the admin can select which section to place the food item into, the section information is retrieved from the firestore database under collection "section". also add another list from the dropdown which reads "no section" and if the cafe admin selects it the food item will not be placed in any section but will still remain organized according to its category in the category screen.
+
+3. Goal3:
+When user places an order, the details of the order will be sent to the database including the food item unique id, quantity, userId for the user who ordered, time. All under the database collection orders/{orderId}.
