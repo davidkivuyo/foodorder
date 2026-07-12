@@ -94,9 +94,13 @@ class AccountScreen extends StatelessWidget {
                               children: [
                                 const Icon(Icons.email_outlined, size: 15),
                                 const SizedBox(width: 5),
-                                Text(
-                                  displayEmail,
-                                  style: const TextStyle(fontSize: 13),
+                                Flexible(
+                                  child: Text(
+                                    displayEmail,
+                                    style: const TextStyle(fontSize: 13),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                                 ),
                               ],
                             ),

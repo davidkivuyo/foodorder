@@ -271,16 +271,20 @@ class FoodCard extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
+                  const SizedBox(width: 2),
                   Icon(
                     Icons.storefront_outlined,
                     size: 14,
                     color: Colors.grey.shade400,
                   ),
-                  Text(
-                    item.displayCafe,
-                    style: const TextStyle(fontSize: 12, color: Colors.black),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                  const SizedBox(width: 2),
+                  Flexible(
+                    child: Text(
+                      item.displayCafe,
+                      style: const TextStyle(fontSize: 12, color: Colors.black),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                 ],
               ),

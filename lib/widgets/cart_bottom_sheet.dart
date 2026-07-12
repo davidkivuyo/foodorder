@@ -2,19 +2,38 @@ import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import '../services/cart_service.dart';
 
-class CartBottomSheet extends StatelessWidget {
+class CartBottomSheet extends StatefulWidget {
   final VoidCallback onOrderPlaced;
 
   const CartBottomSheet({super.key, required this.onOrderPlaced});
 
   @override
-  Widget build(BuildContext context) {
-    final cartService = CartService();
+  State<CartBottomSheet> createState() => _CartBottomSheetState();
+}
 
+class _CartBottomSheetState extends State<CartBottomSheet> {
+  final CartService _cartService = CartService();
+  bool? _isSuspended;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSuspensionStatus();
+  }
+
+  Future<void> _loadSuspensionStatus() async {
+    final suspended = await _cartService.isAccountSuspended();
+    if (mounted) {
+      setState(() => _isSuspended = suspended);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: cartService,
+      listenable: _cartService,
       builder: (context, child) {
-        final items = cartService.cartItems;
+        final items = _cartService.cartItems;
 
         if (items.isEmpty) {
           return SizedBox(
@@ -63,21 +82,84 @@ class CartBottomSheet extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Suspension Banner — shown when the account is suspended
+              if (_isSuspended == true) ...[
+                const SizedBox(height: 4),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.red.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.red.shade200),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: Colors.red.shade100,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Icon(
+                          Icons.block,
+                          size: 18,
+                          color: Colors.red.shade700,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'Account Suspended',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.red.shade800,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'You cannot place orders at this time.',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.red.shade700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+              ],
+
               // Header
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    'My Cart (${cartService.totalItemsCount} items)',
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black,
+                  Flexible(
+                    child: Text(
+                      'My Cart (${_cartService.totalItemsCount} items)',
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                   TextButton.icon(
                     onPressed: () {
-                      cartService.clearCart();
+                      _cartService.clearCart();
                     },
                     icon: const Icon(
                       CupertinoIcons.trash,
@@ -138,34 +220,42 @@ class CartBottomSheet extends StatelessWidget {
                                       size: 14,
                                       color: Colors.grey.shade400,
                                     ),
-                                    Text(
-                                      item.displayCafe,
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.grey[600],
+                                    const SizedBox(width: 2),
+                                    Flexible(
+                                      child: Text(
+                                        item.displayCafe,
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.grey[600],
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
                                       ),
                                     ),
                                   ],
                                 ),
                                 const SizedBox(height: 4),
-                                Text(
-                                  'Tsh ${item.foodItem.price.toInt()}',
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.orange,
-                                  ),
+                              Text(
+                                'Tsh ${item.foodItem.price.toInt()}',
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.orange,
                                 ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                               ],
                             ),
                           ),
 
                           // Quantity Controls & Delete Button
+                          // Quantity Controls & Delete Button
                           Row(
                             children: [
                               GestureDetector(
                                 onTap: () {
-                                  cartService.removeFromCart(item.foodItem);
+                                  _cartService.removeFromCart(item.foodItem);
                                 },
                                 child: Container(
                                   padding: const EdgeInsets.all(4),
@@ -194,7 +284,7 @@ class CartBottomSheet extends StatelessWidget {
                               ),
                               GestureDetector(
                                 onTap: () {
-                                  cartService.addToCart(item.foodItem);
+                                  _cartService.addToCart(item.foodItem);
                                 },
                                 child: Container(
                                   padding: const EdgeInsets.all(4),
@@ -212,7 +302,7 @@ class CartBottomSheet extends StatelessWidget {
                               const SizedBox(width: 8),
                               IconButton(
                                 onPressed: () {
-                                  cartService.deleteFromCart(item.foodItem);
+                                  _cartService.deleteFromCart(item.foodItem);
                                 },
                                 icon: const Icon(
                                   CupertinoIcons.delete_simple,
@@ -241,11 +331,15 @@ class CartBottomSheet extends StatelessWidget {
                     'Subtotal',
                     style: TextStyle(fontSize: 14, color: Colors.grey),
                   ),
-                  Text(
-                    'Tsh ${cartService.totalAmount.toInt()}',
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
+                  Flexible(
+                    child: Text(
+                      'Tsh ${_cartService.totalAmount.toInt()}',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                 ],
@@ -274,87 +368,167 @@ class CartBottomSheet extends StatelessWidget {
                 children: [
                   const Text(
                     'Total Amount',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  Text(
-                    'Tsh ${cartService.totalAmount.toInt()}',
-                    style: const TextStyle(
-                      fontSize: 20,
+                    style: TextStyle(
+                      fontSize: 18,
                       fontWeight: FontWeight.bold,
-                      color: Colors.orange,
+                    ),
+                  ),
+                  Flexible(
+                    child: Text(
+                      'Tsh ${_cartService.totalAmount.toInt()}',
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.orange,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: 20),
 
-              // Place Order Button
+              // Place Order Button — disabled when account is suspended
               SizedBox(
                 width: double.infinity,
                 height: 50,
                 child: ElevatedButton(
-                  onPressed: () async {
-                    // Show loading indicator
-                    showDialog(
-                      context: context,
-                      barrierDismissible: false,
-                      builder: (_) =>
-                          const Center(child: CircularProgressIndicator()),
-                    );
+                  onPressed: _isSuspended == true
+                      ? null
+                      : () async {
+                          // First check if the account is suspended
+                          final suspended = await _cartService
+                              .isAccountSuspended();
+                          if (!context.mounted) return;
 
-                    // Place the order (async Firestore write)
-                    final orderId = await cartService.placeOrder();
+                          if (suspended) {
+                            setState(() => _isSuspended = true);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: const Row(
+                                  children: [
+                                    Icon(
+                                      Icons.block,
+                                      color: Colors.white,
+                                      size: 20,
+                                    ),
+                                    SizedBox(width: 10),
+                                    Expanded(
+                                      child: Text(
+                                        'Your account is suspended. '
+                                        'You cannot place orders at this time.',
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                backgroundColor: Colors.red.shade800,
+                                behavior: SnackBarBehavior.floating,
+                                duration: const Duration(seconds: 5),
+                              ),
+                            );
+                            return;
+                          }
 
-                    if (!context.mounted) return;
+                          // Show loading indicator
+                          showDialog(
+                            context: context,
+                            barrierDismissible: false,
+                            builder: (_) => const Center(
+                              child: CircularProgressIndicator(),
+                            ),
+                          );
 
-                    // Close loading dialog
-                    Navigator.pop(context);
+                          // Place the order (async Firestore write)
+                          final orderId = await _cartService.placeOrder();
 
-                    // Close Bottom Sheet
-                    Navigator.pop(context);
+                          if (!context.mounted) return;
 
-                    if (orderId != null) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
+                          // Close loading dialog
+                          Navigator.pop(context);
+
+                          // Close Bottom Sheet
+                          Navigator.pop(context);
+
+                          if (orderId != null) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
                           content: Row(
                             children: const [
-                              Icon(Icons.check_circle, color: Colors.white),
+                              Icon(
+                                Icons.check_circle,
+                                color: Colors.white,
+                              ),
                               SizedBox(width: 8),
-                              Text('Order placed successfully!'),
+                              Flexible(
+                                child: Text(
+                                  'Order placed successfully!',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
                             ],
                           ),
-                          backgroundColor: Colors.green[800],
-                          duration: const Duration(seconds: 4),
-                        ),
-                      );
-                    } else {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: const Text(
-                            'Failed to place order. Please try again.',
-                          ),
-                          backgroundColor: Colors.red,
-                          duration: const Duration(seconds: 4),
-                        ),
-                      );
-                      return;
-                    }
+                                backgroundColor: Colors.green[800],
+                                duration: const Duration(seconds: 4),
+                              ),
+                            );
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: const Text(
+                                  'Failed to place order. Please try again.',
+                                ),
+                                backgroundColor: Colors.red,
+                                duration: const Duration(seconds: 4),
+                              ),
+                            );
+                            return;
+                          }
 
-                    // Callback to switch to order tracking screen
-                    onOrderPlaced();
-                  },
+                          // Callback to switch to order tracking screen
+                          widget.onOrderPlaced();
+                        },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.orange,
-                    foregroundColor: Colors.white,
+                    backgroundColor: _isSuspended == true
+                        ? Colors.grey.shade300
+                        : Colors.orange,
+                    foregroundColor: _isSuspended == true
+                        ? Colors.grey.shade500
+                        : Colors.white,
+                    disabledBackgroundColor: Colors.grey.shade300,
+                    disabledForegroundColor: Colors.grey.shade500,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
                     elevation: 0,
                   ),
-                  child: const Text(
-                    'Place Order & Notify Cafe',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
+                  child: _isSuspended == true
+                      ? Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.block,
+                              size: 18,
+                              color: Colors.grey.shade500,
+                            ),
+                            const SizedBox(width: 8),
+                            const Text(
+                              'Orders Disabled',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        )
+                      : const Text(
+                          'Place Order & Notify Cafe',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                 ),
               ),
             ],
