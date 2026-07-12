@@ -400,13 +400,22 @@ class _CommonFoodCard extends StatelessWidget {
               Row(
                 children: [
                   const Icon(Icons.star_rounded, color: Colors.amber, size: 16),
-                  Expanded(
-                    child: Text(
-                      '${item.rating} • 👨‍🍳 ${item.displayCafe}',
-                      style: const TextStyle(fontSize: 12, color: Colors.black),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                  Text(
+                    '${item.rating} • ',
+                    style: const TextStyle(fontSize: 12, color: Colors.black),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Icon(
+                    Icons.storefront_outlined,
+                    size: 14,
+                    color: Colors.grey.shade400,
+                  ),
+                  Text(
+                    item.displayCafe,
+                    style: const TextStyle(fontSize: 12, color: Colors.black),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ],
               ),
