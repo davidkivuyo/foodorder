@@ -37,6 +37,13 @@ class AuthService {
             'email': email.trim(),
             'role': 'student',
             'createdAt': FieldValue.serverTimestamp(),
+            // Strike management fields
+            'strikePercentage': 0,
+            'strikeCount': 0,
+            'accountStatus': 'ACTIVE',
+            'lastStrikeAt': null,
+            'lastPardonAt': null,
+            'updatedAt': FieldValue.serverTimestamp(),
           });
 
           // Set welcome screen flag for the newly registered user

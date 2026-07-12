@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../services/auth_service.dart';
 import '../widgets/logout_confirmation_dialog.dart';
+import '../widgets/strike_status_card.dart';
 
 //account screen
 class AccountScreen extends StatelessWidget {
@@ -31,6 +32,12 @@ class AccountScreen extends StatelessWidget {
                   style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 8),
+
+                // Strike Status Card — auto-updates via Firestore stream
+                if (user != null) StrikeStatusCard(userId: user.uid),
+
+                const SizedBox(height: 8),
+
                 StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
                   stream: user != null
                       ? FirebaseFirestore.instance
