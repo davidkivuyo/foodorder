@@ -27,25 +27,25 @@ class _CommonFoodItem {
 const List<_CommonFoodItem> _commonFoods = [
   _CommonFoodItem(
     title: 'Wali',
-    prepTime: '15 min',
+    prepTime: '20-30min',
     imageUrl:
         'https://res.cloudinary.com/nrwglbxh/image/upload/v1783345341/ricemeat_vstzgy.jpg', // will be fetched from Firebase Storage
   ),
   _CommonFoodItem(
     title: 'Ugali',
-    prepTime: '20 min',
+    prepTime: '20-30min',
     imageUrl:
         'https://upload.wikimedia.org/wikipedia/commons/4/48/Ugali_%26_Sukuma_Wiki.jpg', // will be fetched from Firebase Storage
   ),
   _CommonFoodItem(
     title: 'Chips',
-    prepTime: '10 min',
+    prepTime: '30-40min',
     imageUrl:
         'https://res.cloudinary.com/nrwglbxh/image/upload/v1783345370/chipss_b7junj.jpg', // will be fetched from Firebase Storage
   ),
   _CommonFoodItem(
     title: 'Pilau',
-    prepTime: '25 min',
+    prepTime: '20-30min',
     imageUrl:
         'https://res.cloudinary.com/nrwglbxh/image/upload/v1783345276/biriyanimeat_bofprw.jpg', // will be fetched from Firebase Storage
   ),
@@ -402,7 +402,7 @@ class _CommonFoodCard extends StatelessWidget {
                   const Icon(Icons.star_rounded, color: Colors.amber, size: 16),
                   Expanded(
                     child: Text(
-                      '${item.rating} • ${item.displayCafe}',
+                      '${item.rating} • 👨‍🍳 ${item.displayCafe}',
                       style: const TextStyle(fontSize: 12, color: Colors.black),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,

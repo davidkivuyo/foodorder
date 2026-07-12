@@ -266,7 +266,7 @@ class FoodCard extends StatelessWidget {
                 children: [
                   const Icon(Icons.star_rounded, color: Colors.amber, size: 16),
                   Text(
-                    '${item.rating} • ${item.displayCafe}',
+                    '${item.rating} • 👨‍🍳 ${item.displayCafe}',
                     style: const TextStyle(fontSize: 12, color: Colors.black),
                   ),
                 ],

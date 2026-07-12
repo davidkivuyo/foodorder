@@ -359,7 +359,7 @@ class CardRowItems extends StatelessWidget {
                                   ),
                                   Expanded(
                                     child: Text(
-                                      '${item.rating} • ${item.displayCafe}',
+                                      '${item.rating} • 👨‍🍳 ${item.displayCafe}',
                                       style: const TextStyle(
                                         fontSize: 12,
                                         color: Colors.black,
@@ -625,7 +625,7 @@ class CategoriesTitles extends StatelessWidget {
                           ),
                           Expanded(
                             child: Text(
-                              '${item.rating} • ${item.displayCafe}',
+                              '${item.rating} • 👨‍🍳 ${item.displayCafe}',
                               style: const TextStyle(
                                 fontSize: 12,
                                 color: Colors.black,
