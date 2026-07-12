@@ -47,19 +47,26 @@ Welcome to Campus Bite
 6. User Conduct
 You agree to use the application only for lawful purposes. You agree not to place fake orders, harass delivery drivers, or attempt to hack the App's security.
 
-7. Intellectual Property
+7. Account Penalty System
+To ensure a reliable service for everyone, the App tracks your order collection behavior using a percentage-based status system:
+• 0% (Good Standing): Your account is safe and operating normally.
+• Penalty Increases (up to 50%): Failing to pick up your ordered food increases your penalty percentage. Reaching 50% serves as a critical warning.
+• 100% (Account Blocked): If your penalty status reaches 100% due to repeated uncollected food, your account will be automatically suspended.
+• Unblocking Your Account: To restore an account that has reached 100%, you must contact the App Administrator directly to appeal the suspension.
+
+8. Intellectual Property
 All content, features, and functionality of the application are the exclusive property of the application owner.
 
-8. Limitation of Liability
+9. Limitation of Liability
 The application owner shall not be liable for any damages arising from the use of the application, including issues regarding the quality or safety of the food prepared by third-party vendors.
 
-9. Changes to Terms
+10. Changes to Terms
 The application owner reserves the right to modify these terms at any time. Continued use after changes constitutes your acceptance.
 
-10. Governing Law
+11. Governing Law
 These terms shall be governed by and construed in accordance with the laws of the jurisdiction in which the application owner operates.
 
-11. Contact Us
+12. Contact Us
 For support, contact us at lembotor6@gmail.com.''',
                 style: TextStyle(
                   fontSize: 14.0,
