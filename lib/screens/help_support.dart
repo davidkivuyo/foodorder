@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class SupportScreen extends StatelessWidget {
   const SupportScreen({super.key});
@@ -21,13 +22,13 @@ class SupportScreen extends StatelessWidget {
               leading: const Icon(Icons.help_outline),
               title: const Text('Frequently Asked Questions'),
               trailing: const Icon(Icons.chevron_right),
-              onTap: () => context.go('/support/faq'),
+              onTap: () => context.push('/support/faq'),
             ),
             ListTile(
               leading: const Icon(Icons.mail_outline),
               title: const Text('Contact us'),
               trailing: const Icon(Icons.chevron_right),
-              onTap: () => context.go('/support/contact'),
+              onTap: () => context.push('/support/contact'),
             ),
           ],
         ),
@@ -47,45 +48,34 @@ class FaqScreen extends StatelessWidget {
         padding: const EdgeInsets.all(16.0),
         children: const [
           ExpansionTile(
-            title: Text('Where do you deliver on campus?'),
+            title: Text('About delivery?'),
             children: [
               Padding(
                 padding: EdgeInsets.all(16.0),
                 child: Text(
-                  'We currently deliver to all main dorms, the central library, and the student union building. Please ensure you select a valid drop-off zone at checkout.',
+                  'We currently DO NOT deliver to any location. the app is a self pick based, users order food and the cafe receives orders to process them and prepare once ready(completed), users go to the corresponding cafe and pick their meals.',
                 ),
               ),
             ],
           ),
           ExpansionTile(
-            title: Text('Can I pay with my Student Meal Plan?'),
+            title: Text('About payment?'),
             children: [
               Padding(
                 padding: EdgeInsets.all(16.0),
                 child: Text(
-                  'Yes! You can link your student ID in the account settings to pay using your meal plan or campus dining dollars.',
+                  'The app is strictly non payment proccessing, it DOES NOT accept, process or make payments. We encourage users to only pay at the cafe in which they ordered their meals',
                 ),
               ),
             ],
           ),
           ExpansionTile(
-            title: Text('What if my order is missing an item?'),
+            title: Text('What happens my account is suspended?'),
             children: [
               Padding(
                 padding: EdgeInsets.all(16.0),
                 child: Text(
-                  'Please reach out through our Contact Us page within 2 hours of delivery, and we will review your order for a refund or credit.',
-                ),
-              ),
-            ],
-          ),
-          ExpansionTile(
-            title: Text('What happens if I miss my delivery driver?'),
-            children: [
-              Padding(
-                padding: EdgeInsets.all(16.0),
-                child: Text(
-                  'Drivers will wait for 10 minutes at the designated drop-off zone. If they cannot reach you, the food may be left at the location or discarded, and you will still be charged.',
+                  'If you accidentally did not take your food and ended up suspended consider appealing to the cafe admins.',
                 ),
               ),
             ],
@@ -98,6 +88,44 @@ class FaqScreen extends StatelessWidget {
 
 class ContactScreen extends StatelessWidget {
   const ContactScreen({super.key});
+
+  /// Launch Email Client
+  Future<void> _launchEmail() async {
+    final Uri emailUri = Uri(
+      scheme: 'mailto',
+      path: 'lembotor6@gmail.com',
+      queryParameters: {
+        'subject': 'App Feedback',
+        'body': 'Hello Campus Bite Support team,',
+      },
+    );
+
+    if (await canLaunchUrl(emailUri)) {
+      await launchUrl(emailUri);
+    } else {
+      debugPrint('Could not launch email client');
+    }
+  }
+
+  /// whatsapp
+  Future<void> _openWhatsApp() async {
+    final String phoneNumber = "255671035765";
+    final String message =
+        "Hello! I am contacting you from the Campus Bite app.";
+    final Uri whatsappUri = Uri.parse(
+      "https://wa.me/$phoneNumber?text=${Uri.encodeComponent(message)}",
+    );
+
+    try {
+      if (await canLaunchUrl(whatsappUri)) {
+        await launchUrl(whatsappUri, mode: LaunchMode.externalApplication);
+      } else {
+        debugPrint('WhatsApp is not installed on this device.');
+      }
+    } catch (e) {
+      debugPrint('Error launching WhatsApp: $e');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -122,24 +150,20 @@ class ContactScreen extends StatelessWidget {
               leading: const Icon(Icons.email, color: Colors.blue),
               title: const Text('Email Support'),
               subtitle: const Text('lembotor6@gmail.com'),
-              onTap: () {
-                // Add functionality to open default email app
-              },
+              onTap: _launchEmail,
             ),
             const Divider(),
             ListTile(
-              leading: const Icon(Icons.phone, color: Colors.green),
-              title: const Text('Call Us'),
-              subtitle: const Text('**********'),
-              onTap: () {
-                // Add functionality to open phone dialer
-              },
+              leading: const Icon(Icons.chat, color: Colors.green),
+              title: const Text('Message on whatsapp'),
+              subtitle: Text('+255671035765'),
+              onTap: _openWhatsApp,
             ),
             const Divider(),
             const ListTile(
               leading: Icon(Icons.location_on, color: Colors.red),
-              title: Text('Campus Office'),
-              subtitle: Text('Student Union, Room 104\nMon-Fri, 9 AM - 5 PM'),
+              title: Text('Campus Cafe admins'),
+              subtitle: Text('Cafe 1 or 2, at universitie\'s main campus'),
             ),
           ],
         ),

@@ -15,17 +15,21 @@ class CartService extends ChangeNotifier {
   }
 
   final List<CartItem> _cartItems = [];
-  final List<FoodOrder> _orders = [];
   final Map<String, FoodItem> _foodItemsCache = {};
 
   StreamSubscription<User?>? _authSubscription;
   StreamSubscription<QuerySnapshot>? _cartSubscription;
 
   List<CartItem> get cartItems => List.unmodifiable(_cartItems);
-  List<FoodOrder> get orders => List.unmodifiable(_orders);
+
+  /// Cached user name used when placing orders.
+  String _cachedUserName = '';
 
   double get totalAmount {
-    return _cartItems.fold(0.0, (total, item) => total + (item.foodItem.price * item.quantity));
+    return _cartItems.fold(
+      0.0,
+      (total, item) => total + (item.foodItem.price * item.quantity),
+    );
   }
 
   int get totalItemsCount {
@@ -37,6 +41,9 @@ class CartService extends ChangeNotifier {
   void _initAuthListener() {
     _authSubscription = FirebaseAuth.instance.authStateChanges().listen((user) {
       if (user != null) {
+        // Reset cached name so a different user's name is always fetched
+        _resetCachedName();
+        _cacheUserName(user);
         _listenToCart(user.uid);
       } else {
         _cancelCartSubscription();
@@ -44,6 +51,27 @@ class CartService extends ChangeNotifier {
         notifyListeners();
       }
     });
+  }
+
+  void _resetCachedName() {
+    _cachedUserName = '';
+  }
+
+  /// Fetch the current user's fullName from Firestore and cache it.
+  Future<void> _cacheUserName(User user) async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+      if (doc.exists) {
+        final data = doc.data();
+        _cachedUserName = data?['fullName'] as String? ?? '';
+      }
+    } catch (_) {}
+    if (_cachedUserName.isEmpty) {
+      _cachedUserName = user.displayName ?? 'Student';
+    }
   }
 
   void _listenToCart(String userId) {
@@ -54,45 +82,51 @@ class CartService extends ChangeNotifier {
         .collection('cart')
         .snapshots()
         .listen((snapshot) async {
-      final List<CartItem> updatedItems = [];
+          final List<CartItem> updatedItems = [];
 
-      for (final doc in snapshot.docs) {
-        final data = doc.data();
-        final foodItemId = data['foodItemId'] as String?;
-        final quantity = (data['quantity'] as num?)?.toInt() ?? 1;
+          for (final doc in snapshot.docs) {
+            final data = doc.data();
+            final foodItemId = data['foodItemId'] as String?;
+            final quantity = (data['quantity'] as num?)?.toInt() ?? 1;
+            final selectedCafe = data['selectedCafe'] as String?;
 
-        if (foodItemId == null || foodItemId.isEmpty) continue;
+            if (foodItemId == null || foodItemId.isEmpty) continue;
 
-        // Fetch FoodItem details from cache or Firestore
-        FoodItem? foodItem = _foodItemsCache[foodItemId];
-        if (foodItem == null) {
-          try {
-            final foodDoc = await FirebaseFirestore.instance
-                .collection('food_items')
-                .doc(foodItemId)
-                .get();
-            if (foodDoc.exists && foodDoc.data() != null) {
-              foodItem = FoodItem.fromMap(foodDoc.data()!, id: foodDoc.id);
-              _foodItemsCache[foodItemId] = foodItem;
+            // Fetch FoodItem details from cache or Firestore
+            FoodItem? foodItem = _foodItemsCache[foodItemId];
+            if (foodItem == null) {
+              try {
+                final foodDoc = await FirebaseFirestore.instance
+                    .collection('food_items')
+                    .doc(foodItemId)
+                    .get();
+                if (foodDoc.exists && foodDoc.data() != null) {
+                  foodItem = FoodItem.fromMap(foodDoc.data()!, id: foodDoc.id);
+                  _foodItemsCache[foodItemId] = foodItem;
+                }
+              } catch (e) {
+                debugPrint(
+                  '[CartService] Error fetching food item $foodItemId: $e',
+                );
+              }
             }
-          } catch (e) {
-            debugPrint('[CartService] Error fetching food item $foodItemId: $e');
+
+            if (foodItem != null) {
+              updatedItems.add(
+                CartItem(
+                  id: doc.id,
+                  foodItem: foodItem,
+                  quantity: quantity,
+                  selectedCafe: selectedCafe,
+                ),
+              );
+            }
           }
-        }
 
-        if (foodItem != null) {
-          updatedItems.add(CartItem(
-            id: doc.id,
-            foodItem: foodItem,
-            quantity: quantity,
-          ));
-        }
-      }
-
-      _cartItems.clear();
-      _cartItems.addAll(updatedItems);
-      notifyListeners();
-    });
+          _cartItems.clear();
+          _cartItems.addAll(updatedItems);
+          notifyListeners();
+        });
   }
 
   void _cancelCartSubscription() {
@@ -102,16 +136,24 @@ class CartService extends ChangeNotifier {
 
   // ---------- Cart Operations ----------
 
-  void addToCart(FoodItem item) async {
+  void addToCart(FoodItem item, {String? selectedCafe}) async {
     final userId = FirebaseAuth.instance.currentUser?.uid;
     if (userId == null || item.id.isEmpty) return;
+    
+    // Check if item is available before adding to cart
+    if (!item.available) {
+      debugPrint('[CartService] Cannot add unavailable item: ${item.title}');
+      return;
+    }
 
     final cartCollection = FirebaseFirestore.instance
         .collection('users')
         .doc(userId)
         .collection('cart');
 
-    final existingIndex = _cartItems.indexWhere((element) => element.foodItem.id == item.id);
+    final existingIndex = _cartItems.indexWhere(
+      (element) => element.foodItem.id == item.id,
+    );
 
     try {
       if (existingIndex >= 0) {
@@ -123,6 +165,7 @@ class CartService extends ChangeNotifier {
         await cartCollection.add({
           'foodItemId': item.id,
           'quantity': 1,
+          'selectedCafe': selectedCafe,
         });
       }
     } catch (e) {
@@ -139,7 +182,9 @@ class CartService extends ChangeNotifier {
         .doc(userId)
         .collection('cart');
 
-    final existingIndex = _cartItems.indexWhere((element) => element.foodItem.id == item.id);
+    final existingIndex = _cartItems.indexWhere(
+      (element) => element.foodItem.id == item.id,
+    );
 
     try {
       if (existingIndex >= 0) {
@@ -166,7 +211,9 @@ class CartService extends ChangeNotifier {
         .doc(userId)
         .collection('cart');
 
-    final existingIndex = _cartItems.indexWhere((element) => element.foodItem.id == item.id);
+    final existingIndex = _cartItems.indexWhere(
+      (element) => element.foodItem.id == item.id,
+    );
 
     try {
       if (existingIndex >= 0) {
@@ -178,7 +225,7 @@ class CartService extends ChangeNotifier {
     }
   }
 
-  void clearCart() async {
+  Future<void> clearCart() async {
     final userId = FirebaseAuth.instance.currentUser?.uid;
     if (userId == null) return;
 
@@ -189,6 +236,7 @@ class CartService extends ChangeNotifier {
 
     try {
       final snapshot = await cartCollection.get();
+      if (snapshot.docs.isEmpty) return;
       final batch = FirebaseFirestore.instance.batch();
       for (final doc in snapshot.docs) {
         batch.delete(doc.reference);
@@ -199,47 +247,47 @@ class CartService extends ChangeNotifier {
     }
   }
 
-  void placeOrder() {
-    if (_cartItems.isEmpty) return;
+  /// Place the current cart items as an order and save to Firestore.
+  Future<String?> placeOrder() async {
+    if (_cartItems.isEmpty) return null;
 
-    final newOrderId = 'CB-${1000 + _orders.length + (DateTime.now().millisecond % 9000)}';
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) return null;
+
+    // Generate a unique order ID
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final randomSuffix = timestamp % 9000;
+    final newOrderId = 'CB-${1000 + randomSuffix}';
+
+    // Build the order document — use cached name or fallback to Firebase displayName
+    final displayName = _cachedUserName.isNotEmpty
+        ? _cachedUserName
+        : (FirebaseAuth.instance.currentUser?.displayName ?? 'Student');
     final newOrder = FoodOrder(
       orderId: newOrderId,
+      userId: userId,
+      userName: displayName,
       items: List.from(_cartItems),
       totalAmount: totalAmount,
       orderTime: DateTime.now(),
-      status: OrderStatus.preparing,
+      status: OrderStatus.pending,
     );
 
-    _orders.insert(0, newOrder);
-    clearCart();
+    try {
+      // Save to Firestore under 'orders' collection with the generated ID
+      await FirebaseFirestore.instance
+          .collection('orders')
+          .doc(newOrderId)
+          .set(newOrder.toFirestore());
 
-    // Simulating Cafe Admin response:
-    // After 8 seconds, the order status changes to Ready (simulating admin marking it ready).
-    Timer(const Duration(seconds: 8), () {
-      final index = _orders.indexWhere((o) => o.orderId == newOrderId);
-      if (index >= 0) {
-        _orders[index].status = OrderStatus.ready;
-        notifyListeners();
-      }
-    });
+      // Clear the cart after successful order placement
+      await clearCart();
 
-    // After 18 seconds, the order status changes to Collected (simulating confirmation).
-    Timer(const Duration(seconds: 18), () {
-      final index = _orders.indexWhere((o) => o.orderId == newOrderId);
-      if (index >= 0) {
-        _orders[index].status = OrderStatus.collected;
-        notifyListeners();
-      }
-    });
-  }
-
-  // Helper method to simulate immediate admin status changes from the UI
-  void simulateAdminStatusChange(String orderId, OrderStatus newStatus) {
-    final index = _orders.indexWhere((o) => o.orderId == orderId);
-    if (index >= 0) {
-      _orders[index].status = newStatus;
-      notifyListeners();
+      debugPrint('[CartService] Order placed successfully: $newOrderId');
+      return newOrderId;
+    } catch (e) {
+      debugPrint('[CartService] Error placing order: $e');
+      return null;
     }
   }
 

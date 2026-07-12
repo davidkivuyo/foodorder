@@ -1,151 +1,164 @@
 import 'package:flutter/material.dart';
 import '../data/food_data.dart';
 import '../data/search_bar.dart';
-import '../services/cart_service.dart';
+import '../widgets/cafe_selection_dialog.dart';
 import '../widgets/cart_fab.dart';
 import 'common_food.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
+  static const Map<String, String> _sectionTitles = {
+    'campus_favourite': 'Favourite on campus',
+    'todays_deals': "Today's Deals",
+    'drinks': 'Drinks Deals!',
+    'other': 'Other meal deals',
+  };
+
+  String _formatTitle(String name) {
+    if (_sectionTitles.containsKey(name)) return _sectionTitles[name]!;
+    return name
+        .split('_')
+        .map((w) => w.isEmpty ? '' : '${w[0].toUpperCase()}${w.substring(1)}')
+        .join(' ');
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
-        child: StreamBuilder<List<FoodItem>>(
-          stream: FoodData.foodItemsStream,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
+        child: StreamBuilder<List<Section>>(
+          stream: FoodData.sectionsStream,
+          builder: (context, sectionsSnapshot) {
+            if (sectionsSnapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());
             }
-            if (snapshot.hasError) {
-              return Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(32.0),
-                  child: Text(
-                    'Error loading meals: ${snapshot.error}',
-                    style: const TextStyle(color: Colors.red),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-              );
-            }
 
-            final allItems = snapshot.data ?? [];
+            final sections = sectionsSnapshot.data ?? [];
 
-            final campusFavourites = allItems
-                .where((f) => f.section == 'campus_favourite')
-                .toList();
-            final todaysDeals = allItems
-                .where((f) => f.section == 'todays_deals')
-                .toList();
-            final drinks = allItems
-                .where((f) => f.section == 'drinks')
-                .toList();
-            final offCampus = allItems
-                .where((f) => f.section == 'off_campus')
-                .toList();
-            final other = allItems.where((f) => f.section == 'other').toList();
+            return StreamBuilder<List<FoodItem>>(
+              stream: FoodData.foodItemsStream,
+              builder: (context, foodSnapshot) {
+                if (foodSnapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (foodSnapshot.hasError) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(32.0),
+                      child: Text(
+                        'Error loading meals: ${foodSnapshot.error}',
+                        style: const TextStyle(color: Colors.red),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  );
+                }
 
-            return SingleChildScrollView(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // search bar
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(10),
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => const SearchBarScreen(),
-                            ),
-                          );
-                        },
-                        child: Container(
-                          height: 56,
-                          padding: const EdgeInsets.symmetric(horizontal: 18),
-                          decoration: BoxDecoration(
-                            color: Colors.grey.shade200,
-                            borderRadius: BorderRadius.circular(28),
-                          ),
-                          child: Row(
-                            children: [
-                              const Icon(
-                                Icons.search,
-                                color: Colors.black87,
-                                size: 24,
+                final allItems = foodSnapshot.data ?? [];
+                final validSections = sections
+                    .where(
+                      (s) => allItems.any((f) => f.section == s.name),
+                    )
+                    .toList()
+                  ..sort((a, b) {
+                    if (a.name == 'other') return 1;
+                    if (b.name == 'other') return -1;
+                    return 0;
+                  });
+
+                return SingleChildScrollView(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // search bar
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(10),
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => const SearchBarScreen(),
+                                ),
+                              );
+                            },
+                            child: Container(
+                              height: 56,
+                              padding: const EdgeInsets.symmetric(horizontal: 18),
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade200,
+                                borderRadius: BorderRadius.circular(28),
                               ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Text(
-                                  "Search your next meal",
-                                  style: TextStyle(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w500,
+                              child: Row(
+                                children: [
+                                  const Icon(
+                                    Icons.search,
+                                    color: Colors.black87,
+                                    size: 24,
                                   ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Text(
+                                      "Search your next meal",
+                                      style: TextStyle(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+
+                        //space
+                        const SizedBox(height: 18),
+
+                        // banner
+                        SpecialBannerCard(),
+
+                        // dynamic sections from firestore
+                        ...validSections.expand((section) {
+                          final sectionItems = allItems
+                              .where((f) => f.section == section.name)
+                              .toList();
+                          if (sectionItems.isEmpty) return <Widget>[];
+                          return [
+                            CardRowItems(
+                              title: _formatTitle(section.name),
+                              items: sectionItems,
+                            ),
+                            const Divider(),
+                          ];
+                        }),
+
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                'Common loved foods',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
                                 ),
                               ),
                             ],
                           ),
                         ),
-                      ),
+                        const SizedBox(height: 18),
+                        CommonFood(),
+                      ],
                     ),
-
-                    //space
-                    const SizedBox(height: 18),
-
-                    // banner
-                    SpecialBannerCard(),
-
-                    // card grid
-                    CardRowItems(
-                      title: "Favourite on campus",
-                      items: campusFavourites,
-                    ),
-                    const Divider(),
-                    CardRowItems(title: "Today's Deals", items: todaysDeals),
-                    const Divider(),
-
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            'Common loved foods',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-                    CommonFood(),
-
-                    const Divider(),
-                    CardRowItems(title: "Drinks Deals!", items: drinks),
-                    const Divider(),
-                    //--------------------------make a separate deals outside university--------------------------------
-                    CardRowItems(
-                      title: "Deals outside campus cafes",
-                      items: offCampus,
-                    ),
-                    const Divider(),
-                    CardColumnItems(
-                      title: "Other meal deals",
-                      items: other,
-                      flipItems: true,
-                    ),
-                  ],
-                ),
-              ),
+                  ),
+                );
+              },
             );
           },
         ),
@@ -275,7 +288,7 @@ class CardRowItems extends StatelessWidget {
                                 },
                                 child: Hero(
                                   tag:
-                                      'home_${item.cafe}_${item.title}_${item.image}',
+                                      'home_${item.displayCafe}_${item.title}_${item.image}',
                                   child: item.buildImage(
                                     height: 120,
                                     width: double.infinity,
@@ -311,21 +324,7 @@ class CardRowItems extends StatelessWidget {
                                   ),
                                   GestureDetector(
                                     onTap: () {
-                                      CartService().addToCart(item);
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).hideCurrentSnackBar();
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        SnackBar(
-                                          content: Text(
-                                            '${item.title} added to cart!',
-                                          ),
-                                          duration: const Duration(seconds: 1),
-                                          backgroundColor: Colors.orange,
-                                        ),
-                                      );
+                                      addToCartWithCafeCheck(context, item);
                                     },
                                     child: Container(
                                       padding: const EdgeInsets.all(6),
@@ -359,10 +358,7 @@ class CardRowItems extends StatelessWidget {
                                   ),
                                   Expanded(
                                     child: Text(
-                                      // If cafe is 'offcampus', show 'OFF-CAMPUS', otherwise show 'CAFE(X)'
-                                      item.cafe.toLowerCase() == 'offcampus'
-                                          ? '${item.rating} • offcampus'
-                                          : '${item.rating} • CAFE(${item.cafe})',
+                                      '${item.rating} • CAFE(${item.displayCafe})',
                                       style: const TextStyle(
                                         fontSize: 12,
                                         color: Colors.black,
@@ -411,7 +407,7 @@ class ItemDescriptionsHome extends StatelessWidget {
               Stack(
                 children: [
                   Hero(
-                    tag: 'home_${item.cafe}_${item.title}_${item.image}',
+                    tag: 'home_${item.displayCafe}_${item.title}_${item.image}',
                     child: ClipRRect(
                       child: item.buildImage(
                         width: double.infinity,
@@ -498,15 +494,7 @@ class ItemDescriptionsHome extends StatelessWidget {
                           ),
                         ),
                         onPressed: () {
-                          CartService().addToCart(item);
-                          ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('${item.title} added to cart!'),
-                              duration: const Duration(seconds: 1),
-                              backgroundColor: Colors.orange,
-                            ),
-                          );
+                          addToCartWithCafeCheck(context, item);
                         },
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
@@ -573,7 +561,7 @@ class CategoriesTitles extends StatelessWidget {
                         );
                       },
                       child: Hero(
-                        tag: 'home_${item.cafe}_${item.title}_${item.image}',
+                        tag: 'home_${item.displayCafe}_${item.title}_${item.image}',
                         child: item.buildImage(
                           height: 100,
                           width: double.infinity,
@@ -607,17 +595,7 @@ class CategoriesTitles extends StatelessWidget {
                           const SizedBox(width: 8),
                           GestureDetector(
                             onTap: () {
-                              CartService().addToCart(item);
-                              ScaffoldMessenger.of(
-                                context,
-                              ).hideCurrentSnackBar();
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text('${item.title} added to cart!'),
-                                  duration: const Duration(seconds: 1),
-                                  backgroundColor: Colors.orange,
-                                ),
-                              );
+                              addToCartWithCafeCheck(context, item);
                             },
                             child: Container(
                               padding: const EdgeInsets.all(6),
@@ -645,10 +623,7 @@ class CategoriesTitles extends StatelessWidget {
                           ),
                           Expanded(
                             child: Text(
-                              // If cafe is 'offcampus', show 'OFF-CAMPUS', otherwise show 'CAFE(X)'
-                              item.cafe.toLowerCase() == 'offcampus'
-                                  ? '${item.rating} • offcampus'
-                                  : '${item.rating} • CAFE(${item.cafe})',
+                              '${item.rating} • CAFE(${item.displayCafe})',
                               style: const TextStyle(
                                 fontSize: 12,
                                 color: Colors.black,
@@ -671,173 +646,3 @@ class CategoriesTitles extends StatelessWidget {
   }
 }
 
-class CardColumnItems extends StatelessWidget {
-  final String title;
-  final List<FoodItem> items;
-  final bool flipItems;
-
-  const CardColumnItems({
-    super.key,
-    required this.title,
-    required this.items,
-    this.flipItems = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final displayedItems = flipItems ? items.reversed.toList() : items;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Section header
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8.0),
-          child: Text(
-            title,
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-          ),
-        ),
-
-        // Vertical list — shrinkWrap + NeverScrollableScrollPhysics
-        // so it plays nicely inside the parent SingleChildScrollView
-        ListView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          padding: const EdgeInsets.symmetric(horizontal: 8.0),
-          itemCount: displayedItems.length,
-          itemBuilder: (context, index) {
-            final item = displayedItems[index];
-
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 24.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Food image — same AspectRatio as category_screen FoodCard
-                  AspectRatio(
-                    aspectRatio: 2.2,
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(16),
-                      child: GestureDetector(
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => ItemDescriptionsHome(item: item),
-                            ),
-                          );
-                        },
-                        child: Hero(
-                          tag: 'home_${item.cafe}_${item.title}_${item.image}',
-                          child: item.buildImage(
-                            width: double.infinity,
-                            fit: BoxFit.cover,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-
-                  // Item details
-                  Padding(
-                    padding: const EdgeInsets.all(4.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Expanded(
-                              child: Text(
-                                item.title,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: Colors.black,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            // Add to cart button
-                            GestureDetector(
-                              onTap: () {
-                                CartService().addToCart(item);
-                                ScaffoldMessenger.of(
-                                  context,
-                                ).hideCurrentSnackBar();
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                      '${item.title} added to cart!',
-                                    ),
-                                    duration: const Duration(seconds: 1),
-                                    backgroundColor: Colors.orange,
-                                  ),
-                                );
-                              },
-                              child: Container(
-                                padding: const EdgeInsets.all(6),
-                                decoration: const BoxDecoration(
-                                  color: Colors.orange,
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Icon(
-                                  Icons.add_rounded,
-                                  color: Colors.white,
-                                  size: 18,
-                                  semanticLabel: 'add item',
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-
-                        // Subtitle
-                        Text(
-                          item.subtitle,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey,
-                          ),
-                        ),
-
-                        // Rating and cafe row
-                        Row(
-                          children: [
-                            const Icon(
-                              Icons.star_rounded,
-                              color: Colors.amber,
-                              size: 16,
-                            ),
-                            Expanded(
-                              child: Text(
-                                item.cafe.toLowerCase() == 'offcampus'
-                                    ? '${item.rating} • offcampus'
-                                    : '${item.rating} • CAFE(${item.cafe})',
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.black,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
-        ),
-      ],
-    );
-  }
-}

@@ -6,42 +6,130 @@ class FoodItem {
   final String id;
   final String image;
   final String title;
+  final String titleLower;
   final String subtitle;
+  final String description;
   final int price;
   final double rating;
   final String category;
-  final String cafe;
+  final List<String> availableCafes;
   final String time;
   final String section;
+  final bool available;
+  final bool featured;
+  final int quantity;
+  final List<String> dietaryTags;
+  final List<String> keywords;
+  final List<String> searchPrefixes;
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
 
   const FoodItem({
     this.id = '',
-    required this.image,
-    required this.title,
-    required this.subtitle,
-    required this.price,
-    required this.rating,
-    required this.category,
-    required this.cafe,
-    required this.time,
+    this.image = '',
+    this.title = '',
+    this.titleLower = '',
+    this.subtitle = '',
+    this.description = '',
+    this.price = 0,
+    this.rating = 4.5,
+    this.category = '',
+    this.availableCafes = const [],
+    this.time = '',
     this.section = '',
+    this.available = true,
+    this.featured = false,
+    this.quantity = 0,
+    this.dietaryTags = const [],
+    this.keywords = const [],
+    this.searchPrefixes = const [],
+    this.createdAt,
+    this.updatedAt,
   });
 
   factory FoodItem.fromMap(Map<String, dynamic> map, {String? id}) {
+    // Parse timestamp fields that could be Timestamp, String, or null
+    DateTime? parseTimestamp(dynamic value) {
+      if (value == null) return null;
+      if (value is DateTime) return value;
+      // Firebase Timestamp has a toDate() method
+      try {
+        return (value as dynamic).toDate() as DateTime;
+      } catch (_) {}
+      return null;
+    }
+
+    // Parse price – the student app stores it as int, but we support
+    // both int (cents) and double (dollars) from the admin form.
+    int parsePrice(dynamic value) {
+      if (value is int) return value;
+      if (value is double) return value.round();
+      final parsed = double.tryParse(value?.toString() ?? '');
+      return parsed != null ? parsed.round() : 0;
+    }
+
+    // Parse list fields that could be stored as List or be absent
+    List<String> parseStringList(dynamic value) {
+      if (value == null) return [];
+      if (value is List) return value.map((e) => e.toString()).toList();
+      return [];
+    }
+
     return FoodItem(
       id: id ?? map['id'] ?? '',
       image: map['image'] ?? '',
       title: map['title'] ?? '',
+      titleLower: map['titleLower'] ?? '',
       subtitle: map['subtitle'] ?? '',
-      price: map['price'] is int
-          ? map['price']
-          : int.tryParse(map['price']?.toString() ?? '') ?? 0,
+      description: map['description'] ?? '',
+      price: parsePrice(map['price']),
       rating: (map['rating'] ?? 4.5).toDouble(),
       category: map['category'] ?? '',
-      cafe: map['cafe'] ?? 'all',
+      availableCafes: parseStringList(map['availableCafes'] ?? map['cafes']),
       time: map['time'] ?? '',
       section: map['section'] ?? '',
+      available: map['available'] ?? true,
+      featured: map['featured'] ?? false,
+      quantity: (() {
+        final qty = map['quantity'];
+        return qty is int ? qty : int.tryParse(qty?.toString() ?? '0') ?? 0;
+      })(),
+      dietaryTags: parseStringList(map['dietaryTags']),
+      keywords: parseStringList(map['keywords']),
+      searchPrefixes: parseStringList(map['searchPrefixes']),
+      createdAt: parseTimestamp(map['createdAt']),
+      updatedAt: parseTimestamp(map['updatedAt']),
     );
+  }
+
+  String get displayCafe => availableCafes.length == 1 ? availableCafes.first : 'Multiple';
+
+  /// Display‑friendly price in TZS (the value stored is in TZS).
+  String get formattedPrice => '$price';
+
+  /// Converts this [FoodItem] to a Firestore-compatible map.
+  Map<String, dynamic> toMap() {
+    return {
+      'image': image,
+      'title': title,
+      'titleLower': titleLower,
+      'subtitle': subtitle,
+      'description': description,
+      'price': price,
+      'rating': rating,
+      'category': category,
+      'availableCafes': availableCafes,
+      'time': time,
+      'section': section,
+      'available': available,
+      'featured': featured,
+      'quantity': quantity,
+      'dietaryTags': dietaryTags,
+      'keywords': keywords,
+      'searchPrefixes': searchPrefixes,
+      'createdAt': createdAt,
+      'updatedAt': updatedAt,
+    };
   }
 
   /// Builds the food item image from network (if URL) or local asset,
@@ -118,6 +206,20 @@ class FoodItem {
   }
 }
 
+class Section {
+  final String id;
+  final String name;
+
+  const Section({required this.id, required this.name});
+
+  factory Section.fromMap(Map<String, dynamic> map, {required String id}) {
+    return Section(
+      id: id,
+      name: map['name'] ?? '',
+    );
+  }
+}
+
 class FoodData {
   /// Stream of all food items from Firestore database to sync app state in real-time
   static Stream<List<FoodItem>> get foodItemsStream {
@@ -126,6 +228,17 @@ class FoodData {
     ) {
       return snapshot.docs.map((doc) {
         return FoodItem.fromMap(doc.data(), id: doc.id);
+      }).toList();
+    });
+  }
+
+  /// Stream of all sections from the `section` collection
+  static Stream<List<Section>> get sectionsStream {
+    return FirebaseFirestore.instance.collection('section').snapshots().map((
+      snapshot,
+    ) {
+      return snapshot.docs.map((doc) {
+        return Section.fromMap(doc.data(), id: doc.id);
       }).toList();
     });
   }

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../data/food_data.dart';
-import '../services/cart_service.dart';
+import '../widgets/cafe_selection_dialog.dart';
 import '../widgets/cart_fab.dart';
 
 class _Category {
@@ -57,10 +57,12 @@ class _CategoryScreenState extends State<CategoryScreen> {
         final filteredItems = _selectedCategory == 'All'
             ? allItems
             : allItems
-                .where((item) =>
-                    item.category.toLowerCase() ==
-                    _selectedCategory.toLowerCase())
-                .toList();
+                  .where(
+                    (item) =>
+                        item.category.toLowerCase() ==
+                        _selectedCategory.toLowerCase(),
+                  )
+                  .toList();
 
         return SingleChildScrollView(
           child: Padding(
@@ -89,13 +91,16 @@ class _CategoryScreenState extends State<CategoryScreen> {
                           padding: const EdgeInsets.all(32),
                           child: Text(
                             'No items found for $_selectedCategory',
-                            style: const TextStyle(fontSize: 16, color: Colors.grey),
+                            style: const TextStyle(
+                              fontSize: 16,
+                              color: Colors.grey,
+                            ),
                           ),
                         ),
                       )
                     : Cards(items: filteredItems),
-                const SizedBox(height: 10),
-                BottomBanner(),
+                //const SizedBox(height: 10),
+                //BottomBanner(),
               ],
             ),
           ),
@@ -204,7 +209,7 @@ class FoodCard extends StatelessWidget {
                 );
               },
               child: Hero(
-                tag: 'category_${item.cafe}_${item.title}_${item.image}',
+                tag: 'category_${item.displayCafe}_${item.title}_${item.image}',
                 child: item.buildImage(
                   height: 100,
                   width: double.infinity,
@@ -238,15 +243,7 @@ class FoodCard extends StatelessWidget {
                   const SizedBox(width: 8),
                   GestureDetector(
                     onTap: () {
-                      CartService().addToCart(item);
-                      ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('${item.title} added to cart!'),
-                          duration: const Duration(seconds: 1),
-                          backgroundColor: Colors.orange,
-                        ),
-                      );
+                      addToCartWithCafeCheck(context, item);
                     },
                     child: Container(
                       padding: const EdgeInsets.all(6),
@@ -269,10 +266,7 @@ class FoodCard extends StatelessWidget {
                 children: [
                   const Icon(Icons.star_rounded, color: Colors.amber, size: 16),
                   Text(
-                    // If cafe is 'offcampus', show 'OFF-CAMPUS', otherwise show 'CAFE(X)'
-                    item.cafe.toLowerCase() == 'offcampus'
-                        ? '${item.rating} • offcampus'
-                        : '${item.rating} • CAFE(${item.cafe})',
+                    '${item.rating} • CAFE(${item.displayCafe})',
                     style: const TextStyle(fontSize: 12, color: Colors.black),
                   ),
                 ],
@@ -285,7 +279,7 @@ class FoodCard extends StatelessWidget {
   }
 }
 
-class BottomBanner extends StatelessWidget {
+/*class BottomBanner extends StatelessWidget {
   const BottomBanner({super.key});
   @override
   Widget build(BuildContext context) {
@@ -365,7 +359,7 @@ class BottomBanner extends StatelessWidget {
       ),
     );
   }
-}
+}*/
 
 class ItemDescriptionsCategories extends StatelessWidget {
   final FoodItem item;
@@ -389,7 +383,8 @@ class ItemDescriptionsCategories extends StatelessWidget {
               Stack(
                 children: [
                   Hero(
-                    tag: 'category_${item.cafe}_${item.title}_${item.image}',
+                    tag:
+                        'category_${item.displayCafe}_${item.title}_${item.image}',
                     child: ClipRRect(
                       child: item.buildImage(
                         width: double.infinity,
@@ -476,15 +471,7 @@ class ItemDescriptionsCategories extends StatelessWidget {
                           ),
                         ),
                         onPressed: () {
-                          CartService().addToCart(item);
-                          ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('${item.title} added to cart!'),
-                              duration: const Duration(seconds: 1),
-                              backgroundColor: Colors.orange,
-                            ),
-                          );
+                          addToCartWithCafeCheck(context, item);
                         },
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
