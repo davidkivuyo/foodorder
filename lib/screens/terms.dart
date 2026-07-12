@@ -47,7 +47,7 @@ Welcome to Campus Bite
 6. User Conduct
 You agree to use the application only for lawful purposes. You agree not to place fake orders, harass delivery drivers, or attempt to hack the App's security.
 
-7. User Conduct and Account Penalty System
+7. Account Penalty System
 To ensure a reliable service for everyone, the App tracks your order collection behavior using a percentage-based status system:
 • 0% (Good Standing): Your account is safe and operating normally.
 • Penalty Increases (up to 50%): Failing to pick up your ordered food increases your penalty percentage. Reaching 50% serves as a critical warning.
