@@ -140,197 +140,425 @@ PHASE 1
 
 ## Goal:
 
-# Implement Firestore Search in the Campus Bite Flutter App
+# Implement Student Strike Management System (Phase 1)
 
-Implement a complete food search feature using Firebase Firestore only. Do not use Algolia, Typesense, Meilisearch, or any external search service.
+## Project Context
 
-## Objective
+This repository contains the CampusBite ecosystem.
 
-Users should be able to search for food items by:
+There are two Flutter applications:
 
-* Food name
-* Category
-* Tags
-* Keywords
-* Partial words (prefix search)
+1. CampusBite Student App
+2. CampusBite Cafe Admin App
 
-The implementation should be responsive and efficient while keeping Firestore read costs low.
+Both applications already use:
 
-## Firestore Structure
+- Firebase Authentication
+- Cloud Firestore
+- Firebase Cloud Functions
+- Shared Firestore backend
 
-The `food_items` collection should include the following searchable fields:
+The codebase is already stable.
 
-```text
-title
-titleLower
-keywords
-searchPrefixes
-```
+Your responsibility is to ADD the strike management feature WITHOUT breaking existing functionality.
 
-Example document:
+---
 
-```json
-{
-  "title": "Chicken Burger",
-  "titleLower": "chicken burger",
-  "category": "Burgers",
-  "price": 3500,
-  "available": true,
-  "keywords": [
-    "chicken",
-    "burger",
-    "burgers",
-    "fast food",
-    "lunch"
-  ],
-  "searchPrefixes": [
-    "c",
-    "ch",
-    "chi",
-    "chic",
-    "chick",
-    "chicke",
-    "chicken",
-    "b",
-    "bu",
-    "bur",
-    "burg",
-    "burge",
-    "burger"
-  ]
-}
-```
+# CRITICAL RULES
 
-## Search Helper
+DO NOT refactor unrelated code.
 
-Create a helper class that automatically generates:
+DO NOT rename existing classes.
 
-* titleLower
-* keywords
-* searchPrefixes
+DO NOT change existing Firestore collections unless instructed.
 
-Requirements:
+DO NOT modify authentication flow.
 
-* Convert everything to lowercase.
-* Remove duplicate values.
-* Generate prefixes for every word in the title.
-* Generate prefixes for category and tags as well.
+DO NOT modify ordering flow.
 
-## Food Model
+DO NOT modify cart flow.
 
-Update the FoodItem model to support:
+DO NOT modify notifications.
 
-* titleLower
-* keywords
-* searchPrefixes
+DO NOT change UI outside the required screens.
 
-Update both:
+DO NOT introduce breaking changes.
 
-* fromMap()
-* toMap()
+If an existing service can be extended, extend it.
 
+Every step must compile successfully before moving to the next.
 
-## Admin Side
+Keep commits small and isolated.
 
-Modify the Add Food and Edit Food functionality so that every time a food item is created or updated:
+---
 
-* titleLower is generated automatically.
-* keywords are generated automatically.
-* searchPrefixes are generated automatically.
+# FEATURE GOAL
 
-The administrator should never type these fields manually.
+Implement a strike management system.
 
-the admin app is available in the the /home/davidkivuyo/StudioProjects/foodapp/adminview path alongside this customerview app
+Students receive strikes when they fail to collect orders.
 
-## Search Service
+This phase only implements MANUAL strike management.
 
-Create a new file:
+Automatic strike assignment will be implemented later.
 
-```
-lib/services/search_service.dart
-```
+---
 
-The service should expose:
+# STRIKE MODEL
 
-* searchFoods(String query)
+Use percentage-based strikes.
 
-Requirements:
+Allowed values:
 
-* Trim whitespace.
-* Convert query to lowercase.
-* Return an empty list for an empty query.
-* Query Firestore using searchPrefixes.
-* Only return available food items.
+0%
 
-## Search UI
+50%
 
-Search bar is in home screen which is read only and when user taps it, it navigates to search screen inside lib/data/search_bar.dart file, where the search operation will take place.
+100%
 
-Requirements:
+Rules:
 
-* Search begins while typing.
-* Debounce user input by about 300 milliseconds.
-* Display a loading indicator while querying.
-* Show:
+0%
 
-  * Food image
-  * Food title
-  * Category
-  * Price
-  * Availability
-* Tapping a result opens the existing Food Details screen.
-* If no results exist, show:
-  "No matching food found."
+Active
 
-## Performance
+50%
 
-Implement the following optimizations:
+Warning
 
-* Debounce typing.
-* Cache previous search results in memory.
-* Avoid duplicate Firestore requests.
-* Dispose controllers and timers correctly.
-* Prevent memory leaks.
+100%
 
+Suspended
 
-## Error Handling
+Never allow:
 
-Handle:
+25%
 
-* Network unavailable
-* Firestore exceptions
-* Permission denied
-* Empty search query
+30%
 
-Display friendly messages instead of crashing.
+70%
 
-## Code Quality
+Any other values.
 
-* Follow the existing project architecture.
-* Keep business logic inside services.
-* Keep widgets clean.
-* Use ChangeNotifier where appropriate.
-* Add comments explaining complex logic.
-* Avoid code duplication.
-* Use null safety throughout.
+---
 
-## Deliverables
+# FIRESTORE
 
-Provide complete, production-ready code for:
+Extend the existing users collection.
 
-* Search helper
-* Search service
-* Updated FoodItem model
-* Updated Add/Edit Food logic
-* Search screen
-* Home screen integration
-* Any required Firestore index information
+Add only the following fields:
 
-The implementation should compile without errors and integrate seamlessly into the existing Campus Bite application.
+strikePercentage
 
-## Restrictions:
+strikeCount
 
-* Do not change anything not related to the task in the goal and requirements
+accountStatus
+
+lastStrikeAt
+
+lastPardonAt
+
+updatedAt
+
+Do not remove existing fields.
+
+Do not rename existing fields.
+
+---
+
+# STUDENT APP(customerview)
+
+Account Screen
+
+Display a Strike Status Card.
+
+Position:
+
+Top right.
+
+Immediately below the AppBar.
+
+The widget must be reusable.
+
+Create:
+
+lib/widgets/strike_status_card.dart
+
+The card displays:
+
+Strike Percentage
+
+Account Status
+
+Examples:
+
+🟢 Active
+
+0%
+
+🟠 Warning
+
+50%
+
+🔴 Suspended
+
+100%
+
+The card must update automatically using Firestore streams.
+
+No manual refresh.
+
+---
+
+# ADMIN APP(adminview)
+
+Create Student Strike Management.
+
+Admins can:
+
+Search students
+
+Open a student profile
+
+View:
+
+Name
+
+Email
+
+Strike Percentage
+
+Account Status
+
+Buttons:
+
+Issue Strike (+50%)
+
+Pardon (-50%)
+
+Reset Strikes (0%)
+
+Suspend Account
+
+Reactivate Account
+
+Each action requires a confirmation dialog.
+
+Never execute destructive actions immediately.
+
+---
+
+# BUSINESS LOGIC
+
+Create:
+
+StrikeService
+
+Responsibilities:
+
+issueStrike()
+
+pardonStrike()
+
+resetStrike()
+
+suspendAccount()
+
+reactivateAccount()
+
+calculateAccountStatus()
+
+Business logic must NOT exist inside Widgets.
+
+---
+
+# STRIKE RULES
+
+Issue Strike
+
+0 → 50
+
+50 → 100
+
+100 → 100
+
+Pardon
+
+100 → 50
+
+50 → 0
+
+0 → 0
+
+Reset
+
+Always → 0
+
+Account status:
+
+0 → ACTIVE
+
+50 → ACTIVE
+
+100 → SUSPENDED
+
+---
+
+# AUDIT LOGGING
+
+Create:
+
+audit_logs
+
+Each strike action creates a document.
+
+Fields:
+
+studentId
+
+adminId
+
+action
+
+previousStrike
+
+newStrike
+
+reason
+
+timestamp
+
+Allowed actions:
+
+ISSUE_STRIKE
+
+PARDON
+
+RESET
+
+SUSPEND
+
+REACTIVATE
+
+Audit logs must never be edited or deleted.
+
+---
+
+# SECURITY
+
+Students:
+
+Can read only their own strike status.
+
+Cannot modify:
+
+strikePercentage
+
+strikeCount
+
+accountStatus
+
+Audit logs
+
+Admins:
+
+Can update strike information.
+
+Prepare the architecture so Cloud Functions can replace manual updates later.
+
+---
+
+# FIRESTORE RULES
+
+Update Firestore rules accordingly.
+
+Students:
+
+Read only their own user document.
+
+Admins:
+
+Read all users.
+
+Update strike fields.
+
+Audit logs:
+
+Read/write admins only.
+
+Delete never allowed.
+
+---
+
+# UI REQUIREMENTS
+
+Student App:
+
+Strike card updates live.
+
+Admin App:
+
+Student list updates live.
+
+Use Firestore Streams.
+
+---
+
+# PERFORMANCE
+
+Avoid unnecessary reads.
+
+Avoid duplicate listeners.
+
+Avoid rebuilding the entire Account screen.
+
+Reuse existing services whenever possible.
+
+---
+
+# TESTING
+
+After implementation verify:
+
+✓ Student login still works
+
+✓ Admin login still works
+
+✓ Existing menu loads
+
+✓ Cart still works
+
+✓ Orders still work
+
+✓ Notifications still work
+
+✓ Strike card updates correctly
+
+✓ Admin actions work correctly
+
+✓ No regression in existing features
+
+---
+
+# DELIVERABLES
+
+Provide:
+
+1. List of modified files.
+
+2. List of newly created files.
+
+3. Firestore schema changes.
+
+4. a recommended Firestore security rules(current rules are in firestore.rules inside customerview app).
+
+5. Summary of implementation.
+
+6. Manual testing checklist.
+
+Do NOT continue to Phase 2 (automatic strikes or distance-based pickup).
+
+Stop after completing this phase and run changes review by coderabbit review.
 
 ---
 

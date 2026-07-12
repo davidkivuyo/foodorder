@@ -56,16 +56,15 @@ class HomeScreen extends StatelessWidget {
                 }
 
                 final allItems = foodSnapshot.data ?? [];
-                final validSections = sections
-                    .where(
-                      (s) => allItems.any((f) => f.section == s.name),
-                    )
-                    .toList()
-                  ..sort((a, b) {
-                    if (a.name == 'other') return 1;
-                    if (b.name == 'other') return -1;
-                    return 0;
-                  });
+                final validSections =
+                    sections
+                        .where((s) => allItems.any((f) => f.section == s.name))
+                        .toList()
+                      ..sort((a, b) {
+                        if (a.name == 'other') return 1;
+                        if (b.name == 'other') return -1;
+                        return 0;
+                      });
 
                 return SingleChildScrollView(
                   child: Padding(
@@ -88,7 +87,9 @@ class HomeScreen extends StatelessWidget {
                             },
                             child: Container(
                               height: 56,
-                              padding: const EdgeInsets.symmetric(horizontal: 18),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 18,
+                              ),
                               decoration: BoxDecoration(
                                 color: Colors.grey.shade200,
                                 borderRadius: BorderRadius.circular(28),
@@ -356,16 +357,28 @@ class CardRowItems extends StatelessWidget {
                                     color: Colors.amber,
                                     size: 16,
                                   ),
-                                  Expanded(
-                                    child: Text(
-                                      '${item.rating} • CAFE(${item.displayCafe})',
-                                      style: const TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.black,
-                                      ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
+                                  Text(
+                                    '${item.rating} • ',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.black,
                                     ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  Icon(
+                                    Icons.storefront_outlined,
+                                    size: 14,
+                                    color: Colors.grey.shade400,
+                                  ),
+                                  Text(
+                                    item.displayCafe,
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.black,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                                 ],
                               ),
@@ -501,7 +514,7 @@ class ItemDescriptionsHome extends StatelessWidget {
                           children: const [
                             Icon(Icons.shopping_cart),
                             SizedBox(width: 8),
-                            Text('I want this!🤩'),
+                            Text('add to cart'),
                           ],
                         ),
                       ),
@@ -561,7 +574,8 @@ class CategoriesTitles extends StatelessWidget {
                         );
                       },
                       child: Hero(
-                        tag: 'home_${item.displayCafe}_${item.title}_${item.image}',
+                        tag:
+                            'home_${item.displayCafe}_${item.title}_${item.image}',
                         child: item.buildImage(
                           height: 100,
                           width: double.infinity,
@@ -621,16 +635,28 @@ class CategoriesTitles extends StatelessWidget {
                             color: Colors.amber,
                             size: 16,
                           ),
-                          Expanded(
-                            child: Text(
-                              '${item.rating} • CAFE(${item.displayCafe})',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: Colors.black,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                          Text(
+                            '${item.rating} • ',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Colors.black,
                             ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          Icon(
+                            Icons.storefront_outlined,
+                            size: 14,
+                            color: Colors.grey.shade400,
+                          ),
+                          Text(
+                            item.displayCafe,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Colors.black,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ],
                       ),
@@ -645,4 +671,3 @@ class CategoriesTitles extends StatelessWidget {
     );
   }
 }
-

@@ -21,7 +21,12 @@ an admin can strike students who donot collect their food by pressing no show bu
 save the users passwords in their google account logged in their device and retrieve it upon attempts to login in both adminview and customerview
 
 10. goal10
-display the time which a student is obliged to pickup the food if he or she didnot show on that time the cafe admin can be allowed to strike the student. Also notify the student when order is ready to be collected and show the time required to pickup the food.
+display the time which a student is obliged to pickup the food if he or she didnot show on that time the cafe admin can be allowed to strike the student. Also notify the student when order is ready to be collected and show the time required to pickup the food. the time is calculated by the distance of the current user location and the cafe and the time taken to prepare the food.
+
+11. order screen should clean 24hrs and its history will be saved under /users/{userId}/history according to date, food item title and the total price.
+
+12. add rating field in addproducts for admin
+
 
 # fulfilled✅
 1. Goal1:
