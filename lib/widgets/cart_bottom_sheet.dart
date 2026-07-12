@@ -132,7 +132,7 @@ class CartBottomSheet extends StatelessWidget {
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
-                                  'Cafe ${item.displayCafe}',
+                                  item.displayCafe,
                                   style: TextStyle(
                                     fontSize: 12,
                                     color: Colors.grey[600],
@@ -289,9 +289,8 @@ class CartBottomSheet extends StatelessWidget {
                     showDialog(
                       context: context,
                       barrierDismissible: false,
-                      builder: (_) => const Center(
-                        child: CircularProgressIndicator(),
-                      ),
+                      builder: (_) =>
+                          const Center(child: CircularProgressIndicator()),
                     );
 
                     // Place the order (async Firestore write)

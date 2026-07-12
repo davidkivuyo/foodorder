@@ -266,7 +266,7 @@ class FoodCard extends StatelessWidget {
                 children: [
                   const Icon(Icons.star_rounded, color: Colors.amber, size: 16),
                   Text(
-                    '${item.rating} • CAFE(${item.displayCafe})',
+                    '${item.rating} • ${item.displayCafe}',
                     style: const TextStyle(fontSize: 12, color: Colors.black),
                   ),
                 ],
@@ -478,7 +478,7 @@ class ItemDescriptionsCategories extends StatelessWidget {
                           children: const [
                             Icon(Icons.shopping_cart),
                             SizedBox(width: 8),
-                            Text('I want this!🤩'),
+                            Text('add to cart'),
                           ],
                         ),
                       ),

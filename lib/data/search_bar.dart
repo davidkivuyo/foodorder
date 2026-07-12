@@ -441,7 +441,7 @@ class _SearchBarScreenState extends State<SearchBarScreen> {
                                     ),
                                     const SizedBox(width: 4),
                                     Text(
-                                      'Cafe ${item.displayCafe}',
+                                      item.displayCafe,
                                       style: TextStyle(
                                         fontSize: 11,
                                         color: Colors.grey.shade500,

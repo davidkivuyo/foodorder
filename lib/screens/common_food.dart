@@ -402,7 +402,7 @@ class _CommonFoodCard extends StatelessWidget {
                   const Icon(Icons.star_rounded, color: Colors.amber, size: 16),
                   Expanded(
                     child: Text(
-                      '${item.rating} • CAFE(${item.displayCafe})',
+                      '${item.rating} • ${item.displayCafe}',
                       style: const TextStyle(fontSize: 12, color: Colors.black),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
