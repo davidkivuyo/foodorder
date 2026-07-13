@@ -44,6 +44,21 @@ class SupportScreen extends StatelessWidget {
               trailing: const Icon(Icons.chevron_right),
               onTap: () => context.push('/support/contact'),
             ),
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.gavel_outlined),
+              title: const Text('Licenses & Legal'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                showLicensePage(
+                  context: context,
+                  applicationName: 'Campus Bite',
+                  applicationVersion: '1.0.0(alpha)',
+                  applicationLegalese:
+                      '© 2026 Campus Bite Contributors, Larason.',
+                );
+              },
+            ),
           ],
         ),
       ),
