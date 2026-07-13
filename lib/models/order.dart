@@ -46,6 +46,43 @@ enum OrderStatus {
   }
 }
 
+/// Backend-driven pickup deadline status.
+/// Only the Cloud Function writes these values.
+enum DeadlineStatus {
+  notReady,
+  active,
+  collected,
+  expired;
+
+  static DeadlineStatus fromString(String value) {
+    switch (value) {
+      case 'NOT_READY':
+        return DeadlineStatus.notReady;
+      case 'ACTIVE':
+        return DeadlineStatus.active;
+      case 'COLLECTED':
+        return DeadlineStatus.collected;
+      case 'EXPIRED':
+        return DeadlineStatus.expired;
+      default:
+        return DeadlineStatus.notReady;
+    }
+  }
+
+  String toShortString() {
+    switch (this) {
+      case DeadlineStatus.notReady:
+        return 'NOT_READY';
+      case DeadlineStatus.active:
+        return 'ACTIVE';
+      case DeadlineStatus.collected:
+        return 'COLLECTED';
+      case DeadlineStatus.expired:
+        return 'EXPIRED';
+    }
+  }
+}
+
 /// Represents a food order placed by a student.
 class FoodOrder {
   final String orderId;
@@ -56,6 +93,10 @@ class FoodOrder {
   final DateTime orderTime;
   OrderStatus status;
   final DateTime? updatedAt;
+  final DateTime? readyAt;
+  final DateTime? pickupDeadline;
+  final int pickupWindowMinutes;
+  final DeadlineStatus deadlineStatus;
 
   FoodOrder({
     required this.orderId,
@@ -66,6 +107,10 @@ class FoodOrder {
     required this.orderTime,
     this.status = OrderStatus.pending,
     this.updatedAt,
+    this.readyAt,
+    this.pickupDeadline,
+    this.pickupWindowMinutes = 20,
+    this.deadlineStatus = DeadlineStatus.notReady,
   });
 
   /// Build a [FoodOrder] from a Firestore document snapshot.
@@ -123,6 +168,12 @@ class FoodOrder {
       orderTime: parseTimestamp(data['createdAt']) ?? DateTime.now(),
       status: OrderStatus.fromString(data['status'] as String? ?? 'pending'),
       updatedAt: parseTimestamp(data['updatedAt']),
+      readyAt: parseTimestamp(data['readyAt']),
+      pickupDeadline: parseTimestamp(data['pickupDeadline']),
+      pickupWindowMinutes: (data['pickupWindowMinutes'] as num?)?.toInt() ?? 20,
+      deadlineStatus: DeadlineStatus.fromString(
+        data['deadlineStatus'] as String? ?? 'NOT_READY',
+      ),
     );
   }
 
@@ -148,6 +199,7 @@ class FoodOrder {
       'status': status.toShortString(),
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
+      'deadlineStatus': DeadlineStatus.notReady.toShortString(),
     };
   }
 }

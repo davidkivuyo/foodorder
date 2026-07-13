@@ -17,7 +17,7 @@ class TermsScreen extends StatelessWidget {
 Last Updated: Sept 9, 2026
 
 Welcome to Campus Bite
-! These Terms govern your use of the Campus Bite
+These Terms govern your use of the Campus Bite
  mobile application. By accessing or using our App Campus Bite or website at foodapp.larason.space, you agree to be bound by these terms.
 
 1. Eligibility and Account Registration
@@ -51,8 +51,8 @@ You agree to use the application only for lawful purposes. You agree not to plac
 To ensure a reliable service for everyone, the App tracks your order collection behavior using a percentage-based status system:
 • 0% (Good Standing): Your account is safe and operating normally.
 • Penalty Increases (up to 50%): Failing to pick up your ordered food increases your penalty percentage. Reaching 50% serves as a critical warning.
-• 100% (Account Blocked): If your penalty status reaches 100% due to repeated uncollected food, your account will be automatically suspended.
-• Unblocking Your Account: To restore an account that has reached 100%, you must contact the App Administrator directly to appeal the suspension.
+• 100% (Ordering Restricted): If your penalty status reaches 100% due to repeated uncollected food, your ability to place new orders will be disabled. You will still be able to log in, browse the App, and view menus, but you cannot check out.
+• Restoring Order Privileges: To remove the ordering restriction after reaching 100%, you must contact the App Administrator directly to appeal.
 
 8. Intellectual Property
 All content, features, and functionality of the application are the exclusive property of the application owner.

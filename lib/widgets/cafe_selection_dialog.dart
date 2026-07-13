@@ -32,18 +32,12 @@ Future<String?> showCafeSelectionSheet(
             const SizedBox(height: 20),
             Text(
               'Select Cafe',
-              style: const TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-              ),
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
             Text(
               'Choose which cafe to order $itemName from:',
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey.shade600,
-              ),
+              style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
             ),
             const SizedBox(height: 16),
             ...availableCafes.map(
@@ -80,10 +74,7 @@ Future<String?> showCafeSelectionSheet(
   );
 }
 
-Future<void> addToCartWithCafeCheck(
-  BuildContext context,
-  FoodItem item,
-) async {
+Future<void> addToCartWithCafeCheck(BuildContext context, FoodItem item) async {
   final cartService = CartService();
 
   // Check if item is available before adding to cart
@@ -109,6 +100,8 @@ Future<void> addToCartWithCafeCheck(
     );
     if (selectedCafe == null) return;
     cartService.addToCart(item, selectedCafe: selectedCafe);
+  } else if (item.availableCafes.length == 1) {
+    cartService.addToCart(item, selectedCafe: item.availableCafes.first);
   } else {
     cartService.addToCart(item);
   }

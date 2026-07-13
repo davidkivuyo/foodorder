@@ -240,12 +240,16 @@ class CommonFoodList extends StatelessWidget {
                       ),
                       const SizedBox(width: 4),
                       // Title matches the tapped category
-                      Text(
-                        food.title,
-                        style: const TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 0.5,
+                      Flexible(
+                        child: Text(
+                          food.title,
+                          style: const TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 0.5,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                     ],
@@ -406,16 +410,20 @@ class _CommonFoodCard extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
+                  const SizedBox(width: 2),
                   Icon(
                     Icons.storefront_outlined,
                     size: 14,
                     color: Colors.grey.shade400,
                   ),
-                  Text(
-                    item.displayCafe,
-                    style: const TextStyle(fontSize: 12, color: Colors.black),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                  const SizedBox(width: 2),
+                  Flexible(
+                    child: Text(
+                      item.displayCafe,
+                      style: const TextStyle(fontSize: 12, color: Colors.black),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                 ],
               ),

@@ -247,6 +247,33 @@ class CartService extends ChangeNotifier {
     }
   }
 
+  /// Check whether the current user's account is suspended.
+  ///
+  /// Returns `true` when `accountStatus == 'SUSPENDED'` or
+  /// `strikePercentage >= 100`, meaning the student cannot place orders.
+  Future<bool> isAccountSuspended() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return false;
+
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .get();
+
+      if (!doc.exists) return false;
+
+      final data = doc.data()!;
+      final accountStatus = data['accountStatus'] as String? ?? 'ACTIVE';
+      final strikePercentage =
+          (data['strikePercentage'] as num?)?.toInt() ?? 0;
+
+      return accountStatus == 'SUSPENDED' || strikePercentage >= 100;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Place the current cart items as an order and save to Firestore.
   Future<String?> placeOrder() async {
     if (_cartItems.isEmpty) return null;

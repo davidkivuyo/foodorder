@@ -225,9 +225,16 @@ class CardRowItems extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                title,
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              Flexible(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
               IconButton(
                 onPressed: () {
@@ -366,19 +373,23 @@ class CardRowItems extends StatelessWidget {
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                   ),
+                                  const SizedBox(width: 2),
                                   Icon(
                                     Icons.storefront_outlined,
                                     size: 14,
                                     color: Colors.grey.shade400,
                                   ),
-                                  Text(
-                                    item.displayCafe,
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.black,
+                                  const SizedBox(width: 2),
+                                  Flexible(
+                                    child: Text(
+                                      item.displayCafe,
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.black,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
                                     ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
                                   ),
                                 ],
                               ),
@@ -644,19 +655,23 @@ class CategoriesTitles extends StatelessWidget {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
+                          const SizedBox(width: 2),
                           Icon(
                             Icons.storefront_outlined,
                             size: 14,
                             color: Colors.grey.shade400,
                           ),
-                          Text(
-                            item.displayCafe,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: Colors.black,
+                          const SizedBox(width: 2),
+                          Flexible(
+                            child: Text(
+                              item.displayCafe,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Colors.black,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
                           ),
                         ],
                       ),

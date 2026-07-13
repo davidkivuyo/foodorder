@@ -64,3 +64,5 @@ key.properties
 lib/firebase_options.dart
 android/app/google-services.json
 scripts/
+
+testsprite_tests/tmp/config.json
