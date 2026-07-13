@@ -643,10 +643,8 @@ This project includes an `AGENTS.md` file that defines strict rules for AI codin
 
 # License
 
-This project is licensed under the terms specified in the [LICENSE](LICENSE) file.
-
-# We hope this gives an idea of the working behind the Campus Bite student app.
+This project is licensed under the Apache 2.0 License terms specified in the [LICENSE](LICENSE) and [NOTICE](NOTICE) files.
 
 # Credits
 
-To all maintainers and contributors of this app.
+To all maintainers and contributors of this app. We hope this gives an idea of the working behind the Campus Bite student app.
