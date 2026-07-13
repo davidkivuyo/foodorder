@@ -1,7 +1,7 @@
 Campus Bite
 Copyright 2026 davidkivuyo, johnsonmushi, edwinkessy276-art and jugraki-art
 
-This product includes software developed by davidkivuyo, johnsonmushi, edwinkessy276-art, jugraki-art on www.github.com/davidkivuyo/foodorder.
+This product includes software developed by davidkivuyo, johnsonmushi, edwinkessy276-art and jugraki-art on www.github.com/davidkivuyo/foodorder.
 
 =========================================================================
 Third-Party Software Attributions
@@ -11,7 +11,7 @@ This application is built using the Flutter framework, developed by
 Google LLC and contributors, licensed under the BSD 3-Clause License.
 
 This product includes third-party packages managed by pub.dev. 
-A complete list of dependencies and their respective licenses can be 
+A complete list of dependencies is in pubsec.yaml file but their respective licenses can be 
 found on their respective pub.dev repositories.
 
 =========================================================================
@@ -19,7 +19,7 @@ Asset and Media Attributions
 =========================================================================
 
 * Fonts:
-  - DM Sans by Colophon Foundry (Licensed under the SIL Open Font License Version 1.1)
+  - Google font DM Sans by Colophon Foundry (Licensed under the SIL Open Font License Version 1.1)
 
 * Graphics and Icons:
   - Campus Bite logo by davidkivuyo distributed under CC BY 4.0 License
