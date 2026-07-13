@@ -159,12 +159,6 @@ class ContactScreen extends StatelessWidget {
               subtitle: Text('+255671035765'),
               onTap: _openWhatsApp,
             ),
-            const Divider(),
-            const ListTile(
-              leading: Icon(Icons.location_on, color: Colors.red),
-              title: Text('Campus Cafe admins'),
-              subtitle: Text('Cafe 1 or 2, at universitie\'s main campus'),
-            ),
           ],
         ),
       ),

@@ -5,6 +5,44 @@ import '../services/auth_service.dart';
 import '../widgets/logout_confirmation_dialog.dart';
 import '../widgets/strike_status_card.dart';
 
+// ── Avatar helpers ──────────────────────────────────────────────────────────
+
+/// Returns uppercase initials from a full name.
+/// Single name  → first letter only  example "lembotor" → "L")
+/// Multiple names → first letter of each of the first two words example "Lembotor larabal" → "LL")
+String _initialsFromName(String fullName) {
+  final parts = fullName.trim().split(RegExp(r'\s+'));
+  if (parts.isEmpty || parts.first.isEmpty) return '?';
+  if (parts.length == 1) return parts.first[0].toUpperCase();
+  return (parts[0][0] + parts[1][0]).toUpperCase();
+}
+
+/// Deterministically picks one of several curated colours based on the name.
+/// The same name always produces the same colour.
+Color _avatarColorFromName(String name) {
+  const List<Color> palette = [
+    Color(0xFFE53935), // red
+    Color(0xFF8E24AA), // purple
+    Color(0xFF1E88E5), // blue
+    Color(0xFF00897B), // teal
+    Color(0xFF43A047), // green
+    Color(0xFFF4511E), // deep orange
+    Color(0xFF6D4C41), // brown
+    Color(0xFF3949AB), // indigo
+    Color(0xFF00ACC1), // cyan
+    Color(0xFFFF8F00), // amber
+  ];
+  if (name.isEmpty) return palette[0];
+  final index = name.codeUnits.fold(0, (acc, c) => acc + c) % palette.length;
+  Color base = palette[index];
+  // If the colour is too light, darken it for better contrast.
+  if (base.computeLuminance() > 0.5) {
+    final hsl = HSLColor.fromColor(base);
+    return hsl.withLightness((hsl.lightness - 0.2).clamp(0.0, 1.0)).toColor();
+  }
+  return base;
+}
+
 //account screen
 class AccountScreen extends StatelessWidget {
   const AccountScreen({super.key});
@@ -48,21 +86,32 @@ class AccountScreen extends StatelessWidget {
                   builder: (context, snapshot) {
                     String displayName = name;
                     String displayEmail = email;
+                    // Canonical name used for avatar identity.
+                    final authFullName = user?.displayName?.trim();
+                    String rawFullName = authFullName?.isNotEmpty == true
+                        ? authFullName!
+                        : name;
 
                     if (snapshot.hasData && snapshot.data!.exists) {
                       final data = snapshot.data!.data();
                       if (data != null) {
-                        final fullName = data['fullName'] as String? ?? '';
+                        final fullName =
+                            (data['fullName'] as String?)?.trim() ?? '';
                         if (fullName.isNotEmpty) {
-                          displayName = fullName.split(' ').first;
+                          rawFullName = fullName;
+                          displayName = fullName.split(RegExp(r'\s+')).first;
                         }
                         displayEmail = data['email'] as String? ?? displayEmail;
                       }
                     } else {
                       // Fallback to FirebaseAuth user properties if snapshot not ready/doesn't exist
-                      if (user?.displayName != null &&
-                          user!.displayName!.isNotEmpty) {
-                        displayName = user.displayName!.split(' ').first;
+                      final displayNameValue = user?.displayName?.trim();
+                      if (displayNameValue != null &&
+                          displayNameValue.isNotEmpty) {
+                        rawFullName = displayNameValue;
+                        displayName = displayNameValue
+                            .split(RegExp(r'\s+'))
+                            .first;
                       }
                     }
 
@@ -73,13 +122,9 @@ class AccountScreen extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.center,
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(50),
-                              child: Image.asset(
-                                'designs/assets/avatar.jpg',
-                                height: 70.0,
-                                width: 70,
-                              ),
+                            _UserInitialsAvatar(
+                              initials: _initialsFromName(rawFullName),
+                              color: _avatarColorFromName(rawFullName),
                             ),
                             Text(
                               displayName,
@@ -133,6 +178,56 @@ class AccountScreen extends StatelessWidget {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A stylish rounded-border square avatar displaying a user's initials.
+///
+/// The [color] is the background fill; text is always white.
+/// Size is fixed at 70×70 to match the removed image dimensions.
+class _UserInitialsAvatar extends StatelessWidget {
+  final String initials;
+  final Color color;
+
+  const _UserInitialsAvatar({required this.initials, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 70,
+      height: 70,
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          // Darken the fill colour by 20 % lightness to create a visible,
+          // contrasting border ring rather than a near-invisible tinted one.
+          color: HSLColor.fromColor(color)
+              .withLightness(
+                (HSLColor.fromColor(color).lightness - 0.20).clamp(0.0, 1.0),
+              )
+              .toColor(),
+          width: 3,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: color.withAlpha(60),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        initials,
+        style: TextStyle(
+          color: color.computeLuminance() > 0.5 ? Colors.black : Colors.white,
+          fontSize: 26,
+          fontWeight: FontWeight.bold,
+          letterSpacing: 1.5,
         ),
       ),
     );
