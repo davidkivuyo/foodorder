@@ -2,7 +2,7 @@
 
 A Flutter mobile application that lets university students browse the campus cafeteria menu, place food orders in advance, and skip the queue. Built with **Flutter** and **Firebase**.
 
-> **This repository** (`foodorder`) contains the **Student App**. There is the admin companion app which we will publish in the future.
+> **This repository** (`foodorder`) contains the **Student App**. There is the admin companion app which will not be published.
 
 ---
 
