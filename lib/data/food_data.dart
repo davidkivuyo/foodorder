@@ -102,7 +102,7 @@ class FoodItem {
     );
   }
 
-  String get displayCafe => availableCafes.length == 1 ? availableCafes.first : 'Multiple';
+  String get displayCafe => availableCafes.join(', ');
 
   /// Display‑friendly price in TZS (the value stored is in TZS).
   String get formattedPrice => '$price';

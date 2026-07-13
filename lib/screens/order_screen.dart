@@ -329,17 +329,28 @@ class _OrdersScreenState extends State<OrdersScreen> {
             ),
             const SizedBox(height: 8),
 
-            // Cafe name if available
-            if (order.items.isNotEmpty &&
-                order.items.first.displayCafe.isNotEmpty)
-              Text(
-                'Cafe ${order.items.first.displayCafe}',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: Colors.grey[600],
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
+            // Cafe name(s) from order items
+            Builder(
+              builder: (context) {
+                final cafeNames = order.items
+                    .expand((i) => i.displayCafe.split(', '))
+                    .map((c) => c.trim())
+                    .where((c) => c.isNotEmpty)
+                    .toSet()
+                    .toList();
+                if (cafeNames.isEmpty) return const SizedBox.shrink();
+                return Text(
+                  cafeNames.length == 1
+                      ? 'Cafe: ${cafeNames.first}'
+                      : 'Cafes: ${cafeNames.join(", ")}',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.grey[600],
+                    fontWeight: FontWeight.w500,
+                  ),
+                );
+              },
+            ),
             const SizedBox(height: 4),
 
             // Order items
