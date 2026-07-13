@@ -2,6 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../models/order.dart';
+import '../services/pickup_deadline_service.dart';
+import '../widgets/pickup_countdown.dart';
 
 class OrdersScreen extends StatefulWidget {
   const OrdersScreen({super.key});
@@ -45,8 +47,11 @@ class _OrdersScreenState extends State<OrdersScreen> {
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const Icon(Icons.cloud_off,
-                              size: 50, color: Colors.grey),
+                          const Icon(
+                            Icons.cloud_off,
+                            size: 50,
+                            color: Colors.grey,
+                          ),
                           const SizedBox(height: 16),
                           const Text(
                             'Could not load orders',
@@ -68,9 +73,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                 }
 
                 if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(
-                    child: CircularProgressIndicator(),
-                  );
+                  return const Center(child: CircularProgressIndicator());
                 }
 
                 // Parse orders from Firestore
@@ -92,20 +95,24 @@ class _OrdersScreenState extends State<OrdersScreen> {
                 orders.sort((a, b) => b.orderTime.compareTo(a.orderTime));
 
                 // Separate into active and completed
-                final activeOrders = orders.where(
-                  (o) =>
-                      o.status == OrderStatus.pending ||
-                      o.status == OrderStatus.accepted ||
-                      o.status == OrderStatus.preparing ||
-                      o.status == OrderStatus.ready,
-                ).toList();
+                final activeOrders = orders
+                    .where(
+                      (o) =>
+                          o.status == OrderStatus.pending ||
+                          o.status == OrderStatus.accepted ||
+                          o.status == OrderStatus.preparing ||
+                          o.status == OrderStatus.ready,
+                    )
+                    .toList();
 
-                final completedOrders = orders.where(
-                  (o) =>
-                      o.status == OrderStatus.collected ||
-                      o.status == OrderStatus.rejected ||
-                      o.status == OrderStatus.noShow,
-                ).toList();
+                final completedOrders = orders
+                    .where(
+                      (o) =>
+                          o.status == OrderStatus.collected ||
+                          o.status == OrderStatus.rejected ||
+                          o.status == OrderStatus.noShow,
+                    )
+                    .toList();
 
                 if (orders.isEmpty) {
                   return Center(
@@ -192,8 +199,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                           ),
                           const SizedBox(height: 8),
                           ...activeOrders.map(
-                            (order) =>
-                                _buildOrderCard(context, order),
+                            (order) => _buildOrderCard(context, order),
                           ),
                           const SizedBox(height: 20),
                           const Divider(),
@@ -222,8 +228,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                           ),
                           const SizedBox(height: 8),
                           ...completedOrders.map(
-                            (order) =>
-                                _buildOrderCard(context, order),
+                            (order) => _buildOrderCard(context, order),
                           ),
                         ],
                       ],
@@ -235,54 +240,24 @@ class _OrdersScreenState extends State<OrdersScreen> {
     );
   }
 
-  ({
-    Color color,
-    String icon,
-    String label,
-  }) _statusVisuals(OrderStatus status) {
+  ({Color color, String icon, String label}) _statusVisuals(
+    OrderStatus status,
+  ) {
     switch (status) {
       case OrderStatus.pending:
-        return (
-          color: Colors.orange,
-          icon: '⏳',
-          label: 'Pending',
-        );
+        return (color: Colors.orange, icon: '⏳', label: 'Pending');
       case OrderStatus.accepted:
-        return (
-          color: Colors.blue[700]!,
-          icon: '✅',
-          label: 'Accepted',
-        );
+        return (color: Colors.blue[700]!, icon: '✅', label: 'Accepted');
       case OrderStatus.rejected:
-        return (
-          color: Colors.red[700]!,
-          icon: '❌',
-          label: 'Rejected',
-        );
+        return (color: Colors.red[700]!, icon: '❌', label: 'Rejected');
       case OrderStatus.preparing:
-        return (
-          color: Colors.brown[900]!,
-          icon: '⏱️',
-          label: 'Preparing',
-        );
+        return (color: Colors.brown[900]!, icon: '⏱️', label: 'Preparing');
       case OrderStatus.ready:
-        return (
-          color: Colors.green[800]!,
-          icon: '⚡',
-          label: 'Ready',
-        );
+        return (color: Colors.green[800]!, icon: '⚡', label: 'Ready');
       case OrderStatus.collected:
-        return (
-          color: Colors.grey[700]!,
-          icon: '✅',
-          label: 'Collected',
-        );
+        return (color: Colors.grey[700]!, icon: '✅', label: 'Collected');
       case OrderStatus.noShow:
-        return (
-          color: Colors.red[900]!,
-          icon: '🚫',
-          label: 'No Show',
-        );
+        return (color: Colors.red[900]!, icon: '🚫', label: 'No Show');
     }
   }
 
@@ -353,6 +328,30 @@ class _OrdersScreenState extends State<OrdersScreen> {
             ),
             const SizedBox(height: 4),
 
+            // Pickup deadline info
+            if (order.status == OrderStatus.ready && order.readyAt != null) ...[
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Icon(Icons.access_time, size: 14, color: Colors.grey[600]),
+                  const SizedBox(width: 4),
+                  Flexible(
+                    child: Text(
+                      'Ready ${PickupDeadlineService.formatPickupTime(order.readyAt)}',
+                      style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  PickupCountdown(
+                    pickupDeadline: order.pickupDeadline,
+                    deadlineStatus: order.deadlineStatus,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+            ],
+
             // Order items
             ...order.items.map((item) {
               return Padding(
@@ -396,10 +395,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                 ),
                 Text(
                   _formatOrderTime(order.orderTime),
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Colors.grey[500],
-                  ),
+                  style: TextStyle(fontSize: 11, color: Colors.grey[500]),
                 ),
               ],
             ),
