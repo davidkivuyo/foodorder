@@ -35,31 +35,28 @@ These Terms govern your use of the Campus Bite
  mobile application. By accessing or using our App Campus Bite or website at foodapp.larason.space, you agree to be bound by these terms.
 
 1. Eligibility and Account Registration
-• User will lose access to their account once they do not collect their orders for 2 consecutive times and their strikes points fall to 0 points.
 • Target Audience: The App is intended primarily for university students, faculty, and staff.
-• Account Creation: You must provide accurate, current, and complete information (e.g., university email, campus delivery location) during registration.
+• Account Creation: You must provide accurate, current, and complete information (e.g., university email) during registration(We respect your confidentiality).
 • Account Security: You are responsible for safeguarding your password and for all activities under your account.
 
 2. Strict Collection Policy (No Food Waste)
-• In alignment with cafeteria administrative guidelines, uncollected food represents material loss. Users agree to collect their food within 5 minutes of receiving the "Ready for Collection" status. Abandoned bookings will result in immediate suspension.
+• In alignment with cafeteria administrative guidelines, uncollected food represents material loss. Users agree to collect their food within given notified time calculated by their current distance from the cafe, after receiving the "Ready for Collection" status. Abandoned bookings will result in immediate suspension.
 
 3. Ordering and Payments
 • Placing Orders: Orders made through the App are subject to acceptance by the vendor.
-• Pricing: Prices include food, taxes, delivery fees, and platform fees displayed at checkout. Prices may change without notice.
-• Allergies: Campus Bite
- is a platform and cannot guarantee food is free of allergens. You must communicate severe dietary restrictions directly to the vendor.
+• Pricing: Prices include food, taxes, delivery fees, and platform fees displayed at the app. Prices may change without notice.
+• Allergies: Campus Bite is a platform and cannot guarantee food is free of allergens. You must communicate severe dietary restrictions directly to the vendor.
 
 4. Delivery and Pick-up
-• Campus Zones: Deliveries are restricted to specific designated campus areas (e.g., dorms, library entrances).
+• Currently we do not offer any delivery services, This is a self pick based app.
 • Delivery Times: Estimated delivery times are provided for convenience and are not guaranteed.
-• Unreachable Customers: If a driver cannot reach you at the designated location within 10 minutes, the food may be left or discarded. You will still be charged.
 
 5. Cancellations and Refunds
-• Cancellations by You: Orders can only be cancelled for a full refund before the vendor begins preparation.
+• Cancellations: Orders cannot be cancelled by you when you press the "Place order & notify cafe" button.
 • Refund Policy: Incorrect or missing items must be reported within 2 hours of delivery for a case-by-case review.
 
 6. User Conduct
-You agree to use the application only for lawful purposes. You agree not to place fake orders, harass delivery drivers, or attempt to hack the App's security.
+You agree to use the application only for lawful purposes. You agree not to place fake orders, harass vendors, or attempt to hack the App's security.
 
 7. Account Penalty System
 To ensure a reliable service for everyone, the App tracks your order collection behavior using a percentage-based status system:
@@ -69,19 +66,19 @@ To ensure a reliable service for everyone, the App tracks your order collection 
 • Restoring Order Privileges: To remove the ordering restriction after reaching 100%, you must contact the App Administrator directly to appeal.
 
 8. Intellectual Property
-All content, features, and functionality of the application are the exclusive property of the application owner.
+All content, features, and functionality of the application are the exclusive property of the application owner(s). Refer the License.
 
 9. Limitation of Liability
-The application owner shall not be liable for any damages arising from the use of the application, including issues regarding the quality or safety of the food prepared by third-party vendors.
+The application owner(s) shall not be liable for any damages arising from the use of the application, including issues regarding the quality or safety of the food prepared by third-party vendors.
 
 10. Changes to Terms
 The application owner reserves the right to modify these terms at any time. Continued use after changes constitutes your acceptance.
 
 11. Governing Law
-These terms shall be governed by and construed in accordance with the laws of the jurisdiction in which the application owner operates.
+These terms shall be governed by and construed in accordance with the laws of the jurisdiction in which the application owner(s) operates.
 
 12. Contact Us
-For support, contact us at lembotor6@gmail.com.''',
+For support, see the Help & support page or email directly lembotor6@gmail.com''',
                 style: TextStyle(
                   fontSize: 14.0,
                   height: 1.5,
@@ -90,6 +87,7 @@ For support, contact us at lembotor6@gmail.com.''',
                       .normal, // Adds a little line spacing for better readability
                 ),
               ),
+              SizedBox(height: 10),
               Text(
                 'Failure to adhere to these rules can disrupt cafeteria efficiency and lead to account bans.',
                 style: TextStyle(
