@@ -504,6 +504,26 @@ The search feature uses a **prefix-based array-contains** strategy for Firestore
 
 ---
 
+## location based calculation
+
+0–250 metres
+
+10 minutes
+
+250–600 metres
+
+15 minutes
+
+600–1200 metres
+
+20 minutes
+
+Above 1200 metres
+
+25 minutes
+
+----
+
 ## Order Lifecycle
 
 ```

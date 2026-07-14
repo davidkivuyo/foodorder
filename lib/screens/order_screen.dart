@@ -41,7 +41,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
     if (_userId != null) {
       _ordersStream = FirebaseFirestore.instance
           .collection('orders')
-          .where('userId', isEqualTo: _userId)
+          .where('studentId', isEqualTo: _userId)
           .snapshots();
     }
   }

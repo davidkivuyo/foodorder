@@ -42,42 +42,48 @@ These Terms govern your use of the Campus Bite
 2. Strict Collection Policy (No Food Waste)
 • In alignment with cafeteria administrative guidelines, uncollected food represents material loss. Users agree to collect their food within given notified time calculated by their current distance from the cafe, after receiving the "Ready for Collection" status. Abandoned bookings will result in immediate suspension.
 
-3. Ordering and Payments
+3. Data privacy and Protection.
+• The app will ask user permission for location only when he or she wants to order a meal or a drink. This is used ONLY to calculate the distance between the cafe and the user.
+• CampusBite uses your location once to estimate a fair pickup time. Your location is not tracked, stored long-term, or shared with cafés or any third party regardless of position or status.
+• The Location data is deleted immediately when the order is fulfilled.
+• If you ever want to redact your data and information, no need to worry just contact the support team. We care your privacy.
+
+4. Ordering and Payments
 • Placing Orders: Orders made through the App are subject to acceptance by the vendor.
 • Pricing: Prices include food, taxes, delivery fees, and platform fees displayed at the app. Prices may change without notice.
 • Allergies: Campus Bite is a platform and cannot guarantee food is free of allergens. You must communicate severe dietary restrictions directly to the vendor.
 
-4. Delivery and Pick-up
+5. Delivery and Pick-up
 • Currently we do not offer any delivery services, This is a self pick based app.
 • Delivery Times: Estimated delivery times are provided for convenience and are not guaranteed.
 
-5. Cancellations and Refunds
+6. Cancellations and Refunds
 • Cancellations: Orders cannot be cancelled by you when you press the "Place order & notify cafe" button.
 • Refund Policy: Incorrect or missing items must be reported within 2 hours of delivery for a case-by-case review.
 
-6. User Conduct
+7. User Conduct
 You agree to use the application only for lawful purposes. You agree not to place fake orders, harass vendors, or attempt to hack the App's security.
 
-7. Account Penalty System
+8. Account Penalty System
 To ensure a reliable service for everyone, the App tracks your order collection behavior using a percentage-based status system:
 • 0% (Good Standing): Your account is safe and operating normally.
 • Penalty Increases (up to 50%): Failing to pick up your ordered food increases your penalty percentage. Reaching 50% serves as a critical warning.
 • 100% (Ordering Restricted): If your penalty status reaches 100% due to repeated uncollected food, your ability to place new orders will be disabled. You will still be able to log in, browse the App, and view menus, but you cannot check out.
 • Restoring Order Privileges: To remove the ordering restriction after reaching 100%, you must contact the App Administrator directly to appeal.
 
-8. Intellectual Property
+9. Intellectual Property
 All content, features, and functionality of the application are the exclusive property of the application owner(s). Refer the License.
 
-9. Limitation of Liability
+10. Limitation of Liability
 The application owner(s) shall not be liable for any damages arising from the use of the application, including issues regarding the quality or safety of the food prepared by third-party vendors.
 
-10. Changes to Terms
+11. Changes to Terms
 The application owner reserves the right to modify these terms at any time. Continued use after changes constitutes your acceptance.
 
-11. Governing Law
+12. Governing Law
 These terms shall be governed by and construed in accordance with the laws of the jurisdiction in which the application owner(s) operates.
 
-12. Contact Us
+13. Contact Us
 For support, see the Help & support page or email directly lembotor6@gmail.com''',
                 style: TextStyle(
                   fontSize: 14.0,

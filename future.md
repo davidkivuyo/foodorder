@@ -1,6 +1,8 @@
 # future implementation plans
 
 # NOT FULLFILLED
+4. add a fetch request to see if the already entered cafe is available or not.
+
 5. display poper messages instead of debugprint eg "debugPrint('[CartService] Cannot add unavailable item: ${item.title}"
 
 9. save the users passwords in their google account logged in their device and retrieve it upon attempts to login in both adminview and customerview

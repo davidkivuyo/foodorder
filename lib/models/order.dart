@@ -109,8 +109,15 @@ class FoodOrder {
   final DateTime? updatedAt;
   final DateTime? readyAt;
   final DateTime? pickupDeadline;
-  final int pickupWindowMinutes;
+  final  int pickupWindowMinutes;
   final DeadlineStatus deadlineStatus;
+
+  // Phase 5: Distance-aware pickup window
+  final GeoPoint? studentLocation;
+  final GeoPoint? cafeLocation;
+  final String? cafeId;
+  final double? distanceMeters;
+  final bool distanceCalculated;
 
   FoodOrder({
     required this.orderId,
@@ -125,6 +132,11 @@ class FoodOrder {
     this.pickupDeadline,
     this.pickupWindowMinutes = 20,
     this.deadlineStatus = DeadlineStatus.notReady,
+    this.studentLocation,
+    this.cafeLocation,
+    this.cafeId,
+    this.distanceMeters,
+    this.distanceCalculated = false,
   });
 
   /// Build a [FoodOrder] from a Firestore document snapshot.
@@ -173,12 +185,19 @@ class FoodOrder {
       return null;
     }
 
+    // Parse GeoPoint fields (safely handle null / wrong type)
+    GeoPoint? parseGeoPoint(dynamic value) {
+      if (value == null) return null;
+      if (value is GeoPoint) return value;
+      return null;
+    }
+
     return FoodOrder(
       orderId: snapshot.id,
-      userId: data['userId'] ?? '',
+      userId: data['studentId'] as String? ?? data['userId'] as String? ?? '',
       userName: data['userName'] ?? '',
       items: parseItems(data['items']),
-      totalAmount: (data['totalAmount'] as num?)?.toDouble() ?? 0.0,
+      totalAmount: (data['price'] as num?)?.toDouble() ?? (data['totalAmount'] as num?)?.toDouble() ?? 0.0,
       orderTime: parseTimestamp(data['createdAt']) ?? DateTime.now(),
       status: OrderStatus.fromString(data['status'] as String? ?? 'pending'),
       updatedAt: parseTimestamp(data['updatedAt']),
@@ -188,6 +207,11 @@ class FoodOrder {
       deadlineStatus: DeadlineStatus.fromString(
         data['deadlineStatus'] as String? ?? 'NOT_READY',
       ),
+      studentLocation: parseGeoPoint(data['studentLocation']),
+      cafeLocation: parseGeoPoint(data['cafeLocation']),
+      cafeId: (data['cafeId'] as String?) ?? '',
+      distanceMeters: (data['distanceMeters'] as num?)?.toDouble(),
+      distanceCalculated: data['distanceCalculated'] as bool? ?? false,
     );
   }
 
@@ -195,7 +219,7 @@ class FoodOrder {
   Map<String, dynamic> toFirestore() {
     return {
       'orderId': orderId,
-      'userId': userId,
+      'studentId': userId,
       'userName': userName,
       'items': items
           .map(
@@ -209,11 +233,17 @@ class FoodOrder {
             },
           )
           .toList(),
-      'totalAmount': totalAmount,
+      'price': totalAmount,
+      'cafeId': cafeId,
       'status': status.toShortString(),
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
       'deadlineStatus': DeadlineStatus.notReady.toShortString(),
+      'studentLocation': studentLocation,
+      'cafeLocation': cafeLocation,
+      'distanceMeters': distanceMeters,
+      'distanceCalculated': distanceCalculated,
+      'pickupWindowMinutes': pickupWindowMinutes,
     };
   }
 }

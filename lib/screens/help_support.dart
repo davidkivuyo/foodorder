@@ -104,7 +104,7 @@ class FaqScreen extends StatelessWidget {
               Padding(
                 padding: EdgeInsets.all(16.0),
                 child: Text(
-                  'If you accidentally did not take your food and ended up suspended consider appealing to the cafe admins.',
+                  'If you accidentally did not collect your food and ended up suspended consider appealing to the cafe admins.',
                 ),
               ),
             ],

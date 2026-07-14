@@ -66,3 +66,4 @@ android/app/google-services.json
 scripts/
 
 testsprite_tests/tmp/config.json
+CLOUD_FUNCTION_CHANGES.md
