@@ -140,6 +140,7 @@ class AccountScreen extends StatelessWidget {
                               initials: _initialsFromName(rawFullName),
                               color: _avatarColorFromName(rawFullName),
                             ),
+                            const SizedBox(height: 5),
                             Text(
                               displayName,
                               style: const TextStyle(
