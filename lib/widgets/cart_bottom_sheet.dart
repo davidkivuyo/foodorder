@@ -1,6 +1,23 @@
+// Copyright 2026 davidkivuyo, johnsonmushi, edwinkessy276-art, jugraki-art.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/cart_service.dart';
+import '../services/pickup_window_service.dart';
 
 class CartBottomSheet extends StatefulWidget {
   final VoidCallback onOrderPlaced;
@@ -387,109 +404,222 @@ class _CartBottomSheetState extends State<CartBottomSheet> {
                   ),
                 ],
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 20),                          // Place Order Button — disabled when account is suspended
+                          SizedBox(
+                            width: double.infinity,
+                            height: 50,
+                            child: ElevatedButton(
+                              onPressed: _isSuspended == true
+                                  ? null
+                                  : () async {
+                                      // First check if the account is suspended
+                                      final suspended = await _cartService
+                                          .isAccountSuspended();
+                                      if (!context.mounted) return;
 
-              // Place Order Button — disabled when account is suspended
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: ElevatedButton(
-                  onPressed: _isSuspended == true
-                      ? null
-                      : () async {
-                          // First check if the account is suspended
-                          final suspended = await _cartService
-                              .isAccountSuspended();
-                          if (!context.mounted) return;
+                                      if (suspended) {
+                                        setState(() => _isSuspended = true);
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                            content: const Row(
+                                              children: [
+                                                Icon(
+                                                  Icons.block,
+                                                  color: Colors.white,
+                                                  size: 20,
+                                                ),
+                                                SizedBox(width: 10),
+                                                Expanded(
+                                                  child: Text(
+                                                    'Your account is suspended. '
+                                                    'You cannot place orders at this time.',
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            backgroundColor: Colors.red.shade800,
+                                            behavior: SnackBarBehavior.floating,
+                                            duration: const Duration(seconds: 5),
+                                          ),
+                                        );
+                                        return;
+                                      }
 
-                          if (suspended) {
-                            setState(() => _isSuspended = true);
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: const Row(
-                                  children: [
-                                    Icon(
-                                      Icons.block,
-                                      color: Colors.white,
-                                      size: 20,
-                                    ),
-                                    SizedBox(width: 10),
-                                    Expanded(
-                                      child: Text(
-                                        'Your account is suspended. '
-                                        'You cannot place orders at this time.',
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                backgroundColor: Colors.red.shade800,
-                                behavior: SnackBarBehavior.floating,
-                                duration: const Duration(seconds: 5),
-                              ),
-                            );
-                            return;
-                          }
+                                      // ── Phase 5: Distance-aware pickup window ──
+                                      // Location is requested ONLY after the student
+                                      // presses "Place Order".
+                                      LocationPermission permission;
+                                      Position? position;
+                                      int pickupWindowMinutes = 20;
+                                      double? distanceMeters;
+                                      GeoPoint? studentLocation;
+                                      GeoPoint? cafeLocation;
+                                      String? cafeId;
 
-                          // Show loading indicator
-                          showDialog(
-                            context: context,
-                            barrierDismissible: false,
-                            builder: (_) => const Center(
-                              child: CircularProgressIndicator(),
-                            ),
-                          );
+                                      try {
+                                        permission = await Geolocator
+                                            .checkPermission();
+                                        if (permission == LocationPermission.denied) {
+                                          permission = await Geolocator
+                                              .requestPermission();
+                                        }
 
-                          // Place the order (async Firestore write)
-                          final orderId = await _cartService.placeOrder();
+                                        if (permission == LocationPermission.whileInUse ||
+                                            permission == LocationPermission.always) {
+                                          position = await Geolocator
+                                              .getCurrentPosition(
+                                            desiredAccuracy:
+                                                LocationAccuracy.high,
+                                          );
 
-                          if (!context.mounted) return;
+                                          // Look up the selected cafe's GeoPoint
+                                          // from the cafes collection.
+                                          // Use the first cart item's cafe.
+                                          final firstItem =
+                                              _cartService.cartItems
+                                                  .firstOrNull;
+                                          final cafeName =
+                                              firstItem?.selectedCafe ??
+                                                  firstItem?.foodItem
+                                                      .availableCafes
+                                                      .firstOrNull;
 
-                          // Close loading dialog
-                          Navigator.pop(context);
+                                          if (cafeName != null &&
+                                              cafeName.isNotEmpty) {
+                                            final cafeQuery = await FirebaseFirestore
+                                                .instance
+                                                .collection('cafes')
+                                                .where('name',
+                                                    isEqualTo: cafeName)
+                                                .limit(1)
+                                                .get();
 
-                          // Close Bottom Sheet
-                          Navigator.pop(context);
+                                            if (cafeQuery.docs
+                                                .isNotEmpty) {
+                                              final cafeData =
+                                                  cafeQuery.docs
+                                                      .first
+                                                      .data();
+                                              cafeLocation =
+                                                  cafeData[
+                                                          'geoLocation']
+                                                      as GeoPoint?;
+                                              cafeId =
+                                                  cafeQuery.docs
+                                                      .first
+                                                      .id;
+                                            }
+                                          }
 
-                          if (orderId != null) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                          content: Row(
-                            children: const [
-                              Icon(
-                                Icons.check_circle,
-                                color: Colors.white,
-                              ),
-                              SizedBox(width: 8),
-                              Flexible(
-                                child: Text(
-                                  'Order placed successfully!',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
-                          ),
-                                backgroundColor: Colors.green[800],
-                                duration: const Duration(seconds: 4),
-                              ),
-                            );
-                          } else {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: const Text(
-                                  'Failed to place order. Please try again.',
-                                ),
-                                backgroundColor: Colors.red,
-                                duration: const Duration(seconds: 4),
-                              ),
-                            );
-                            return;
-                          }
+                                          if (cafeLocation != null) {
+                                            distanceMeters = PickupWindowService
+                                                .calculateDistance(
+                                              startLatitude:
+                                                  position.latitude,
+                                              startLongitude:
+                                                  position.longitude,
+                                              endLatitude:
+                                                  cafeLocation.latitude,
+                                              endLongitude:
+                                                  cafeLocation.longitude,
+                                            );
+                                            pickupWindowMinutes =
+                                                PickupWindowService
+                                                    .calculatePickupWindow(
+                                                        distanceMeters);
+                                            studentLocation = GeoPoint(
+                                              position.latitude,
+                                              position.longitude,
+                                            );
+                                          }
+                                        }
+                                      } catch (e) {
+                                        // Location unavailable — fall back to default 20 min
+                                        debugPrint(
+                                          '[CartSheet] Location error: $e',
+                                        );
+                                      }
+                                      // ── End Phase 5 ──
 
-                          // Callback to switch to order tracking screen
-                          widget.onOrderPlaced();
-                        },
-                  style: ElevatedButton.styleFrom(
+                                      if (!context.mounted) return;
+
+                                      // Capture navigator reference BEFORE the async gap
+                                      // so the loading dialog can be dismissed even if
+                                      // the widget becomes unmounted.
+                                      final navigator = Navigator.of(context);
+
+                                      // Show loading indicator
+                                      showDialog(
+                                        context: context,
+                                        barrierDismissible: false,
+                                        builder: (_) => const Center(
+                                          child: CircularProgressIndicator(),
+                                        ),
+                                      );
+
+                                      // Place the order with location data
+                                      final orderId =
+                                          await _cartService.placeOrder(
+                                        studentLocation: studentLocation,
+                                        cafeLocation: cafeLocation,
+                                        cafeId: cafeId,
+                                        distanceMeters: distanceMeters,
+                                        pickupWindowMinutes:
+                                            pickupWindowMinutes,
+                                      );
+
+                                      // Dismiss the loading dialog regardless of outcome.
+                                      // Using the captured navigator so this works even
+                                      // if the widget became unmounted.
+                                      navigator.pop();
+
+                                      if (orderId != null) {
+                                        // Dismiss the bottom sheet on success only.
+                                        navigator.pop();
+
+                                        if (!context.mounted) return;
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                            content: Row(
+                                              children: const [
+                                                Icon(
+                                                  Icons.check_circle,
+                                                  color: Colors.white,
+                                                ),
+                                                SizedBox(width: 8),
+                                                Flexible(
+                                                  child: Text(
+                                                    'Order placed successfully!',
+                                                    maxLines: 1,
+                                                    overflow: TextOverflow.ellipsis,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            backgroundColor: Colors.green[800],
+                                            duration: const Duration(seconds: 4),
+                                          ),
+                                        );
+
+                                        // Callback to switch to order tracking screen
+                                        widget.onOrderPlaced();
+                                      } else {
+                                        // Failure: keep the bottom sheet visible so the
+                                        // user can retry.  Only dismiss the loading dialog
+                                        // (already popped above).
+                                        if (!context.mounted) return;
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                            content: const Text(
+                                              'Failed to place order. Please try again.',
+                                            ),
+                                            backgroundColor: Colors.red,
+                                            duration: const Duration(seconds: 4),
+                                          ),
+                                        );
+                                      }
+                                    },
+                              style: ElevatedButton.styleFrom(
                     backgroundColor: _isSuspended == true
                         ? Colors.grey.shade300
                         : Colors.orange,

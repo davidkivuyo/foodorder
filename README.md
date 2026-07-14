@@ -504,6 +504,26 @@ The search feature uses a **prefix-based array-contains** strategy for Firestore
 
 ---
 
+## location based calculation
+
+0–250 metres
+
+10 minutes
+
+250–600 metres
+
+15 minutes
+
+600–1200 metres
+
+20 minutes
+
+Above 1200 metres
+
+25 minutes
+
+----
+
 ## Order Lifecycle
 
 ```
@@ -643,10 +663,8 @@ This project includes an `AGENTS.md` file that defines strict rules for AI codin
 
 # License
 
-This project is licensed under the terms specified in the [LICENSE](LICENSE) file.
-
-# We hope this gives an idea of the working behind the Campus Bite student app.
+This project is licensed under the Apache 2.0 License terms specified in the [LICENSE](LICENSE) and [NOTICE](NOTICE) files.
 
 # Credits
 
-To all maintainers and contributors of this app.
+To all maintainers and contributors of this app. We hope this gives an idea of the working behind the Campus Bite student app.

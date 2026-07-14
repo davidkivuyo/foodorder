@@ -1,3 +1,17 @@
+// Copyright 2026 davidkivuyo, johnsonmushi, edwinkessy276-art, jugraki-art.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -29,6 +43,21 @@ class SupportScreen extends StatelessWidget {
               title: const Text('Contact us'),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => context.push('/support/contact'),
+            ),
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.gavel_outlined),
+              title: const Text('Licenses & Legal'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                showLicensePage(
+                  context: context,
+                  applicationName: 'Campus Bite',
+                  applicationVersion: '1.0.0(alpha)',
+                  applicationLegalese:
+                      '© 2026 Campus Bite Contributors, Larason.',
+                );
+              },
             ),
           ],
         ),
@@ -75,7 +104,7 @@ class FaqScreen extends StatelessWidget {
               Padding(
                 padding: EdgeInsets.all(16.0),
                 child: Text(
-                  'If you accidentally did not take your food and ended up suspended consider appealing to the cafe admins.',
+                  'If you accidentally did not collect your food and ended up suspended consider appealing to the cafe admins.',
                 ),
               ),
             ],
