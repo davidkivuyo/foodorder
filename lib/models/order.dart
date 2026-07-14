@@ -239,7 +239,6 @@ class FoodOrder {
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
       'deadlineStatus': DeadlineStatus.notReady.toShortString(),
-      'studentLocation': studentLocation,
       'cafeLocation': cafeLocation,
       'distanceMeters': distanceMeters,
       'distanceCalculated': distanceCalculated,

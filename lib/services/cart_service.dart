@@ -290,11 +290,12 @@ class CartService extends ChangeNotifier {
 
   /// Place the current cart items as an order and save to Firestore.
   ///
-  /// Optionally include [studentLocation], [cafeLocation], [cafeId],
-  /// [distanceMeters], and [pickupWindowMinutes] for the distance-aware
-  /// pickup window.
+  /// Optionally include [cafeLocation], [cafeId], [distanceMeters], and
+  /// [pickupWindowMinutes] for the distance-aware pickup window.
+  ///
+  /// Student location is NEVER persisted to Firestore for privacy.
+  /// Distance and pickup window are stored as anonymized values.
   Future<String?> placeOrder({
-    GeoPoint? studentLocation,
     GeoPoint? cafeLocation,
     String? cafeId,
     double? distanceMeters,
@@ -314,7 +315,7 @@ class CartService extends ChangeNotifier {
     final displayName = _cachedUserName.isNotEmpty
         ? _cachedUserName
         : (FirebaseAuth.instance.currentUser?.displayName ?? 'Student');
-    final hasDistanceData = studentLocation != null && cafeLocation != null;
+    final hasDistanceData = cafeLocation != null && distanceMeters != null;
     final newOrder = FoodOrder(
       orderId: newOrderId,
       userId: userId,
@@ -325,7 +326,6 @@ class CartService extends ChangeNotifier {
       status: OrderStatus.pending,
       pickupWindowMinutes: pickupWindowMinutes ?? 20,
       distanceCalculated: hasDistanceData,
-      studentLocation: studentLocation,
       cafeLocation: cafeLocation,
       cafeId: cafeId,
       distanceMeters: distanceMeters,

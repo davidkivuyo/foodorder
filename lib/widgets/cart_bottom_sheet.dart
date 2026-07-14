@@ -452,7 +452,6 @@ class _CartBottomSheetState extends State<CartBottomSheet> {
                                       Position? position;
                                       int pickupWindowMinutes = 20;
                                       double? distanceMeters;
-                                      GeoPoint? studentLocation;
                                       GeoPoint? cafeLocation;
                                       String? cafeId;
 
@@ -527,10 +526,6 @@ class _CartBottomSheetState extends State<CartBottomSheet> {
                                                 PickupWindowService
                                                     .calculatePickupWindow(
                                                         distanceMeters);
-                                            studentLocation = GeoPoint(
-                                              position.latitude,
-                                              position.longitude,
-                                            );
                                           }
                                         }
                                       } catch (e) {
@@ -557,10 +552,13 @@ class _CartBottomSheetState extends State<CartBottomSheet> {
                                         ),
                                       );
 
-                                      // Place the order with location data
+                                      // Clear sensitive location data from memory
+                                      // immediately after use — never persisted.
+                                      position = null;
+
+                                      // Place the order with distance data only
                                       final orderId =
                                           await _cartService.placeOrder(
-                                        studentLocation: studentLocation,
                                         cafeLocation: cafeLocation,
                                         cafeId: cafeId,
                                         distanceMeters: distanceMeters,
