@@ -158,6 +158,32 @@ The implementation must prioritise:
 
 • Minimal Cloud Function executions
 
+Also now Instead of storing strikePercentage in Firestore, store only:
+
+strikeCount
+
+accountStatus
+
+Then derive the percentage in the app:
+
+final strikePercentage = strikeCount * 50;
+
+This will have several advantages:
+
+It eliminates one field that can become inconsistent.
+
+It reduces writes because only strikeCount changes.
+
+It simplifies transactions.
+
+It ensures there's a single source of truth.
+
+Your UI can still display:
+
+Strike 1 → 50%
+
+Strike 2 → 100%
+
 Do not modify completed features.
 
 Do not introduce unnecessary complexity.
@@ -786,7 +812,7 @@ Maintain backwards compatibility.
 
 # Phase Completion Criteria
 
-Phase 5 is complete when:
+Phase 6 is complete when:
 
 * the new features works well with past features.
 * App runs successfully.
