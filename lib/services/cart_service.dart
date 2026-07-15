@@ -263,8 +263,12 @@ class CartService extends ChangeNotifier {
 
   /// Check whether the current user's account is suspended.
   ///
+  /// Check whether the current user's account is suspended.
+  ///
   /// Returns `true` when `accountStatus == 'SUSPENDED'` or
-  /// `strikePercentage >= 100`, meaning the student cannot place orders.
+  /// `strikeCount >= 2`, meaning the student cannot place orders.
+  ///
+  /// Phase 6: Derives percentage from strikeCount * 50.
   Future<bool> isAccountSuspended() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return false;
@@ -279,10 +283,10 @@ class CartService extends ChangeNotifier {
 
       final data = doc.data()!;
       final accountStatus = data['accountStatus'] as String? ?? 'ACTIVE';
-      final strikePercentage =
-          (data['strikePercentage'] as num?)?.toInt() ?? 0;
+      final strikeCount =
+          (data['strikeCount'] as num?)?.toInt() ?? 0;
 
-      return accountStatus == 'SUSPENDED' || strikePercentage >= 100;
+      return accountStatus == 'SUSPENDED' || strikeCount >= 2;
     } catch (_) {
       return false;
     }

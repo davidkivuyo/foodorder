@@ -109,7 +109,7 @@ class FoodOrder {
   final DateTime? updatedAt;
   final DateTime? readyAt;
   final DateTime? pickupDeadline;
-  final  int pickupWindowMinutes;
+  final int pickupWindowMinutes;
   final DeadlineStatus deadlineStatus;
 
   // Phase 5: Distance-aware pickup window
@@ -118,6 +118,11 @@ class FoodOrder {
   final String? cafeId;
   final double? distanceMeters;
   final bool distanceCalculated;
+
+  // Phase 6: Automatic strike tracking
+  final bool strikeProcessed;
+  final DateTime? expiredAt;
+  final DateTime? strikeIssuedAt;
 
   FoodOrder({
     required this.orderId,
@@ -137,6 +142,9 @@ class FoodOrder {
     this.cafeId,
     this.distanceMeters,
     this.distanceCalculated = false,
+    this.strikeProcessed = false,
+    this.expiredAt,
+    this.strikeIssuedAt,
   });
 
   /// Build a [FoodOrder] from a Firestore document snapshot.
@@ -212,6 +220,9 @@ class FoodOrder {
       cafeId: (data['cafeId'] as String?) ?? '',
       distanceMeters: (data['distanceMeters'] as num?)?.toDouble(),
       distanceCalculated: data['distanceCalculated'] as bool? ?? false,
+      strikeProcessed: data['strikeProcessed'] as bool? ?? false,
+      expiredAt: parseTimestamp(data['expiredAt']),
+      strikeIssuedAt: parseTimestamp(data['strikeIssuedAt']),
     );
   }
 
@@ -243,7 +254,7 @@ class FoodOrder {
       'distanceMeters': distanceMeters,
       'distanceCalculated': distanceCalculated,
       'pickupWindowMinutes': pickupWindowMinutes,
+      'strikeProcessed': strikeProcessed,
     };
   }
 }
-

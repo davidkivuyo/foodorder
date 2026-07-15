@@ -438,8 +438,6 @@ Fields:
 
 strikeCount
 
-strikePercentage
-
 accountStatus
 
 updatedAt
@@ -669,8 +667,6 @@ deadlineStatus
 strikeProcessed
 
 strikeCount
-
-strikePercentage
 
 accountStatus
 

@@ -1,0 +1,17 @@
+{
+  "name": "campusbite-automatic-strike",
+  "description": "Automatic strike engine for CampusBite - processes expired orders",
+  "version": "1.0.0",
+  "private": true,
+  "engines": {
+    "node": "20"
+  },
+  "main": "index.js",
+  "dependencies": {
+    "firebase-admin": "^11.11.0",
+    "firebase-functions": "^4.9.0"
+  },
+  "devDependencies": {
+    "firebase-functions-test": "^3.1.0"
+  }
+}
