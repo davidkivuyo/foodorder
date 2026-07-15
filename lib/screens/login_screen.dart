@@ -144,7 +144,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         color: Colors.black.withValues(alpha: 0.8),
                       ),
                     ),
-                    GestureDetector(
+                    /*GestureDetector(
                       onTap: () {
                         // TODO: Implement forgot password (future phase)
                       },
@@ -156,7 +156,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           color: Color(0xFF116522),
                         ),
                       ),
-                    ),
+                    ),*/
                   ],
                 ),
                 const SizedBox(height: 8),

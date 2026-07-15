@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "private": true,
   "engines": {
-    "node": "20"
+    "node": "22"
   },
   "main": "index.js",
   "dependencies": {
@@ -13,6 +13,6 @@
     "node-fetch": "^2.7.0"
   },
   "devDependencies": {
-    "firebase-functions-test": "^3.1.0"
+    "firebase-functions-test": "^3.4.0"
   }
 }
