@@ -1,30 +1,34 @@
 /**
- * CampusBite Automatic Strike Engine
- * ====================================
+ * CampusBite Cloud Functions
+ * ===========================
  *
- * Scheduled Cloud Function that runs every 5 minutes.
+ * Combined deployment of all CampusBite Cloud Functions:
  *
- * For every expired order (status == 'ready', deadlineStatus == 'ACTIVE',
- * pickupDeadline <= now) it executes ONE Firestore transaction that:
+ * 1) processExpiredPickups — Scheduled (every 5 min) automatic strike engine.
+ *    Reads expired 'ready' orders, issues strikes, updates users, creates audit logs.
  *
- *   1. Reads the order – verifies status, deadlineStatus, and strikeProcessed
- *   2. Reads the user  – reads strikeCount from users/{studentId}
- *   3. Calculates       – newStrikeCount = min(current + 1, 2)
- *   4. Updates order    – status = 'no_show', deadlineStatus = 'EXPIRED',
- *                         strikeProcessed = true, expiredAt = now, strikeIssuedAt = now
- *   5. Updates user     – strikeCount, accountStatus, updatedAt
- *   6. Creates audit log – action = 'automatic_no_show', orderId, studentId, etc.
+ * 2) onOrderStatusChanged — Firestore trigger on orders/{orderId}.
+ *    When status transitions to 'ready', writes readyAt, pickupDeadline, deadlineStatus.
  *
- * The implementation is completely idempotent thanks to strikeProcessed.
- * Running it multiple times never duplicates strikes or audit logs.
+ * 3) deleteCloudinaryImage — Callable function.
+ *    Deletes an image from Cloudinary (admin only, secrets-protected).
  */
 
+// ── Imports ────────────────────────────────────────────────────────────────
+
 const functions = require("firebase-functions");
+const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { onDocumentUpdated } = require("firebase-functions/v2/firestore");
+const { defineSecret } = require("firebase-functions/params");
 const admin = require("firebase-admin");
+const fetch = require("node-fetch");
 
 admin.initializeApp();
 
 const db = admin.firestore();
+const PICKUP_WINDOW_MINUTES = 20;
+
+// ── Shared helpers ─────────────────────────────────────────────────────────
 
 /**
  * Derive the account status string from a strike count.
@@ -34,6 +38,10 @@ const db = admin.firestore();
 function deriveAccountStatus(strikeCount) {
   return strikeCount >= 2 ? "SUSPENDED" : "ACTIVE";
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// FUNCTION 1: processExpiredPickups  (Scheduled — every 5 minutes)
+// ════════════════════════════════════════════════════════════════════════════
 
 /**
  * Process a single expired order inside a Firestore transaction.
@@ -118,17 +126,6 @@ async function processExpiredOrder(transaction, orderSnapshot) {
   return true;
 }
 
-/**
- * Scheduled Cloud Function — runs every 5 minutes.
- *
- * Queries:
- *   orders WHERE status == 'ready'
- *          AND deadlineStatus == 'ACTIVE'
- *          AND pickupDeadline <= now
- *
- * This query requires a composite Firestore index on:
- *   orders collection: status ASC, deadlineStatus ASC, pickupDeadline ASC
- */
 exports.processExpiredPickups = functions
     .runWith({
       memory: "256MB",
@@ -153,12 +150,9 @@ exports.processExpiredPickups = functions
 
         console.log(`[AutoStrike] Found ${expiredOrdersSnapshot.size} expired order(s)`);
 
-        // Process each expired order individually in its own transaction.
-        // One failure must not stop processing of remaining orders.
         const promises = expiredOrdersSnapshot.docs.map(async (orderSnapshot) => {
           try {
             await db.runTransaction(async (transaction) => {
-              // Re-read the document inside the transaction for consistency
               const freshSnapshot = await transaction.get(orderSnapshot.ref);
               const processed = await processExpiredOrder(transaction, freshSnapshot);
               if (processed) processedCount++;
@@ -183,3 +177,137 @@ exports.processExpiredPickups = functions
 
       return null;
     });
+
+// ════════════════════════════════════════════════════════════════════════════
+// FUNCTION 2: onOrderStatusChanged  (Firestore trigger)
+// ════════════════════════════════════════════════════════════════════════════
+
+exports.onOrderStatusChanged = onDocumentUpdated(
+  {
+    document: "orders/{orderId}",
+    region: "us-central1",
+  },
+  async (event) => {
+    const beforeData = event.data.before.data();
+    const afterData = event.data.after.data();
+
+    // Only proceed if status changed to "ready"
+    if (!beforeData || !afterData) return;
+    if (beforeData.status === afterData.status) return;
+    if (afterData.status !== "ready") return;
+
+    // Idempotency: if readyAt already exists, do nothing
+    if (afterData.readyAt != null) return;
+
+    const now = admin.firestore.Timestamp.now();
+    const deadline = new admin.firestore.Timestamp(
+      now.seconds + PICKUP_WINDOW_MINUTES * 60,
+      now.nanoseconds,
+    );
+
+    await event.data.after.ref.update({
+      readyAt: now,
+      pickupDeadline: deadline,
+      pickupWindowMinutes: PICKUP_WINDOW_MINUTES,
+      deadlineStatus: "ACTIVE",
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    console.log(
+      `[onOrderStatusChanged] Order ${event.params.orderId} marked READY. ` +
+      `Pickup deadline: ${deadline.toDate().toISOString()}`,
+    );
+  },
+);
+
+// ════════════════════════════════════════════════════════════════════════════
+// FUNCTION 3: deleteCloudinaryImage  (Callable — admin only)
+// ════════════════════════════════════════════════════════════════════════════
+
+// Define secrets that will be set via Firebase CLI
+const CLOUDINARY_CLOUD_NAME = defineSecret("CLOUDINARY_CLOUD_NAME");
+const CLOUDINARY_API_KEY = defineSecret("CLOUDINARY_API_KEY");
+const CLOUDINARY_API_SECRET = defineSecret("CLOUDINARY_API_SECRET");
+
+exports.deleteCloudinaryImage = onCall(
+  {
+    authPolicy: "required",
+    secrets: [CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET],
+    region: "us-central1",
+  },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError(
+        "unauthenticated",
+        "User must be authenticated to delete images."
+      );
+    }
+
+    const uid = request.auth.uid;
+    const userDoc = await admin.firestore().collection("users").doc(uid).get();
+    const userData = userDoc.data();
+
+    if (!userData || userData.role !== "admin") {
+      throw new HttpsError(
+        "permission-denied",
+        "Only admins can delete images."
+      );
+    }
+
+    const { publicId } = request.data;
+    if (!publicId || typeof publicId !== "string") {
+      throw new HttpsError(
+        "invalid-argument",
+        "publicId is required and must be a string."
+      );
+    }
+
+    const cloudName = CLOUDINARY_CLOUD_NAME.value();
+    const apiKey = CLOUDINARY_API_KEY.value();
+    const apiSecret = CLOUDINARY_API_SECRET.value();
+
+    const url = `https://api.cloudinary.com/v1_1/${cloudName}/image/destroy`;
+    const authString = `${apiKey}:${apiSecret}`;
+    const authHeader = `Basic ${Buffer.from(authString).toString("base64")}`;
+
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          Authorization: authHeader,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: `public_id=${encodeURIComponent(publicId)}`,
+      });
+
+      const result = await response.json();
+
+      if (result.result === "ok") {
+        await admin.firestore().collection("audit_logs").add({
+          action: "cloudinary_image_deleted",
+          publicId: publicId,
+          deletedBy: uid,
+          timestamp: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        return { success: true };
+      } else {
+        throw new HttpsError(
+          "internal",
+          `Cloudinary deletion failed: ${result.error?.message || "Unknown error"}`
+        );
+      }
+    } catch (error) {
+      console.error("Error deleting Cloudinary image:", error);
+
+      if (error instanceof HttpsError) {
+        throw error;
+      }
+
+      throw new HttpsError(
+        "internal",
+        `Failed to delete image: ${error.message}`
+      );
+    }
+  }
+);
