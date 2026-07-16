@@ -46,7 +46,6 @@ app.*.map.json
 /android/app/release
 
 # Firebase / FlutterFire configuration files
-.firebaserc
 firestore.rules
 
 # Firebase Admin
