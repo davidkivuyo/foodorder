@@ -136,323 +136,615 @@ After completing a feature:
 
 # Current Phase
 
-PHASE 5.1
+PHASE 6
 
 # TASK
 
-Implement Phase 5.1 of CampusBite.
+Implement Phase 6 of CampusBite.
 
-This is a privacy hardening phase.
-
-The goal is to minimise collection and storage of sensitive location data while preserving all existing functionality.
+This phase introduces automatic pickup deadline enforcement and the automatic strike engine.
 
 The implementation must be production-ready.
 
-Do NOT change the user experience.
+The implementation must prioritise:
 
-Do NOT change pickup deadline calculations.
+• Data consistency
 
-Do NOT break any completed feature.
+• Privacy
 
----
+• Minimal Firestore reads
 
-# CURRENT IMPLEMENTATION
+• Minimal Firestore writes
 
-Current behaviour:
+• Minimal Cloud Function executions
 
-Student places order
+Also now Instead of storing strikePercentage in Firestore, store only:
 
-↓
+strikeCount
 
-Current location obtained
+accountStatus
 
-↓
+Then derive the percentage in the app:
 
-Distance calculated
+final strikePercentage = strikeCount * 50;
 
-↓
+This will have several advantages:
 
-Pickup window calculated
+It eliminates one field that can become inconsistent.
 
-↓
+It reduces writes because only strikeCount changes.
 
-Order stores:
+It simplifies transactions.
 
-studentLocation
+It ensures there's a single source of truth.
 
-cafeLocation
+Your UI can still display:
 
-distanceMeters
+Strike 1 → 50%
 
-pickupWindowMinutes
+Strike 2 → 100%
 
-pickupDeadline
+Do not modify completed features.
 
-The feature works correctly.
-
-The objective is only to improve privacy.
+Do not introduce unnecessary complexity.
 
 ---
 
 # OBJECTIVE
 
-CampusBite must follow the principle of Data Minimisation.
+When a student fails to collect an order before the pickup deadline:
 
-Collect only the data required.
+Automatically:
 
-Keep it only as long as required.
+1.
 
-Delete it immediately after its purpose has been fulfilled.
+Mark the order as:
 
----
+NO_SHOW
 
-# NEW ARCHITECTURE
+2.
 
-Student location must become temporary.
+Issue exactly one strike.
 
-The location is used ONLY for calculating:
+3.
 
-distanceMeters
+Update the student's strike information.
 
-pickupWindowMinutes
+4.
 
-After those values are calculated:
+Suspend the account after two strikes.
 
-The student's coordinates must never be stored in Firestore.
+5.
 
-The coordinates must not remain in memory longer than necessary.
+Create an immutable audit log.
 
----
+The entire operation must be atomic.
 
-# REQUIRED CHANGES
-
-The order document must NO LONGER contain:
-
-studentLocation
-
-Remove all writes that persist studentLocation.
-
-Do not replace it with another location field.
+No partial updates are allowed.
 
 ---
 
-# KEEP
+# EXISTING FEATURES
 
-Continue storing:
+Already completed:
 
-distanceMeters
+✓ Student App
 
-pickupWindowMinutes
+✓ Cafe Admin App
 
-pickupDeadline
+✓ Authentication
 
-readyAt
+✓ Food CRUD
 
-deadlineStatus
+✓ Cart
 
-status
+✓ Orders
 
-These values contain no precise location information.
+✓ Ready workflow
 
----
+✓ Pickup deadline calculation
 
-# DISTANCE CALCULATION
+✓ Distance-aware pickup windows
 
-Continue calculating distance locally inside Flutter.
+✓ Strike UI
 
-Do NOT move this calculation to Cloud Functions.
+✓ Admin pardon
 
-Do NOT introduce any external APIs.
-
-Do NOT introduce Google Directions API.
-
-Do NOT introduce Google Distance Matrix.
+Do not modify these features.
 
 ---
 
-# CAFE LOCATION
+# ARCHITECTURE
 
-Cafe locations are public business information.
+Use ONE scheduled Cloud Function.
 
-They may continue to exist in:
+Schedule:
+
+Every 5 minutes.
+
+No additional scheduled functions.
+
+No polling clients.
+
+No listeners.
+
+---
+
+# QUERY
+
+Each execution should query ONLY:
+
+orders
+
+WHERE
+
+status == READY
+
+AND
+
+deadlineStatus == ACTIVE
+
+AND
+
+pickupDeadline <= current server time
+
+This query must use Firestore composite indexes.
+
+Never scan the entire orders collection.
+
+---
+
+# PROCESSING
+
+For every expired order:
+
+Run ONE Firestore transaction.
+
+Do NOT use independent writes.
+
+Do NOT update the order before updating the user.
+
+Everything must succeed together.
+
+If anything fails:
+
+Nothing should be committed.
+
+---
+
+# TRANSACTION STEPS
+
+Inside the transaction:
+
+Step 1
+
+Read the order document.
+
+Immediately verify:
+
+status == READY
+
+deadlineStatus == ACTIVE
+
+strikeProcessed == false
+
+If any condition fails:
+
+Abort immediately.
+
+Do nothing.
+
+---
+
+Step 2
+
+Read ONLY:
+
+users/{studentId}
+
+No other reads.
+
+Do NOT read:
 
 food_items
 
-or
-
 cafes
 
-Do NOT duplicate them unnecessarily.
+notifications
 
-If already available in memory when placing the order, reuse the existing value.
+cart
 
-Avoid additional Firestore reads.
-
----
-
-# FIRESTORE OPTIMISATION
-
-Reduce Firestore storage.
-
-Remove all writes of:
-
-studentLocation
-
-Do not introduce replacement writes.
-
-The total number of Firestore writes must not increase.
-
-The total number of Firestore reads must not increase.
+Everything required already exists.
 
 ---
 
-# MEMORY MANAGEMENT
+Step 3
 
-After calculating:
+Calculate:
+
+newStrikeCount
+
+Never exceed:
+
+2
+
+Calculate:
+
+strikePercentage = strikeCount × 50
+
+Determine:
+
+accountStatus
+
+Rules:
+
+0
+
+ACTIVE
+
+1
+
+ACTIVE
+
+WARNING shown in UI
+
+2
+
+SUSPENDED
+
+---
+
+Step 4
+
+Update order.
+
+Fields:
+
+status = NO_SHOW
+
+deadlineStatus = EXPIRED
+
+expiredAt = server timestamp
+
+strikeProcessed = true
+
+strikeIssuedAt = server timestamp
+
+updatedAt = server timestamp
+
+Nothing else.
+
+Never rewrite:
+
+items
+
+pickupDeadline
 
 distanceMeters
 
 pickupWindowMinutes
 
-Clear any temporary location variables.
+price
 
-Do not cache the student's location.
-
-Do not keep location in singleton services.
-
-Do not persist location locally.
+student information
 
 ---
 
-# ADMIN APP
+Step 5
 
-Admins must never see:
+Update user.
 
-Student coordinates
+Fields:
 
-Maps
+strikeCount
 
-Latitude
+accountStatus
 
-Longitude
+updatedAt
 
-The Admin App should continue displaying only:
+Nothing else.
 
-Distance
+---
 
-Pickup Window
+Step 6
 
-Pickup Deadline
+Create one audit log.
+
+Collection:
+
+audit_logs
+
+Fields:
+
+action = automatic_no_show
+
+orderId
+
+studentId
+
+previousStrikeCount
+
+newStrikeCount
+
+performedBy = system
+
+timestamp
+
+reason = pickup_deadline_expired
+
+The audit log must never be modified afterwards.
+
+---
+
+Step 7
+
+Commit transaction.
+
+Everything succeeds together.
+
+If one write fails:
+
+Everything rolls back automatically.
+
+---
+
+# IDEMPOTENCY
+
+The implementation must be completely idempotent.
+
+Running the scheduled function multiple times must never:
+
+Issue two strikes.
+
+Suspend twice.
+
+Duplicate audit logs.
+
+Use:
+
+strikeProcessed
+
+as the processing lock.
+
+If:
+
+strikeProcessed == true
+
+Exit immediately.
+
+---
+
+# FIRESTORE READ OPTIMISATION
+
+Target:
+
+One query
+
+↓
+
+One order read
+
+↓
+
+One user read
+
+↓
+
+Transaction
+
+↓
+
+Commit
+
+Nothing else.
+
+Never query users collection.
+
+Never query orders collection twice.
+
+Never perform nested queries.
+
+---
+
+# FIRESTORE WRITE OPTIMISATION
+
+Transaction updates:
+
+One order
+
+One user
+
+One audit log
+
+Only changed fields.
+
+Never overwrite unchanged values.
 
 ---
 
 # STUDENT APP
 
-No visible behaviour should change.
+When order changes to:
 
-Countdown must continue working.
+NO_SHOW
 
-Pickup deadlines must continue working.
+Display:
 
-Ordering must continue working.
+Order Expired
 
-The student should notice no difference.
+Strike Issued
+
+If strikeCount == 1
+
+Display:
+
+Warning
+
+50%
+
+If strikeCount == 2
+
+Display:
+
+Account Suspended
+
+Disable:
+
+Place Order
+
+Students may still:
+
+Browse food
+
+View previous orders
+
+View strikes
+
+Log out
 
 ---
 
-# CLOUD FUNCTIONS
+# ADMIN APP
 
-Do NOT modify:
+Admins should immediately see:
 
-Strike logic
+NO_SHOW badge
 
-Deadline monitoring
+Strike issued
 
-Notification logic
+Strike count
 
-Account suspension
+Suspended status
 
-Cloud Scheduler
+Admins may:
 
-Cloud Functions should continue using:
+Pardon students
 
-pickupWindowMinutes
+Remove strikes
 
-to generate:
+Restore account
 
-pickupDeadline
-
-Cloud Functions must never receive student coordinates.
+Do not change existing pardon workflow.
 
 ---
 
-# FIRESTORE SCHEMA
+# PARDON
 
-Remove:
+Existing pardon feature remains.
 
-studentLocation
+Decrease:
 
-from new order writes.
+strikeCount
 
-Existing historical documents containing studentLocation may remain.
+Never below zero.
 
-Do NOT perform a migration.
+Automatically recalculate:
 
-Only new orders must follow the new schema.
+strikePercentage
+
+Automatically restore:
+
+accountStatus = ACTIVE
+
+when strikeCount < 2.
+
+Create:
+
+audit_logs
+
+action = admin_pardon
 
 ---
 
 # SECURITY
 
-Student coordinates must never be readable because they are never stored.
+Students cannot modify:
 
-No Firestore rule changes should be necessary.
+status
+
+deadlineStatus
+
+strikeProcessed
+
+strikeCount
+
+accountStatus
+
+expiredAt
+
+strikeIssuedAt
+
+Admins cannot manually issue strikes.
+
+Only backend may issue strikes.
+
+Admins may only pardon.
 
 ---
 
-# PRIVACY
+# PERFORMANCE TARGET
 
-CampusBite should only retain:
+The entire backend should process each expired order using:
 
-distanceMeters
+One transaction
 
-pickupWindowMinutes
+One order read
 
-These values cannot be used to reconstruct the student's exact position.
+One user read
 
-The application must not retain location history.
+One commit
 
-The application must never track movement.
+Zero duplicate writes
+
+Zero unnecessary reads
+
+Zero repeated calculations
+
+The complexity must remain:
+
+O(1)
+
+per expired order.
 
 ---
 
-# PERFORMANCE REQUIREMENTS
+# ERROR HANDLING
 
-The implementation must not introduce:
+If one order fails:
 
-Additional Firestore reads
+Log the error.
 
-Additional Firestore writes
+Continue processing remaining expired orders.
 
-Additional Cloud Function invocations
-
-Additional listeners
-
-Additional network requests
-
-The existing architecture should remain O(1) per order.
+One failed transaction must never stop processing of other expired orders.
 
 ---
 
 # CODE QUALITY
 
-Remove obsolete location models and fields if they are no longer used.
+Create:
 
-Avoid dead code.
+automatic_strike_service.dart
 
-Avoid duplicate calculations.
+Responsibilities:
 
-Maintain existing service boundaries.
+Detect expired order
+
+Validate processing state
+
+Run Firestore transaction
+
+Issue strike
+
+Suspend account
+
+Create audit log
+
+Avoid duplicated business logic.
+
+Widgets must contain no strike logic.
+
+Reuse existing models and services.
 
 ---
 
@@ -460,27 +752,31 @@ Maintain existing service boundaries.
 
 Verify:
 
-✓ Ordering still works.
+✓ Countdown reaches zero.
 
-✓ Pickup window still works.
+✓ Order automatically becomes NO_SHOW.
 
-✓ Countdown still works.
+✓ First NO_SHOW issues one strike.
 
-✓ Distance calculations remain correct.
+✓ Second NO_SHOW suspends account.
 
-✓ No student coordinates are written to Firestore.
+✓ Transaction rolls back correctly on failure.
 
-✓ Firestore reads do not increase.
+✓ Duplicate executions never duplicate strikes.
 
-✓ Firestore writes do not increase.
+✓ Audit log created.
 
-✓ Admin App still functions.
+✓ Existing countdown unchanged.
 
-✓ Student App still functions.
+✓ Existing ordering unchanged.
 
-✓ Strike system unaffected.
+✓ Existing pickup deadlines unchanged.
 
-✓ Notification system unaffected.
+✓ Existing admin workflow unchanged.
+
+✓ Existing cart unchanged.
+
+✓ Existing notifications unchanged.
 
 ---
 
@@ -488,23 +784,31 @@ Verify:
 
 Provide:
 
-1. Modified files.
+1. Files modified.
 
-2. Removed fields.
+2. Cloud Function implementation.
 
-3. Updated data model.
+3. Transaction flow explanation.
 
-4. Testing results.
+4. Firestore rule updates.
 
-Stop after completing this privacy hardening phase.
+5. Required Firestore indexes.
 
-Do NOT implement any additional features.
+6. Testing checklist.
+
+Stop after completing Phase 6.
+
+Do not implement future phases.
+
+Do not refactor unrelated code.
+
+Maintain backwards compatibility.
 
 ---
 
 # Phase Completion Criteria
 
-Phase 5 is complete when:
+Phase 6 is complete when:
 
 * the new features works well with past features.
 * App runs successfully.

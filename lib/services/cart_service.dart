@@ -263,8 +263,12 @@ class CartService extends ChangeNotifier {
 
   /// Check whether the current user's account is suspended.
   ///
+  /// Check whether the current user's account is suspended.
+  ///
   /// Returns `true` when `accountStatus == 'SUSPENDED'` or
-  /// `strikePercentage >= 100`, meaning the student cannot place orders.
+  /// `strikeCount >= 2`, meaning the student cannot place orders.
+  ///
+  /// Phase 6: Derives percentage from strikeCount * 50.
   Future<bool> isAccountSuspended() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return false;
@@ -279,10 +283,10 @@ class CartService extends ChangeNotifier {
 
       final data = doc.data()!;
       final accountStatus = data['accountStatus'] as String? ?? 'ACTIVE';
-      final strikePercentage =
-          (data['strikePercentage'] as num?)?.toInt() ?? 0;
+      final strikeCount =
+          (data['strikeCount'] as num?)?.toInt() ?? 0;
 
-      return accountStatus == 'SUSPENDED' || strikePercentage >= 100;
+      return accountStatus == 'SUSPENDED' || strikeCount >= 2;
     } catch (_) {
       return false;
     }
@@ -290,11 +294,12 @@ class CartService extends ChangeNotifier {
 
   /// Place the current cart items as an order and save to Firestore.
   ///
-  /// Optionally include [studentLocation], [cafeLocation], [cafeId],
-  /// [distanceMeters], and [pickupWindowMinutes] for the distance-aware
-  /// pickup window.
+  /// Optionally include [cafeLocation], [cafeId], [distanceMeters], and
+  /// [pickupWindowMinutes] for the distance-aware pickup window.
+  ///
+  /// Student location is NEVER persisted to Firestore for privacy.
+  /// Distance and pickup window are stored as anonymized values.
   Future<String?> placeOrder({
-    GeoPoint? studentLocation,
     GeoPoint? cafeLocation,
     String? cafeId,
     double? distanceMeters,
@@ -314,7 +319,7 @@ class CartService extends ChangeNotifier {
     final displayName = _cachedUserName.isNotEmpty
         ? _cachedUserName
         : (FirebaseAuth.instance.currentUser?.displayName ?? 'Student');
-    final hasDistanceData = studentLocation != null && cafeLocation != null;
+    final hasDistanceData = cafeLocation != null && distanceMeters != null;
     final newOrder = FoodOrder(
       orderId: newOrderId,
       userId: userId,
@@ -325,7 +330,6 @@ class CartService extends ChangeNotifier {
       status: OrderStatus.pending,
       pickupWindowMinutes: pickupWindowMinutes ?? 20,
       distanceCalculated: hasDistanceData,
-      studentLocation: studentLocation,
       cafeLocation: cafeLocation,
       cafeId: cafeId,
       distanceMeters: distanceMeters,

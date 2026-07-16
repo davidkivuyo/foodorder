@@ -18,7 +18,8 @@ enum StrikeAction {
   pardon,
   reset,
   suspend,
-  reactivate;
+  reactivate,
+  automaticNoShow;
 
   String get value {
     switch (this) {
@@ -32,6 +33,8 @@ enum StrikeAction {
         return 'SUSPEND';
       case StrikeAction.reactivate:
         return 'REACTIVATE';
+      case StrikeAction.automaticNoShow:
+        return 'automatic_no_show';
     }
   }
 
@@ -47,12 +50,13 @@ enum StrikeAction {
         return StrikeAction.suspend;
       case 'REACTIVATE':
         return StrikeAction.reactivate;
+      case 'automatic_no_show':
+        return StrikeAction.automaticNoShow;
       default:
         throw ArgumentError.value(
           action,
           'action',
-          'Unknown StrikeAction value. Must be one of: '
-              'ISSUE_STRIKE, PARDON, RESET, SUSPEND, REACTIVATE',
+          'Unknown StrikeAction value.',
         );
     }
   }

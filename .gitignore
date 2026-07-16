@@ -61,9 +61,8 @@ firebase-adminsdk-*.json
 *.jks
 *.keystore
 key.properties
-lib/firebase_options.dart
-android/app/google-services.json
 scripts/
 
 testsprite_tests/tmp/config.json
 CLOUD_FUNCTION_CHANGES.md
+ADMIN_BOOTSTRAP.md

@@ -1,0 +1,14 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "orders",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "deadlineStatus", "order": "ASCENDING" },
+        { "fieldPath": "pickupDeadline", "order": "ASCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}
