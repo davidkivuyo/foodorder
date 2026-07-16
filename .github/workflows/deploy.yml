@@ -3,7 +3,7 @@ name: Deploy Flutter Web to Cloudflare Pages
 on:
   push:
     branches:
-      - release  # Trigger build on pushes to the main branch
+      - main  # Trigger build on pushes to the main branch
 
 jobs:
   deploy:
@@ -31,7 +31,7 @@ jobs:
           flutter build web --release
 
       # Step 5: Deploy build/web folder to Cloudflare Pages
-      - name: Deploy to Cloudflare Pages
+      - name: Lets Deploy
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
