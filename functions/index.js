@@ -12,13 +12,16 @@
  *
  * 3) deleteCloudinaryImage — Callable function.
  *    Deletes an image from Cloudinary (admin only, secrets-protected).
+ *
+ * 4) cleanupDeletedNotifications — Scheduled (every 24h) cleanup of old soft-deleted
+ *    notifications.
  */
 
 // ── Imports ────────────────────────────────────────────────────────────────
 
 const functions = require("firebase-functions");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
-const { onDocumentUpdated } = require("firebase-functions/v2/firestore");
+const { onDocumentUpdated, onDocumentCreated } = require("firebase-functions/v2/firestore");
 const { defineSecret } = require("firebase-functions/params");
 const admin = require("firebase-admin");
 const fetch = require("node-fetch");
@@ -37,6 +40,89 @@ const PICKUP_WINDOW_MINUTES = 20;
  */
 function deriveAccountStatus(strikeCount) {
   return strikeCount >= 2 ? "SUSPENDED" : "ACTIVE";
+}
+
+/**
+ * Build a unique eventId for a notification to enable duplicate prevention.
+ * @param {string} action — e.g. 'STRIKE_ISSUED', 'ORDER_NO_SHOW'
+ * @param {string} orderId
+ * @param {string} [suffix] — optional extra uniqueness
+ * @return {string}
+ */
+function notificationEventId(action, orderId, suffix) {
+  const parts = [action, orderId];
+  if (suffix) parts.push(suffix);
+  return parts.join("_");
+}
+
+/**
+ * Create a notification document in Firestore.
+ * Skips creation if a notification with the same eventId already exists.
+ *
+ * @param {Object} params
+ * @param {string} params.recipientId
+ * @param {string} params.recipientRole
+ * @param {string} params.type — NotificationType value
+ * @param {string} params.title
+ * @param {string} params.message
+ * @param {string} [params.orderId]
+ * @param {string} [params.eventId]
+ * @param {string} [params.deepLink]
+ * @param {Object} [params.metadata]
+ * @param {string} [params.createdBy='system']
+ * @return {Promise<string|null>} — notification ID or null
+ */
+async function createNotification({
+  recipientId,
+  recipientRole,
+  type,
+  title,
+  message,
+  orderId,
+  eventId,
+  deepLink,
+  metadata,
+  createdBy = "system",
+}) {
+  // Duplicate prevention
+  if (eventId) {
+    const existing = await db
+        .collection("notifications")
+        .where("eventId", "==", eventId)
+        .limit(1)
+        .get();
+
+    if (!existing.empty) {
+      console.log(`[createNotification] Skipping duplicate: ${eventId}`);
+      return null;
+    }
+  }
+
+  try {
+    const docRef = await db.collection("notifications").add({
+      recipientId,
+      recipientRole,
+      type,
+      title,
+      message,
+      orderId: orderId || null,
+      eventId: eventId || null,
+      deepLink: deepLink || null,
+      metadata: metadata || null,
+      read: false,
+      readAt: null,
+      deleted: false,
+      deletedAt: null,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdBy,
+    });
+
+    console.log(`[createNotification] Created ${type} for ${recipientId}: ${docRef.id}`);
+    return docRef.id;
+  } catch (err) {
+    console.error(`[createNotification] Error creating ${type}:`, err);
+    return null;
+  }
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -139,6 +225,7 @@ exports.processExpiredPickups = functions
       const now = admin.firestore.Timestamp.now();
       let processedCount = 0;
       let errorCount = 0;
+      const processedStudentIds = new Set();
 
       try {
         const expiredOrdersSnapshot = await db
@@ -155,7 +242,10 @@ exports.processExpiredPickups = functions
             await db.runTransaction(async (transaction) => {
               const freshSnapshot = await transaction.get(orderSnapshot.ref);
               const processed = await processExpiredOrder(transaction, freshSnapshot);
-              if (processed) processedCount++;
+              if (processed) {
+                processedCount++;
+                processedStudentIds.add(orderSnapshot.data().studentId);
+              }
             });
           } catch (err) {
             errorCount++;
@@ -174,6 +264,62 @@ exports.processExpiredPickups = functions
       console.log(
         `[AutoStrike] Run complete: ${processedCount} processed, ${errorCount} errors`
       );
+
+      // ── Notifications: Notify students about no-show strikes ──
+      // This runs outside the transaction — Firestore writes triggered by
+      // the transaction above are already committed by this point.
+      //
+      // Phase 7: Create notifications for each student who received a strike.
+      // Also create ACCOUNT_SUSPENDED notifications for students who were
+      // newly suspended (strikeCount >= 2).
+      // These are fire-and-forget; failures to create a notification do NOT
+      // affect the strike processing outcome (business logic independence).
+      if (processedCount > 0) {
+        console.log(`[AutoStrike] Creating notifications for ${processedStudentIds.size} student(s)`);
+        for (const studentId of processedStudentIds) {
+          try {
+            // Phase 7: ORDER_NO_SHOW notification
+            await createNotification({
+              recipientId: studentId,
+              recipientRole: "student",
+              type: "ORDER_NO_SHOW",
+              title: "Order Missed — Strike Issued",
+              message: "You did not collect your order on time. " +
+                       "A strike has been added to your account. " +
+                       "Repeated missed pickups may lead to account suspension.",
+              deepLink: "/account",
+              eventId: notificationEventId("AUTO_NO_SHOW", studentId),
+              createdBy: "system",
+            });
+
+            // Phase 7: ACCOUNT_SUSPENDED notification
+            // Read the (already-updated) user doc to check if suspended
+            // Using orderId in eventId supports re-suspension after pardon
+            const userDoc = await db.collection("users").doc(studentId).get();
+            const strikeCount = userDoc.data()?.strikeCount ?? 0;
+            if (strikeCount >= 2) {
+              const orderId = orderSnapshot.id;
+              await createNotification({
+                recipientId: studentId,
+                recipientRole: "student",
+                type: "ACCOUNT_SUSPENDED",
+                title: "Account Suspended",
+                message: "Your account has been suspended due to " +
+                         "repeated missed pickups. " +
+                         "Please contact support to reactivate your account.",
+                deepLink: "/account",
+                eventId: `ACCOUNT_SUSPENDED_${studentId}_${orderId}`,
+                createdBy: "system",
+              });
+            }
+          } catch (notifErr) {
+            // Notifications must never break business logic.
+            console.error(
+              `[AutoStrike] Failed to create notification for ${studentId}:`, notifErr
+            );
+          }
+        }
+      }
 
       return null;
     });
@@ -217,11 +363,108 @@ exports.onOrderStatusChanged = onDocumentUpdated(
       `[onOrderStatusChanged] Order ${event.params.orderId} marked READY. ` +
       `Pickup deadline: ${deadline.toDate().toISOString()}`,
     );
+
+    // Phase 7: Notify the student that their order is ready
+    const studentId = afterData.studentId;
+    if (studentId) {
+      try {
+        await createNotification({
+          recipientId: studentId,
+          recipientRole: "student",
+          type: "ORDER_READY",
+          title: "Order Ready for Pickup",
+          message: `Your order #${event.params.orderId} is ready! ` +
+                   `Please collect it within ${PICKUP_WINDOW_MINUTES} minutes.`,
+          orderId: event.params.orderId,
+          deepLink: `/orders/${event.params.orderId}`,
+          eventId: notificationEventId("ORDER_READY", event.params.orderId),
+          createdBy: "system",
+        });
+      } catch (notifErr) {
+        console.error(
+          `[onOrderStatusChanged] Failed to create ORDER_READY notification:`, notifErr
+        );
+      }
+    }
   },
 );
 
 // ════════════════════════════════════════════════════════════════════════════
-// FUNCTION 3: deleteCloudinaryImage  (Callable — admin only)
+// FUNCTION 3: onNewOrder  (Firestore trigger — document created)
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * When a student places a new order, notify all admin users.
+ *
+ * Queries for all users with role === 'admin' and creates a NEW_ORDER
+ * notification for each admin. Uses per-admin eventId for dedup.
+ *
+ * Phase 7: Only Firestore delivery — FCM will be added later.
+ */
+exports.onNewOrder = onDocumentCreated(
+  {
+    document: "orders/{orderId}",
+    region: "us-central1",
+  },
+  async (event) => {
+    const orderData = event.data.data();
+    if (!orderData) {
+      console.log(`[onNewOrder] No data for order ${event.params.orderId} — skipping`);
+      return;
+    }
+
+    const studentId = orderData.studentId || orderData.userId;
+    const studentName = orderData.userName || "A student";
+    const orderId = event.params.orderId;
+    const totalAmount = orderData.price || orderData.totalAmount || 0;
+
+    console.log(`[onNewOrder] New order ${orderId} placed by ${studentName} (${studentId})`);
+
+    try {
+      // Find all admin users to notify
+      const adminSnapshot = await db
+          .collection("users")
+          .where("role", "==", "admin")
+          .get();
+
+      if (adminSnapshot.empty) {
+        console.log("[onNewOrder] No admin users found — skipping notifications");
+        return;
+      }
+
+      console.log(`[onNewOrder] Notifying ${adminSnapshot.size} admin(s)`);
+
+      const adminIds = adminSnapshot.docs.map((doc) => doc.id);
+      const notificationPromises = adminIds.map((adminId) => {
+        return createNotification({
+          recipientId: adminId,
+          recipientRole: "admin",
+          type: "NEW_ORDER",
+          title: `New Order #${orderId}`,
+          message: `${studentName} placed a new order worth ` +
+                   `Tsh ${Math.round(totalAmount)}.`, // using Tsh as the currency
+          orderId: orderId,
+          eventId: `NEW_ORDER_${orderId}_${adminId}`,
+          deepLink: "/orders",
+          metadata: {
+            studentName: studentName,
+            totalAmount: totalAmount,
+          },
+          createdBy: "system",
+        });
+      });
+
+      await Promise.allSettled(notificationPromises);
+    } catch (err) {
+      // Notifications must never break business logic — this is a trigger,
+      // so the order creation itself is unaffected by notification failures.
+      console.error(`[onNewOrder] Error:`, err);
+    }
+  },
+);
+
+// ════════════════════════════════════════════════════════════════════════════
+// FUNCTION 4: deleteCloudinaryImage  (Callable — admin only)
 // ════════════════════════════════════════════════════════════════════════════
 
 // Define secrets that will be set via Firebase CLI
@@ -311,3 +554,73 @@ exports.deleteCloudinaryImage = onCall(
     }
   }
 );
+
+// ════════════════════════════════════════════════════════════════════════════
+// FUNCTION 4: cleanupDeletedNotifications  (Scheduled — every 24 hours)
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Clean up soft-deleted notifications older than 180 days.
+ *
+ * Runs once every 24 hours.
+ * Never deletes active (non-deleted) notifications.
+ */
+exports.cleanupDeletedNotifications = functions
+    .runWith({
+      memory: "128MB",
+      timeoutSeconds: 120,
+    })
+    .pubsub
+    .schedule("every 24 hours")
+    .onRun(async (context) => {
+      console.log("[CleanupNotifications] Scheduled cleanup started...");
+
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - 180); // 180 days ago
+
+      let deletedCount = 0;
+      let errorCount = 0;
+
+      try {
+        // Query soft-deleted notifications older than 180 days
+        const oldNotifications = await db
+            .collection("notifications")
+            .where("deleted", "==", true)
+            .where("deletedAt", "<=", cutoff)
+            .get();
+
+        console.log(
+          `[CleanupNotifications] Found ${oldNotifications.size} old deleted notification(s)`
+        );
+
+        // Delete in batches of 500 (Firestore batch limit)
+        let batch = db.batch();
+        let batchSize = 0;
+
+        for (const doc of oldNotifications.docs) {
+          batch.delete(doc.ref);
+          batchSize++;
+          deletedCount++;
+
+          if (batchSize >= 500) {
+            await batch.commit();
+            batch = db.batch();
+            batchSize = 0;
+          }
+        }
+
+        // Commit any remaining batch
+        if (batchSize > 0) {
+          await batch.commit();
+        }
+      } catch (err) {
+        errorCount++;
+        console.error("[CleanupNotifications] Error:", err);
+      }
+
+      console.log(
+        `[CleanupNotifications] Cleanup complete: ${deletedCount} deleted, ${errorCount} errors`
+      );
+
+      return null;
+    });

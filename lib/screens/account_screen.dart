@@ -18,6 +18,9 @@ import 'package:go_router/go_router.dart';
 import '../services/auth_service.dart';
 import '../widgets/logout_confirmation_dialog.dart';
 import '../widgets/strike_status_card.dart';
+import 'notification_screen.dart';
+
+export 'notification_screen.dart' show NotificationScreen;
 
 // ── Avatar helpers ──────────────────────────────────────────────────────────
 
@@ -393,19 +396,15 @@ class AccountSettings extends StatelessWidget {
   }
 }
 
-// notification screen
+/// Legacy alias kept for backward compatibility.
+///
+/// The full notification screen has moved to notification_screen.dart.
+/// @deprecated Use [NotificationScreen] instead.
 class Notify extends StatelessWidget {
   const Notify({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          'Notifications',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-        ),
-      ),
-    );
+    return const NotificationScreen();
   }
 }

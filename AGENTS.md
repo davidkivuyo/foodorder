@@ -916,7 +916,7 @@ Do NOT implement notification preferences in this phase.
 
 # Phase Completion Criteria
 
-Phase 6 is complete when:
+Phase 7 is complete when:
 
 * the new features works well with past features.
 * App runs successfully.

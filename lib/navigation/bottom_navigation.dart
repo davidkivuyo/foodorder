@@ -13,6 +13,7 @@
 // limitations under the License.
 
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../screens/home_screen.dart';
 import '../screens/account_screen.dart';
 import '../screens/category_screen.dart';
@@ -20,6 +21,7 @@ import '../screens/order_screen.dart';
 import '../data/search_bar.dart';
 import 'package:dash_no_internet_screen/dash_no_internet_screen.dart';
 import '../services/cart_service.dart';
+import '../services/notification_service.dart';
 import '../widgets/cart_bottom_sheet.dart';
 import '../widgets/cart_fab.dart';
 
@@ -105,19 +107,60 @@ class _NavigationExampleState extends State<MainScreen> {
           toolbarHeight: 50,
           title: const AppLogo(),
 
-          // notification icon, its screen can be found in account_screen.dart file
+          // notification icon with live unread badge
           actions: <Widget>[
-            IconButton(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => Notify()),
+            StreamBuilder<int>(
+              stream: NotificationService().unreadCountStream(
+                recipientId: FirebaseAuth.instance.currentUser?.uid ?? '',
+                recipientRole: NotificationService.roleStudent,
+              ),
+              builder: (context, snapshot) {
+                final unreadCount = snapshot.hasData ? snapshot.data! : 0;
+                return Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    IconButton(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const NotificationScreen(),
+                          ),
+                        );
+                      },
+                      icon: const Icon(
+                        Icons.notifications_outlined,
+                        semanticLabel: 'notification bell',
+                      ),
+                    ),
+                    if (unreadCount > 0)
+                      Positioned(
+                        right: 8,
+                        top: 8,
+                        child: Container(
+                          padding: const EdgeInsets.all(2),
+                          decoration: const BoxDecoration(
+                            color: Color(0xFF2E7D32),
+                            shape: BoxShape.circle,
+                          ),
+                          constraints: const BoxConstraints(
+                            minWidth: 16,
+                            minHeight: 16,
+                          ),
+                          child: Text(
+                            unreadCount > 9 ? '9+' : '$unreadCount',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ),
+                  ],
                 );
               },
-              icon: const Icon(
-                Icons.notifications_outlined,
-                semanticLabel: 'notification bell',
-              ),
             ),
             ListenableBuilder(
               listenable: CartService(),
