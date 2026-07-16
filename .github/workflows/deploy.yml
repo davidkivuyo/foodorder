@@ -31,7 +31,7 @@ jobs:
           flutter build web --release
 
       # Step 5: Deploy build/web folder to Cloudflare Pages
-      - name: Deploy to Cloudflare Pages
+      - name: Lets Deploy
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
