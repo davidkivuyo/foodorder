@@ -43,7 +43,7 @@ class _SpecialBannerCardState extends State<SpecialBannerCard> {
     // Set up an automatic timer to slide to the next banner every 4 seconds
     _timer = Timer.periodic(const Duration(seconds: 4), (timer) {
       if (widget.imageUrls.isEmpty) return;
-      
+
       if (_currentPage < widget.imageUrls.length - 1) {
         _currentPage++;
       } else {
@@ -94,14 +94,16 @@ class _SpecialBannerCardState extends State<SpecialBannerCard> {
                   itemBuilder: (context, index) {
                     return GestureDetector(
                       onTap: () => widget.onTap?.call(index),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade300,
-                          image: DecorationImage(
-                            image: NetworkImage(widget.imageUrls[index]),
-                            fit: BoxFit.cover,
-                          ),
-                        ),
+                      child: Image.network(
+                        widget.imageUrls[index],
+                        fit: BoxFit.cover,
+                        width: double.infinity,
+                        height: double.infinity,
+                        // Graceful fallback when the image fails to load
+                        // (network error, 404, or test environment).
+                        errorBuilder: (context, error, stackTrace) {
+                          return Container(color: Colors.grey.shade300);
+                        },
                       ),
                     );
                   },
@@ -111,7 +113,7 @@ class _SpecialBannerCardState extends State<SpecialBannerCard> {
               // Page Dot Indicators
               if (widget.imageUrls.length > 1)
                 Padding(
-                  padding: const EdgeInsets.bottom(10.0),
+                  padding: const EdgeInsets.only(bottom: 10.0),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: List.generate(
@@ -120,11 +122,13 @@ class _SpecialBannerCardState extends State<SpecialBannerCard> {
                         duration: const Duration(milliseconds: 200),
                         margin: const EdgeInsets.symmetric(horizontal: 4.0),
                         height: 8.0,
-                        width: _currentPage == index ? 24.0 : 8.0, // Expanded active dot
+                        width: _currentPage == index
+                            ? 24.0
+                            : 8.0, // Expanded active dot
                         decoration: BoxDecoration(
                           color: _currentPage == index
                               ? Colors.orange
-                              : Colors.white.withOpacity(0.6),
+                              : Colors.white.withValues(alpha: 0.6),
                           borderRadius: BorderRadius.circular(4.0),
                         ),
                       ),
