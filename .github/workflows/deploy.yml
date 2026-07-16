@@ -28,7 +28,7 @@ jobs:
       - name: Build Web
         run: |
           flutter pub get
-          flutter build web --release
+          flutter build web --release --base-href "/"
 
       # Step 5: Deploy build/web folder to Cloudflare Pages
       - name: Lets Deploy

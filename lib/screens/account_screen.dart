@@ -20,6 +20,7 @@ import '../services/strike_service.dart';
 import '../models/strike_model.dart';
 import '../widgets/logout_confirmation_dialog.dart';
 import 'notification_screen.dart';
+import 'order_screen.dart';
 
 export 'notification_screen.dart' show NotificationScreen;
 
@@ -375,7 +376,12 @@ class AccountSettings extends StatelessWidget {
                 background: Colors.blue.shade50,
                 title: 'Order History',
                 subtitle: 'View your previous orders',
-                onTap: () {},
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const OrdersScreen(),
+                  ),
+                ),
               ),
 
               const Divider(height: 1),
