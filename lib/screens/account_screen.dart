@@ -89,7 +89,10 @@ class AccountScreen extends StatelessWidget {
                   children: [
                     const Text(
                       "What's your bite today?",
-                      style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        fontSize: 19,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     if (user != null)
                       StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
@@ -99,8 +102,11 @@ class AccountScreen extends StatelessWidget {
                             return const SizedBox.shrink();
                           }
                           final doc = snapshot.requireData;
-                          final percentage = StrikeService.extractStrikePercentage(doc);
-                          final displayStatus = displayStatusFromPercentage(percentage);
+                          final percentage =
+                              StrikeService.extractStrikePercentage(doc);
+                          final displayStatus = displayStatusFromPercentage(
+                            percentage,
+                          );
 
                           final Color textColor;
                           switch (displayStatus) {
@@ -376,12 +382,12 @@ class AccountSettings extends StatelessWidget {
                 background: Colors.blue.shade50,
                 title: 'Order History',
                 subtitle: 'View your previous orders',
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const OrdersScreen(),
-                  ),
-                ),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const OrdersScreen()),
+                  );
+                },
               ),
 
               const Divider(height: 1),

@@ -146,12 +146,6 @@ class _SearchBarScreenState extends State<SearchBarScreen> {
             decoration: InputDecoration(
               hintText: 'Search for food, tags, category...',
               hintStyle: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-              prefixIcon: Icon(
-                Icons.arrow_back,
-                color: Colors.black87,
-                size: 20,
-              ),
-
               suffixIcon: _searchQuery.isNotEmpty
                   ? IconButton(
                       icon: const Icon(

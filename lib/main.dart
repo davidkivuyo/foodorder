@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import 'firebase_msg.dart';
 import 'package:campusbite/navigation/router.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -25,18 +24,20 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   try {
-    await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
   } catch (e, stack) {
     debugPrint('Firebase init error: $e\n$stack');
     // Continue — app degrades gracefully if Firebase is unavailable.
   }
 
-  try {
+  /* try {
     await FirebaseMsg().initFCM();
   } catch (e, stack) {
     debugPrint('FCM init error (non-critical on web): $e\n$stack');
     // FCM is non-essential; the app must start regardless.
-  }
+  }*/
 
   usePathUrlStrategy();
   LicenseRegistry.addLicense(() async* {
@@ -81,4 +82,3 @@ class MyApp extends StatelessWidget {
     );
   }
 }
-
