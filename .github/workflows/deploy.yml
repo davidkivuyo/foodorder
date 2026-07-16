@@ -1,9 +1,9 @@
-name: Deploy Flutter Web to Firebase Hosting
+name: Deploy Flutter Web to Cloudflare Pages
 
 on:
   push:
     branches:
-      - main  # Or your release branch
+      - main  # Trigger build on pushes to the main branch
 
 jobs:
   deploy:
@@ -12,7 +12,7 @@ jobs:
       # Step 1: Checkout the code
       - uses: actions/checkout@v4
 
-      # Step 2: Set up Java
+      # Step 2: Set up Java (required by Flutter)
       - uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
@@ -28,12 +28,12 @@ jobs:
       - name: Build Web
         run: |
           flutter pub get
-          flutter build web
+          flutter build web --release --base-href "/"
 
-      # Step 5: Deploy build/web folder to Firebase Hosting
-      - name: Deploy to Firebase Hosting
-        uses: FirebaseExtended/action-hosting-deploy@v0
+      # Step 5: Deploy build/web folder to Cloudflare Pages
+      - name: Lets Deploy
+        uses: cloudflare/wrangler-action@v3
         with:
-          firebaseServiceAccount: "${{ secrets.FIREBASE_SERVICE_ACCOUNT_FOODORDER_8FFCF }}"
-          projectId: "foodorder-8ffcf"
-          channelId: live
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy build/web --project-name="foodorder"

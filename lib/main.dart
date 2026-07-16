@@ -12,21 +12,32 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'firebase_msg.dart';
 import 'package:campusbite/navigation/router.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_web_plugins/url_strategy.dart';
-import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  await FirebaseMsg().initFCM();
+
+  try {
+    await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  } catch (e, stack) {
+    debugPrint('Firebase init error: $e\n$stack');
+    // Continue — app degrades gracefully if Firebase is unavailable.
+  }
+
+  try {
+    await FirebaseMsg().initFCM();
+  } catch (e, stack) {
+    debugPrint('FCM init error (non-critical on web): $e\n$stack');
+    // FCM is non-essential; the app must start regardless.
+  }
+
   usePathUrlStrategy();
   LicenseRegistry.addLicense(() async* {
     yield const LicenseEntryWithLineBreaks(
@@ -71,139 +82,3 @@ class MyApp extends StatelessWidget {
   }
 }
 
-class WelcomeScreen extends StatelessWidget {
-  const WelcomeScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          // Background Image
-          CachedNetworkImage(
-            imageUrl:
-                "https://res.cloudinary.com/nrwglbxh/image/upload/v1783527034/screen_lyxagp.png",
-            fit: BoxFit.cover,
-          ),
-
-          // Dark Overlay
-          Container(color: Colors.black.withValues(alpha: 0.35)),
-
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
-              child: Column(
-                children: [
-                  /// Logo
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Text(
-                        "CampusBite",
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 26,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  const Spacer(),
-
-                  /// Title
-                  const Text(
-                    "Ready for your next\nbite?",
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 42,
-                      height: 1.15,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-
-                  const SizedBox(height: 18),
-
-                  /// Subtitle
-                  const Text(
-                    "Order from your favorite campus\nspots and skip the cafeteria queues\nforever.",
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Colors.white70,
-                      fontSize: 18,
-                      height: 1.5,
-                    ),
-                  ),
-
-                  const SizedBox(height: 40),
-
-                  /// Start Ordering Button
-                  SizedBox(
-                    width: double.infinity,
-                    height: 60,
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xff2E7D32),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(18),
-                        ),
-                        elevation: 0,
-                      ),
-                      onPressed: () => context.push('/register'),
-                      child: const Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            "Start Ordering",
-                            style: TextStyle(
-                              fontSize: 22,
-                              color: Colors.white,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          SizedBox(width: 10),
-                          Icon(
-                            Icons.arrow_forward,
-                            color: Colors.white,
-                            size: 26,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 24),
-
-                  /// Sign In
-                  GestureDetector(
-                    onTap: () => context.push('/login'),
-                    child: RichText(
-                      text: const TextSpan(
-                        style: TextStyle(color: Colors.white70, fontSize: 18),
-                        children: [
-                          TextSpan(text: "Already have an account? "),
-                          TextSpan(
-                            text: "Sign In",
-                            style: TextStyle(
-                              color: Colors.white,
-                              decoration: TextDecoration.underline,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 12),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}

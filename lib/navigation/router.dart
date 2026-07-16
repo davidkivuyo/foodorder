@@ -20,7 +20,7 @@ import 'package:campusbite/screens/help_support.dart';
 import 'package:campusbite/screens/terms.dart';
 import 'package:campusbite/screens/register_screen.dart';
 import 'package:campusbite/screens/login_screen.dart';
-import 'package:campusbite/main.dart'; // WelcomeScreen
+import 'package:campusbite/screens/welcome_screen.dart';
 
 final AuthNotifier _authNotifier = AuthNotifier();
 
