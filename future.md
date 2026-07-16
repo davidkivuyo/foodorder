@@ -19,6 +19,7 @@
 // If cafe is 'offcampus', show 'OFF-CAMPUS', otherwise show 'CAFE(X)'
 * item.cafe.toLowerCase() == 'offcampus' ? '${item.rating} • offcampus' : '${item.rating} • CAFE(${item.cafe})',
 
+3. create a new branch to add restaurants other than university ones
 
 # Updated CampusBite Roadmap
 
