@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import 'package:flutter/foundation.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
 
 class FirebaseMsg {
   final FirebaseMessaging msgService = FirebaseMessaging.instance;
@@ -22,13 +22,13 @@ class FirebaseMsg {
   Future<void> initFCM() async {
     await msgService.requestPermission();
 
-    String? token = await msgService.getToken();
-    debugPrint("FCM Token: $token");
+    final String? token = await msgService.getToken();
+    debugPrint('FCM Token: $token');
 
     FirebaseMessaging.onBackgroundMessage(handleNotification);
 
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      debugPrint("Foreground message received");
+      debugPrint('Foreground message received');
       handleNotification(message);
     });
   }
@@ -38,6 +38,6 @@ class FirebaseMsg {
 Future<void> handleNotification(RemoteMessage message) async {
   await Firebase.initializeApp();
 
-  debugPrint("Title: ${message.notification?.title}");
-  debugPrint("Body: ${message.notification?.body}");
+  debugPrint('Title: ${message.notification?.title}');
+  debugPrint('Body: ${message.notification?.body}');
 }
