@@ -13,6 +13,7 @@
 // limitations under the License.
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'firebase_msg.dart';
 import 'package:campusbite/navigation/router.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -25,6 +26,7 @@ import 'firebase_options.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  await FirebaseMsg().initFCM();
   usePathUrlStrategy();
   LicenseRegistry.addLicense(() async* {
     yield const LicenseEntryWithLineBreaks(
