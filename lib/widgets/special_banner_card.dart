@@ -111,7 +111,7 @@ class _SpecialBannerCardState extends State<SpecialBannerCard> {
               // Page Dot Indicators
               if (widget.imageUrls.length > 1)
                 Padding(
-                  padding: const EdgeInsets.bottom(10.0),
+                  padding: const EdgeInsets.only(bottom: 10.0),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: List.generate(
