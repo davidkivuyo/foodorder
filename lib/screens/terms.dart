@@ -43,7 +43,7 @@ These Terms govern your use of the Campus Bite
 • In alignment with cafeteria administrative guidelines, uncollected food represents material loss. Users agree to collect their food within given notified time calculated by their current distance from the cafe, after receiving the "Ready for Collection" status. Abandoned bookings will result in immediate suspension.
 
 3. Data privacy and Protection.
-• The app will request While Using App location permission only after you press “Place Order”. This is used only to calculate the distance between the cafe and the user.
+• The app will request your device location While Using App location permission only after you press “Place Order”. This is used only to calculate the distance between the cafe and the user.
 • CampusBite uses your location once per order to estimate the pickup time. It doesnot store the location but rather the distance between the device and the cafe needed for that order and does not track your movement or maintain any kind of location data or history.
 • This data will be used to calculate the estimated time for pickup when order is ready to be fair and avoid delays. Consider making sure your phone has the correct time settings to reduce inaccuracies.
 • If you ever want to redact your data and information, no need to worry just contact the support team. We care your privacy.

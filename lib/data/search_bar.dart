@@ -127,10 +127,7 @@ class _SearchBarScreenState extends State<SearchBarScreen> {
     return Scaffold(
       appBar: AppBar(
         titleSpacing: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black87),
-          onPressed: () => Navigator.maybePop(context),
-        ),
+
         title: Container(
           margin: const EdgeInsets.only(right: 16),
           height: 44,
@@ -149,7 +146,12 @@ class _SearchBarScreenState extends State<SearchBarScreen> {
             decoration: InputDecoration(
               hintText: 'Search for food, tags, category...',
               hintStyle: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-              prefixIcon: Icon(Icons.search, color: Colors.black, size: 20),
+              prefixIcon: Icon(
+                Icons.arrow_back,
+                color: Colors.black87,
+                size: 20,
+              ),
+
               suffixIcon: _searchQuery.isNotEmpty
                   ? IconButton(
                       icon: const Icon(
