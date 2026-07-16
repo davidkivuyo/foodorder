@@ -23,6 +23,8 @@
 
 4. Order History and Reorder: One-tap reorder from previous purchases — high-impact retention feature.
 
+5.Performance Analytics: Daily/weekly revenue, top-selling dishes, peak order hours, average prep time, customer rating trends.
+
 # Updated CampusBite Roadmap
 
 ✔ Phase 0
@@ -41,18 +43,18 @@ Pickup Deadline Engine
 
 ↓
 
-▶ Phase 4
-Distance-Based Pickup Windows   ← CURRENT
+✔Phase 4
+Distance-Based Pickup Windows
 
 ↓
 
-Phase 5
+✔Phase 5
 Automatic Strike Engine
 
 ↓
 
 Phase 6
-Notifications
+Notifications  ← CURRENT
 
 ↓
 
