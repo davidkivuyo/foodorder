@@ -26,8 +26,10 @@ A Flutter mobile application that lets university students browse the campus caf
 - [App Navigation](#app-navigation)
 - [Key Features](#key-features)
 - [Search System](#search-system)
+- [Distance-Based Pickup Deadline & Location-Based Calculations](#distance-based-pickup-deadline--location-based-calculations)
 - [Order Lifecycle](#order-lifecycle)
-- [Student Discipline System](#student-discipline-system)
+- [Student Discipline & Automatic Strike Engine](#student-discipline--automatic-strike-engine)
+- [Production Notification Platform](#production-notification-platform)
 - [Environment & Secrets](#environment--secrets)
 - [Running Tests](#running-tests)
 - [Contributing](#contributing)
@@ -393,17 +395,26 @@ firebase functions:secrets:set CLOUDINARY_API_SECRET
 
 | Field | Type | Description |
 |---|---|---|
+| `orderId` | string | Friendly generated order ID (e.g. `CB-1024`) |
 | `userId` | string | Student's UID |
-| `items` | array | List of ordered items (JSON) |
+| `userName` | string | Student's display name |
+| `items` | array | List of ordered items (JSON representation of `CartItem`) |
 | `totalPrice` | number | Order total in TZS |
-| `status` | string | `pending` → `accepted` → `preparing` → `ready` → `collected` |
-| `cafe` | string | Selected cafe |
-| `createdAt` | timestamp | When the order was placed |
-| `readyAt` | timestamp | Set by Cloud Function when status → ready |
-| `pickupDeadline` | timestamp | readyAt + 20 minutes (set by Cloud Function) |
-| `pickupWindowMinutes` | number | 20 (set by Cloud Function) |
+| `status` | string | `pending` → `accepted` → `preparing` → `ready` → `collected` \| `no_show` |
+| `cafe` | string | Selected cafe name |
+| `cafeId` | string | Selected cafe ID |
+| `cafeLocation` | geopoint | Geolocation coordinates of the cafe |
+| `distanceMeters` | number | Walking distance in meters calculated client-side |
+| `distanceCalculated` | boolean | True if walking distance was calculated at checkout |
+| `pickupWindowMinutes` | number | Dynamic pickup window in minutes (10, 15, 20, 25) |
+| `readyAt` | timestamp | Set by Cloud Function when status transitions to `ready` |
+| `pickupDeadline` | timestamp | `readyAt` + `pickupWindowMinutes` (set by Cloud Function) |
 | `deadlineStatus` | string | `NOT_READY`, `ACTIVE`, `COLLECTED`, `EXPIRED` |
-| `updatedAt` | timestamp | Last update |
+| `strikeProcessed` | boolean | True if the strike engine has processed this order |
+| `strikeIssuedAt` | timestamp | Time when strike was processed / issued |
+| `expiredAt` | timestamp | Time when no-show was processed |
+| `createdAt` | timestamp | When the order was placed |
+| `updatedAt` | timestamp | Last update timestamp |
 
 ### `users/{userId}`
 
@@ -411,10 +422,12 @@ firebase functions:secrets:set CLOUDINARY_API_SECRET
 |---|---|---|
 | `fullName` | string | Student's full name |
 | `email` | string | Email address |
-| `role` | string | the role |
-| `strikeCount` | number | Current discipline strikes |
-| `isSuspended` | boolean | Whether the student is suspended |
+| `role` | string | Role of the user (`student` or `admin`) |
+| `strikeCount` | number | Current number of active strikes (0, 1, or 2) |
+| `accountStatus` | string | Status of account (`ACTIVE` or `SUSPENDED`) |
+| `lastPardonAt` | timestamp | Timestamp of last strike pardon |
 | `createdAt` | timestamp | Registration date |
+| `updatedAt` | timestamp | Last document update timestamp |
 
 ### `users/{userId}/cart/{itemId}` (subcollection)
 
@@ -424,14 +437,47 @@ firebase functions:secrets:set CLOUDINARY_API_SECRET
 | `quantity` | number | Number of this item in cart |
 | `cafe` | string | Selected cafe |
 
+### `notifications/{docId}`
+
+| Field | Type | Description |
+|---|---|---|
+| `recipientId` | string | UID of target recipient |
+| `recipientRole` | string | Role of target recipient (`student` or `admin`) |
+| `type` | string | Type of notification enum (`ORDER_ACCEPTED`, `ORDER_PREPARING`, `ORDER_READY`, `PICKUP_REMINDER`, `ORDER_NO_SHOW`, `STRIKE_ISSUED`, `STRIKE_REMOVED`, `ACCOUNT_SUSPENDED`, `ACCOUNT_REACTIVATED`, `NEW_ORDER`) |
+| `title` | string | Human-readable short title |
+| `message` | string | Human-readable notification body |
+| `orderId` | string | Optional. Associated order ID (null if not applicable) |
+| `eventId` | string | Unique business event ID (e.g. `ORDER_READY_order123`), used for duplicate prevention |
+| `deepLink` | string | Target route path for in-app navigation (e.g., `/orders/{orderId}`) |
+| `metadata` | map | Optional key-value metadata object |
+| `read` | boolean | Read status flag (default `false`) |
+| `readAt` | timestamp | Timestamp when marked read (null if unread) |
+| `deleted` | boolean | Soft delete status flag (default `false`) |
+| `deletedAt` | timestamp | Timestamp when soft deleted (null if not deleted) |
+| `createdAt` | timestamp | Server timestamp when notification was created |
+| `createdBy` | string | Entity that created the notification (`system`, `admin`) |
+
+### `audit_logs/{docId}`
+
+| Field | Type | Description |
+|---|---|---|
+| `action` | string | Action performed (`automatic_no_show`, `pardon`, `reset`, `reactivate`, `cloudinary_image_deleted`) |
+| `studentId` | string | Student UID involved in the strike action |
+| `orderId` | string | Associated order ID (if any) |
+| `adminId` | string | Admin UID who performed the action (or `'system'` for automated engine) |
+| `previousStrikeCount` | number | Student strike count prior to action |
+| `newStrikeCount` | number | Student strike count after action |
+| `previousStrike` | number | Student strike percentage prior to action (legacy support) |
+| `newStrike` | number | Student strike percentage after action (legacy support) |
+| `reason` | string | Reason provided for the action |
+| `timestamp` | timestamp | Server timestamp of the log entry |
+
 ### Other Collections
 
 - **`categories`** — `{ name, order }`
-- **`cafes`** — `{ name, location }`
+- **`cafes`** — `{ name, location, geopoint }`
 - **`section`** — `{ name }`
 - **`reviews`** — `{ userId, text, rating, ... }`
-- **`notifications`** — `{ userId, title, body, ... }`
-- **`audit_logs`** — `{ action, userId, timestamp, ... }`
 
 ---
 
@@ -474,13 +520,21 @@ The student app uses `go_router` with authentication-aware redirects:
 ## Key Features
 
 ### For Students
-- **Registration & Login** — Email/password via Firebase Auth
-- **Browse Menu** — Real-time Firestore stream of available food items
-- **Categories** — Filter by Breakfast, Lunch, Dinner, Teasers, Drinks
-- **Search** — Prefix-based Firestore search with 300ms debounce and in-memory caching
-- **Cart** — Add items, select cafe, view cart, checkout
-- **Orders** — Track order status in real-time with countdown timers
-- **Account** — View profile, strike status, notifications, help & support
+- **Registration & Login** — Email/password authentication via Firebase Auth.
+- **Browse Menu** — Real-time Firestore stream of available food items sorted by category.
+- **Categories** — Quick navigation to browse food items by categories (e.g. Breakfast, Lunch, Dinner, Teasers, Drinks).
+- **Search** — Fast, prefix-based Firestore search with 300ms debounce and in-memory caching.
+- **Cart & Checkout** — Add items, choose target cafe, and review total amount before placing orders.
+- **Distance-Based Pickup Window** — Automatically calculates walking distance to target cafe using GPS/Geolocator and requests corresponding pickup time window at checkout (from 10 to 25 minutes) to ensure freshness.
+- **Orders & Countdown Timers** — Track active order statuses and see real-time pickup countdown timers synced with server-enforced deadlines.
+- **Student Discipline Card** — Transparent in-app view of current strikes and suspension status.
+- **Notification Center** — In-app notification feed supporting real-time alerts for order status changes, pickup reminders, strike actions, and account suspension events.
+
+### For Cafeteria Admins
+- **New Order Alerts** — Automatic notification of incoming student orders in real time.
+- **Order Flow Manager** — Control order stages from pending, accepted, preparing, to ready for collection.
+- **Automatic Strike Engine** — Automated detection of missed pickup deadlines that flags no-shows, issues strikes, and suspends repeat offenders.
+- **Admin Pardon/Reactivation** — Transactional tools to pardon strikes, reset counts, and lift user suspensions, fully logged via audit trails.
 
 ---
 
@@ -504,25 +558,29 @@ The search feature uses a **prefix-based array-contains** strategy for Firestore
 
 ---
 
-## location based calculation
+## Distance-Based Pickup Deadline & Location-Based Calculations
 
-0–250 metres
+To minimize food waste from abandoned orders while keeping pickup schedules fair for students, CampusBite calculates a dynamic pickup window based on the student's walking distance to the cafeteria at the moment they checkout:
 
-10 minutes
+1. **GPS Distance Calculation:** 
+   When the student clicks "Place Order", the app requests temporary, single-use access to device location. It computes the straight-line walking distance (in meters) between the student's coordinates and the selected cafe's geographic coordinates using the `Geolocator.distanceBetween` API.
+   
+2. **Dynamic Pickup Windows:**
+   The calculated distance maps to specific pickup windows via the `PickupWindowService`:
+   - **0 – 250 meters:** 10-minute pickup window
+   - **251 – 600 meters:** 15-minute pickup window
+   - **601 – 1200 meters:** 20-minute pickup window
+   - **Above 1200 meters:** 25-minute pickup window
 
-250–600 metres
+3. **Privacy Protections:**
+   To protect student privacy, the app **never** uploads, stores, or transmits precise GPS coordinates or location history to Firestore or any external server. Location data is calculated strictly client-side. Only the resulting distance (in meters) and the pickup window (in minutes) are persisted inside the order document under `distanceMeters` and `pickupWindowMinutes`.
 
-15 minutes
+4. **Deadline Enforcement:**
+   When a cafeteria admin marks the order's status as `"ready"`, the `onOrderStatusChanged` Cloud Function reads the stored `pickupWindowMinutes` from the order document and atomically calculates the deadline:
+   $$\text{pickupDeadline} = \text{readyAt} + (\text{pickupWindowMinutes} \times 60 \text{ seconds})$$
+   The function updates `pickupDeadline` and sets `deadlineStatus` to `"ACTIVE"`. If `pickupWindowMinutes` is missing, it defaults to a 20-minute fallback.
 
-600–1200 metres
-
-20 minutes
-
-Above 1200 metres
-
-25 minutes
-
-----
+---
 
 ## Order Lifecycle
 
@@ -558,13 +616,75 @@ Student places order
 
 ---
 
-## Student Discipline System
+## Student Discipline & Automatic Strike Engine
 
-- Students who fail to collect orders receive **strikes**
-- Strike data is stored on the user document (`strikeCount`, `isSuspended`)
-- The `StrikeService` manages strike issuance and suspension logic
-- Suspended students cannot place new orders
-- Admins can view and manage strikes via the `IntegrityScreen` in the admin app
+CampusBite enforces order collection accountability to prevent food waste and cafeteria congestion using an automated, transaction-safe discipline system:
+
+### 1. The Automatic Strike Engine (`processExpiredPickups`)
+- **Execution:** A scheduled Cloud Function runs **every 5 minutes** in the background.
+- **Scanning:** It queries all active orders with `status == "ready"` and `deadlineStatus == "ACTIVE"` where the computed `pickupDeadline` is less than or equal to the current time.
+- **Transactional Updates:** For each expired order, the function executes a Firestore transaction that atomically:
+  1. Sets order `status = "no_show"` and `deadlineStatus = "EXPIRED"`.
+  2. Sets order `strikeProcessed = true` and logs the timestamp in `strikeIssuedAt`.
+  3. Increments the student's user profile `strikeCount` by 1 (capped at a maximum of 2).
+  4. Automatically changes the student's `accountStatus` to `"SUSPENDED"` if `strikeCount` reaches 2.
+  5. Creates an audit log in the `audit_logs` collection detailing the automatic no-show action, the order ID, the student ID, the previous/new strike counts, and the reason.
+- **Student Notifications:** After the transaction successfully commits, the function publishes two student notifications:
+  - An `ORDER_NO_SHOW` notification informing them of the missed pickup and issued strike.
+  - An `ACCOUNT_SUSPENDED` notification if their strike count has reached the suspension threshold.
+
+### 2. Suspension Enforcement
+When a student's account is suspended (`strikeCount >= 2` or `accountStatus == "SUSPENDED"`):
+- The `isAccountSuspended()` check in `CartService` returns `true`.
+- The student is prevented from placing new orders or adding items to their cart.
+- The `StrikeStatusCard` displays a red suspension banner in the Account Screen.
+
+### 3. Administrative Actions & Pardons (`StrikeService`)
+Cafeteria administrators can manage student strikes in the Admin App via the `IntegrityScreen`. These actions run on atomic Firestore transactions:
+- **Pardon Strike:** Decrements `strikeCount` by 1 (never below 0). If the count falls below 2, the account status is automatically restored to `"ACTIVE"`. It logs the action to `audit_logs` and sends a `STRIKE_REMOVED` notification.
+- **Reset Strikes:** Resets the student's `strikeCount` to 0 and updates the status to `"ACTIVE"`. It logs a `"reset"` action to `audit_logs`.
+- **Reactivate Account:** Direct override that resets `strikeCount` to 0 and restores status to `"ACTIVE"`, logging a `"reactivate"` action and triggering an `ACCOUNT_REACTIVATED` notification.
+
+---
+
+## Production Notification Platform
+
+CampusBite features a scalable, production-ready notification platform that decouples notification delivery from core business logic.
+
+### 1. Architectural Flow
+```
+Business Event (Order Placed, Marked Ready, Strike Issued, etc.)
+                   │
+                   ▼
+      NotificationService.dart
+                   │
+        (Checks Event ID for Dupes)
+                   │
+                   ▼
+    Firestore "notifications" Collection
+         │                       │
+         ▼                       ▼
+   Student App Stream      Admin App Stream
+   (Real-time Listeners)   (Real-time Listeners)
+         │                       │
+         ▼                       ▼
+  Deep-link Nav on Tap    Deep-link Nav on Tap
+         │
+         ▼
+  (Future) FCM Push Delivery
+```
+
+### 2. Key Features
+- **Duplicate Prevention (Idempotency):** Every business event generates a unique `eventId` (e.g., `ORDER_READY_order123`, `AUTO_NO_SHOW_studentId`). The `NotificationService` queries for existing notifications with this event ID and skips creation if found, ensuring notifications are written exactly once.
+- **Decoupled Logic:** The notification layer only reacts to business events. It never drives, modifies, or blocks core business logic.
+- **Future-Proof FCM Abstraction:** The delivery interface is fully abstracted within `NotificationService` so that Firebase Cloud Messaging (FCM) can be added in a future phase without modifying widgets or business service files.
+- **Real-Time Streams:** The client apps subscribe only to documents where `recipientId == currentUser.uid` AND `recipientRole == "student" | "admin"` AND `deleted == false` ordered by `createdAt DESC` with a query limit of 50. This avoids collection scans.
+- **Read & Delete Status:**
+  - **Read Single:** Updates `read = true` and `readAt = serverTimestamp()`.
+  - **Mark All Read:** Performs a batch write updating only currently unread notifications to avoid rewriting already-read documents.
+  - **Soft Delete:** Sets `deleted = true` and `deletedAt = serverTimestamp()`. Soft-deleted notifications are immediately filtered out of app UI streams.
+  - **Auto-Cleanup:** A scheduled Cloud Function (`cleanupDeletedNotifications`) runs once every 24 hours to permanently delete soft-deleted notifications older than 180 days.
+- **Deep Linking:** Notifications include a `deepLink` string (e.g. `/orders/{orderId}`, `/account`, `/notifications`, `/strike-history`). Clicking a notification navigates the user directly to the target screen.
 
 ---
 
@@ -578,7 +698,7 @@ Student places order
 
 The admin app also stores Cloudinary upload config in `lib/constants/app_config.dart` (for the unsigned upload preset — not a secret).
 
-> **Never commit** `google-services.json`, `firebase_options.dart` with real keys, or `.env` files to public repos. Add them to `.gitignore`.
+> although we commited and it is safe to do that but **Never commit** `google-services.json`, `firebase_options.dart` with real keys, or `.env` files to public repos. Add them to `.gitignore`.
 
 ---
 

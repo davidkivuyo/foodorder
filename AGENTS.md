@@ -136,97 +136,29 @@ After completing a feature:
 
 # Current Phase
 
-PHASE 6
+PHASE 7
 
 # TASK
 
-Implement Phase 6 of CampusBite.
+Implement Phase 7 of CampusBite.
 
-This phase introduces automatic pickup deadline enforcement and the automatic strike engine.
+This phase introduces the production notification platform.
 
-The implementation must be production-ready.
+The implementation must be scalable, production-ready, reusable and future-proof.
 
-The implementation must prioritise:
+Notifications must react to business events.
 
-• Data consistency
+Notifications must never control business logic.
 
-• Privacy
+Business logic remains completely independent from notifications.
 
-• Minimal Firestore reads
-
-• Minimal Firestore writes
-
-• Minimal Cloud Function executions
-
-Also now Instead of storing strikePercentage in Firestore, store only:
-
-strikeCount
-
-accountStatus
-
-Then derive the percentage in the app:
-
-final strikePercentage = strikeCount * 50;
-
-This will have several advantages:
-
-It eliminates one field that can become inconsistent.
-
-It reduces writes because only strikeCount changes.
-
-It simplifies transactions.
-
-It ensures there's a single source of truth.
-
-Your UI can still display:
-
-Strike 1 → 50%
-
-Strike 2 → 100%
-
-Do not modify completed features.
-
-Do not introduce unnecessary complexity.
+The notification platform must be designed so Firebase Cloud Messaging (FCM) can be added later without modifying existing business logic.
 
 ---
 
-# OBJECTIVE
+# EXISTING SYSTEM
 
-When a student fails to collect an order before the pickup deadline:
-
-Automatically:
-
-1.
-
-Mark the order as:
-
-NO_SHOW
-
-2.
-
-Issue exactly one strike.
-
-3.
-
-Update the student's strike information.
-
-4.
-
-Suspend the account after two strikes.
-
-5.
-
-Create an immutable audit log.
-
-The entire operation must be atomic.
-
-No partial updates are allowed.
-
----
-
-# EXISTING FEATURES
-
-Already completed:
+Already implemented:
 
 ✓ Student App
 
@@ -234,489 +166,651 @@ Already completed:
 
 ✓ Authentication
 
-✓ Food CRUD
-
-✓ Cart
+✓ Firestore
 
 ✓ Orders
 
-✓ Ready workflow
+✓ Order Status Workflow
 
-✓ Pickup deadline calculation
+✓ Distance-Based Pickup Deadlines
 
-✓ Distance-aware pickup windows
+✓ Automatic No-Show Detection
 
-✓ Strike UI
+✓ Automatic Strike Engine
 
-✓ Admin pardon
+✓ Admin Pardon
 
-Do not modify these features.
+✓ Account Suspension
+
+Do NOT modify these features.
+
+---
+
+# OBJECTIVE
+
+Create a reusable notification platform that serves:
+
+• Students
+
+• Cafe Admins
+
+using the existing Firestore collection:
+
+notifications
+
+Do NOT create nested notification collections.
+
+Reuse the existing collection.
 
 ---
 
 # ARCHITECTURE
 
-Use ONE scheduled Cloud Function.
+Business Event
 
-Schedule:
+↓
 
-Every 5 minutes.
+NotificationService
 
-No additional scheduled functions.
+↓
 
-No polling clients.
+Firestore notifications collection
 
-No listeners.
+↓
 
----
+Student/Admin Apps
 
-# QUERY
+↓
 
-Each execution should query ONLY:
+(Future)
 
-orders
+Firebase Cloud Messaging
 
-WHERE
+Business logic must never write directly into Firestore notifications.
 
-status == READY
-
-AND
-
-deadlineStatus == ACTIVE
-
-AND
-
-pickupDeadline <= current server time
-
-This query must use Firestore composite indexes.
-
-Never scan the entire orders collection.
+Every notification must be created through NotificationService.
 
 ---
 
-# PROCESSING
+# NOTIFICATION SERVICE
 
-For every expired order:
+Create:
 
-Run ONE Firestore transaction.
+notification_service.dart
 
-Do NOT use independent writes.
+Responsibilities:
 
-Do NOT update the order before updating the user.
+Create notification
 
-Everything must succeed together.
+Prevent duplicates
 
-If anything fails:
+Mark notification as read
 
-Nothing should be committed.
+Mark all notifications as read
 
----
+Soft delete notification
 
-# TRANSACTION STEPS
+Support future FCM integration
 
-Inside the transaction:
+No widgets may construct notification documents.
 
-Step 1
-
-Read the order document.
-
-Immediately verify:
-
-status == READY
-
-deadlineStatus == ACTIVE
-
-strikeProcessed == false
-
-If any condition fails:
-
-Abort immediately.
-
-Do nothing.
+Cloud Functions and backend services should call NotificationService only.
 
 ---
 
-Step 2
+# FIRESTORE COLLECTION
 
-Read ONLY:
-
-users/{studentId}
-
-No other reads.
-
-Do NOT read:
-
-food_items
-
-cafes
+Use the existing collection:
 
 notifications
 
-cart
+One document per notification.
 
-Everything required already exists.
+Document IDs:
 
----
-
-Step 3
-
-Calculate:
-
-newStrikeCount
-
-Never exceed:
-
-2
-
-Calculate:
-
-strikePercentage = strikeCount × 50
-
-Determine:
-
-accountStatus
-
-Rules:
-
-0
-
-ACTIVE
-
-1
-
-ACTIVE
-
-WARNING shown in UI
-
-2
-
-SUSPENDED
+Auto-generated.
 
 ---
 
-Step 4
+# DOCUMENT STRUCTURE
 
-Update order.
+Each notification document must contain:
 
-Fields:
+recipientId
 
-status = NO_SHOW
+recipientRole
 
-deadlineStatus = EXPIRED
+type
 
-expiredAt = server timestamp
+title
 
-strikeProcessed = true
+message
 
-strikeIssuedAt = server timestamp
+orderId
 
-updatedAt = server timestamp
+eventId
 
-Nothing else.
+deepLink
 
-Never rewrite:
+metadata
 
-items
+read
+
+readAt
+
+deleted
+
+deletedAt
+
+createdAt
+
+createdBy
+
+---
+
+# FIELD DEFINITIONS
+
+recipientId
+
+UID of recipient.
+
+recipientRole
+
+Allowed values:
+
+student
+
+admin
+
+type
+
+Notification type enum.
+
+title
+
+Short title.
+
+message
+
+Human-readable message.
+
+orderId
+
+Optional.
+
+Null when not applicable.
+
+eventId
+
+Unique business event identifier.
+
+Used for duplicate prevention.
+
+deepLink
+
+App navigation target.
+
+Examples:
+
+/orders/{orderId}
+
+/account
+
+/notifications
+
+/strike-history
+
+metadata
+
+Optional structured object.
+
+Examples:
+
+strikeCount
+
+cafeName
 
 pickupDeadline
 
 distanceMeters
 
-pickupWindowMinutes
+Never store sensitive personal information.
 
-price
+read
 
-student information
+Boolean.
 
----
+Default:
 
-Step 5
+false
 
-Update user.
+readAt
 
-Fields:
+Server timestamp.
 
-strikeCount
+Null until read.
 
-accountStatus
+deleted
 
-updatedAt
+Boolean.
 
-Nothing else.
+Default:
 
----
+false
 
-Step 6
+deletedAt
 
-Create one audit log.
+Server timestamp.
 
-Collection:
+Null until deleted.
 
-audit_logs
+createdAt
 
-Fields:
+Server timestamp.
 
-action = automatic_no_show
+createdBy
 
-orderId
+Values:
 
-studentId
+system
 
-previousStrikeCount
+admin
 
-newStrikeCount
-
-performedBy = system
-
-timestamp
-
-reason = pickup_deadline_expired
-
-The audit log must never be modified afterwards.
+future
 
 ---
 
-Step 7
+# DUPLICATE PROTECTION
 
-Commit transaction.
+Every notification must contain:
 
-Everything succeeds together.
+eventId
 
-If one write fails:
+Examples:
 
-Everything rolls back automatically.
+ORDER_READY_order123
 
----
+ORDER_ACCEPTED_order123
 
-# IDEMPOTENCY
+ORDER_PREPARING_order123
 
-The implementation must be completely idempotent.
+PICKUP_REMINDER_order123
 
-Running the scheduled function multiple times must never:
+ORDER_NO_SHOW_order123
 
-Issue two strikes.
+STRIKE_ISSUED_order123
 
-Suspend twice.
+STRIKE_REMOVED_user123_strike1
 
-Duplicate audit logs.
+ACCOUNT_SUSPENDED_user123
 
-Use:
+ACCOUNT_REACTIVATED_user123
 
-strikeProcessed
+NEW_ORDER_order123
 
-as the processing lock.
+Before creating a notification:
 
-If:
+NotificationService must check for an existing notification with the same eventId.
 
-strikeProcessed == true
+If found:
 
-Exit immediately.
+Skip creation.
 
----
-
-# FIRESTORE READ OPTIMISATION
-
-Target:
-
-One query
-
-↓
-
-One order read
-
-↓
-
-One user read
-
-↓
-
-Transaction
-
-↓
-
-Commit
-
-Nothing else.
-
-Never query users collection.
-
-Never query orders collection twice.
-
-Never perform nested queries.
+Notification creation must be idempotent.
 
 ---
 
-# FIRESTORE WRITE OPTIMISATION
+# NOTIFICATION TYPES
 
-Transaction updates:
+Student:
 
-One order
+ORDER_ACCEPTED
 
-One user
+ORDER_PREPARING
 
-One audit log
+ORDER_READY
 
-Only changed fields.
+PICKUP_REMINDER
 
-Never overwrite unchanged values.
+ORDER_NO_SHOW
 
----
+STRIKE_ISSUED
 
-# STUDENT APP
+STRIKE_REMOVED
 
-When order changes to:
+ACCOUNT_SUSPENDED
 
-NO_SHOW
+ACCOUNT_REACTIVATED
 
-Display:
+Admin:
 
-Order Expired
+NEW_ORDER
 
-Strike Issued
+Use enums/constants.
 
-If strikeCount == 1
-
-Display:
-
-Warning
-
-50%
-
-If strikeCount == 2
-
-Display:
-
-Account Suspended
-
-Disable:
-
-Place Order
-
-Students may still:
-
-Browse food
-
-View previous orders
-
-View strikes
-
-Log out
+Never hardcode strings.
 
 ---
 
-# ADMIN APP
+# BUSINESS EVENT TRIGGERS
 
-Admins should immediately see:
+Generate notifications ONLY when business state changes.
 
-NO_SHOW badge
+Student:
+
+Order accepted
+
+Order preparing
+
+Order ready
+
+Pickup reminder
+
+Automatic no-show
 
 Strike issued
 
-Strike count
+Strike removed
 
-Suspended status
+Account suspended
 
-Admins may:
+Account reactivated
 
-Pardon students
+Admin:
 
-Remove strikes
+Student places new order
 
-Restore account
-
-Do not change existing pardon workflow.
+Notifications must never trigger business actions.
 
 ---
 
-# PARDON
+# PICKUP REMINDER
 
-Existing pardon feature remains.
+When an order transitions to READY:
 
-Decrease:
+Schedule exactly ONE reminder.
 
-strikeCount
+Reminder time:
 
-Never below zero.
+5 minutes before pickupDeadline.
 
-Automatically recalculate:
+If the order is collected before the reminder:
 
-strikePercentage
+Cancel the reminder.
 
-Automatically restore:
+If the order becomes NO_SHOW before the reminder:
 
-accountStatus = ACTIVE
+Cancel the reminder.
 
-when strikeCount < 2.
+Never send reminders for completed or expired orders.
 
-Create:
+---
 
-audit_logs
+# FIRESTORE QUERIES
 
-action = admin_pardon
+Student App:
+
+recipientId == currentUser.uid
+
+recipientRole == student
+
+deleted == false
+
+Order by:
+
+createdAt DESC
+
+Limit:
+
+50
+
+Admin App:
+
+recipientId == currentAdmin.uid
+
+recipientRole == admin
+
+deleted == false
+
+Order by:
+
+createdAt DESC
+
+Limit:
+
+50
+
+Never download notifications for other users.
+
+Never perform collection scans.
+
+---
+
+# FIRESTORE INDEXES
+
+Create composite indexes for:
+
+recipientId
+
+recipientRole
+
+deleted
+
+createdAt DESC
+
+Indexes must support all notification queries efficiently.
+
+---
+
+# REAL-TIME LISTENERS
+
+Student App:
+
+Listen ONLY to:
+
+notifications
+
+filtered by:
+
+recipientId
+
+recipientRole
+
+deleted == false
+
+Admin App:
+
+Same pattern.
+
+Never subscribe to the entire notifications collection.
+
+---
+
+# READ STATUS
+
+Opening a notification:
+
+Update ONLY:
+
+read = true
+
+readAt = serverTimestamp()
+
+Never rewrite the document.
+
+---
+
+# MARK ALL READ
+
+Batch update:
+
+Unread notifications only.
+
+Do not rewrite already-read notifications.
+
+---
+
+# SOFT DELETE
+
+Never permanently delete notifications immediately.
+
+Instead:
+
+deleted = true
+
+deletedAt = serverTimestamp()
+
+Apps ignore deleted notifications.
+
+---
+
+# CLEANUP
+
+Create one scheduled Cloud Function.
+
+Runs:
+
+Once every 24 hours.
+
+Deletes notifications:
+
+Older than 180 days
+
+AND
+
+deleted == true
+
+Never delete active notifications.
+
+---
+
+# DEEP LINKS
+
+Each notification contains:
+
+deepLink
+
+Examples:
+
+/orders/{orderId}
+
+/account
+
+/notifications
+
+/strike-history
+
+Notification tap should navigate directly.
+
+Navigation logic must remain outside NotificationService.
 
 ---
 
 # SECURITY
 
-Students cannot modify:
+Students:
 
-status
+Read only their own notifications.
 
-deadlineStatus
+Update only:
 
-strikeProcessed
+read
 
-strikeCount
+readAt
 
-accountStatus
+deleted
 
-expiredAt
+deletedAt
 
-strikeIssuedAt
+Cannot modify:
 
-Admins cannot manually issue strikes.
+title
 
-Only backend may issue strikes.
+message
 
-Admins may only pardon.
+type
 
----
+recipientId
 
-# PERFORMANCE TARGET
+eventId
 
-The entire backend should process each expired order using:
+metadata
 
-One transaction
+Admins:
 
-One order read
+Same permissions.
 
-One user read
-
-One commit
-
-Zero duplicate writes
-
-Zero unnecessary reads
-
-Zero repeated calculations
-
-The complexity must remain:
-
-O(1)
-
-per expired order.
+Only backend creates notifications.
 
 ---
 
-# ERROR HANDLING
+# PRIVACY
 
-If one order fails:
+Never store:
 
-Log the error.
+Student location
 
-Continue processing remaining expired orders.
+Email address
 
-One failed transaction must never stop processing of other expired orders.
+Phone number
+
+Authentication data
+
+Only include information required to display the notification.
+
+---
+
+# PERFORMANCE
+
+Target:
+
+Exactly one notification write per event.
+
+Zero unnecessary reads.
+
+Indexed queries only.
+
+No polling.
+
+No duplicate listeners.
+
+No repeated notification generation.
+
+---
+
+# FUTURE FCM SUPPORT
+
+NotificationService must expose a delivery abstraction.
+
+Current delivery:
+
+Firestore
+
+Future delivery:
+
+Firestore
+
++
+
+Firebase Cloud Messaging
+
+Business services must not require modification when FCM is introduced.
+
+---
+
+# ANALYTICS PREPARATION
+
+Design NotificationService so future analytics can record:
+
+Notification opened
+
+Notification dismissed
+
+Delivery success
+
+Without modifying business logic.
+
+No analytics implementation in this phase.
 
 ---
 
@@ -724,27 +818,19 @@ One failed transaction must never stop processing of other expired orders.
 
 Create:
 
-automatic_strike_service.dart
+notification_service.dart
 
-Responsibilities:
+notification_model.dart
 
-Detect expired order
+notification_repository.dart
 
-Validate processing state
+Use repository pattern.
 
-Run Firestore transaction
+Business logic must remain outside widgets.
 
-Issue strike
+Reuse existing architecture.
 
-Suspend account
-
-Create audit log
-
-Avoid duplicated business logic.
-
-Widgets must contain no strike logic.
-
-Reuse existing models and services.
+Avoid duplicate code.
 
 ---
 
@@ -752,31 +838,47 @@ Reuse existing models and services.
 
 Verify:
 
-✓ Countdown reaches zero.
+✓ Order accepted notification
 
-✓ Order automatically becomes NO_SHOW.
+✓ Preparing notification
 
-✓ First NO_SHOW issues one strike.
+✓ Ready notification
 
-✓ Second NO_SHOW suspends account.
+✓ Pickup reminder
 
-✓ Transaction rolls back correctly on failure.
+✓ No-show notification
 
-✓ Duplicate executions never duplicate strikes.
+✓ Strike issued notification
 
-✓ Audit log created.
+✓ Strike removed notification
 
-✓ Existing countdown unchanged.
+✓ Suspension notification
 
-✓ Existing ordering unchanged.
+✓ Reactivation notification
 
-✓ Existing pickup deadlines unchanged.
+✓ New order notification for admins
 
-✓ Existing admin workflow unchanged.
+✓ Duplicate events do not create duplicate notifications
 
-✓ Existing cart unchanged.
+✓ Read status updates correctly
 
-✓ Existing notifications unchanged.
+✓ Mark all read works
+
+✓ Soft delete works
+
+✓ Real-time updates work
+
+✓ Deep links navigate correctly
+
+✓ Existing ordering unaffected
+
+✓ Existing strike engine unaffected
+
+✓ Existing admin workflow unaffected
+
+✓ Existing pickup countdown unaffected
+
+✓ Existing cart unaffected
 
 ---
 
@@ -784,31 +886,37 @@ Verify:
 
 Provide:
 
-1. Files modified.
+1. Files created
 
-2. Cloud Function implementation.
+2. Files modified
 
-3. Transaction flow explanation.
+3. NotificationService implementation
 
-4. Firestore rule updates.
+4. Firestore schema
 
-5. Required Firestore indexes.
+5. Firestore indexes
 
-6. Testing checklist.
+6. Firestore Security Rule updates
 
-Stop after completing Phase 6.
+7. Scheduled cleanup Cloud Function
 
-Do not implement future phases.
+8. Testing checklist
 
-Do not refactor unrelated code.
+Stop after completing Phase 7.
 
-Maintain backwards compatibility.
+Do NOT implement Firebase Cloud Messaging.
+
+Do NOT implement email notifications.
+
+Do NOT implement SMS notifications.
+
+Do NOT implement notification preferences in this phase.
 
 ---
 
 # Phase Completion Criteria
 
-Phase 6 is complete when:
+Phase 7 is complete when:
 
 * the new features works well with past features.
 * App runs successfully.
