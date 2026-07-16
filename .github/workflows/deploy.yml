@@ -34,7 +34,6 @@ jobs:
       - name: Deploy to Firebase Hosting
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:
-          # Use the exact secret name generated in Step 2
-          firebaseServiceAccount: "${{ secrets.FIREBASE_SERVICE_ACCOUNT_CAMPUS_BITE_XXXX }}"
-          projectId: "your-firebase-project-id" # Replace with your actual Firebase Project ID
-          channelId: live # This forces it directly to your production/live site
+          firebaseServiceAccount: "${{ secrets.FIREBASE_SERVICE_ACCOUNT_FOODORDER_8FFCF }}"
+          projectId: "foodorder-8ffcf"
+          channelId: live
