@@ -94,14 +94,16 @@ class _SpecialBannerCardState extends State<SpecialBannerCard> {
                   itemBuilder: (context, index) {
                     return GestureDetector(
                       onTap: () => widget.onTap?.call(index),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade300,
-                          image: DecorationImage(
-                            image: NetworkImage(widget.imageUrls[index]),
-                            fit: BoxFit.cover,
-                          ),
-                        ),
+                      child: Image.network(
+                        widget.imageUrls[index],
+                        fit: BoxFit.cover,
+                        width: double.infinity,
+                        height: double.infinity,
+                        // Graceful fallback when the image fails to load
+                        // (network error, 404, or test environment).
+                        errorBuilder: (context, error, stackTrace) {
+                          return Container(color: Colors.grey.shade300);
+                        },
                       ),
                     );
                   },
