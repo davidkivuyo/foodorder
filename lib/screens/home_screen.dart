@@ -12,11 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+/*If you want to add some logics over the banner click go to line 145, OR 
+you can use the onTap callback to handle the click event and perform any 
+desired actions based on the index of the clicked banner.
+*/
+
 import 'package:flutter/material.dart';
 import '../data/food_data.dart';
 import '../data/search_bar.dart';
 import '../widgets/cafe_selection_dialog.dart';
 import '../widgets/cart_fab.dart';
+import '../widgets/special_banner_card.dart'; // Imported the new reusable banner widget
 import 'common_food.dart';
 
 class HomeScreen extends StatelessWidget {
@@ -86,7 +92,7 @@ class HomeScreen extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // search bar
+                        // Search bar
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 8.0),
                           child: InkWell(
@@ -131,13 +137,33 @@ class HomeScreen extends StatelessWidget {
                           ),
                         ),
 
-                        //space
-                        const SizedBox(height: 18),
+                        // Spacing
+                       const SizedBox(height: 18),
 
-                        // banner
-                        SpecialBannerCard(),
+                       // Promotional banner carousel loaded dynamically with a list of URLs
+                       SpecialBannerCard(
+                           imageUrls: const [
+                             'https://res.cloudinary.com/nrwglbxh/image/upload/v1783345398/banner2_mjqb1u.png',
+                             'https://res.cloudinary.com/nrwglbxh/image/upload/v1783345398/banner2_mjqb1u.png', // Add your second banner URL here
+                             'https://res.cloudinary.com/nrwglbxh/image/upload/v1783345398/banner2_mjqb1u.png', // Add your third banner URL here
+                            ],
+                           onTap: (index) {
+                             // You now receive the exact index of the banner that was clicked
+                             debugPrint("Promotional Banner at index $index clicked!");
+    
+                             // Example logic based on selection:
+                             /*if (index == 0) {
+                                // Do something for banner 1
+                             } else if (index == 1) {
+                                // Do something for banner 2
+                            }*/
+                           },
+                       ),
 
-                        // dynamic sections from firestore
+                       // Spacing
+                       const SizedBox(height: 18),
+                       
+                        // Dynamic sections from firestore
                         ...validSections.expand((section) {
                           final sectionItems = allItems
                               .where((f) => f.section == section.name)
@@ -176,34 +202,6 @@ class HomeScreen extends StatelessWidget {
               },
             );
           },
-        ),
-      ),
-    );
-  }
-}
-
-class SpecialBannerCard extends StatelessWidget {
-  // Constructor
-  const SpecialBannerCard({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8.0),
-      child: Center(
-        child: Container(
-          width: double.infinity,
-          height: 180,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-
-            image: const DecorationImage(
-              image: NetworkImage(
-                'https://res.cloudinary.com/nrwglbxh/image/upload/v1783345398/banner2_mjqb1u.png',
-              ),
-              fit: BoxFit.cover,
-            ),
-          ),
         ),
       ),
     );
@@ -370,7 +368,7 @@ class CardRowItems extends StatelessWidget {
                                 style: TextStyle(fontSize: 11),
                               ),
 
-                              // Inside CardRowItems where you display the rating & cafe text:
+                              // Rating & Cafe Display Row
                               Row(
                                 children: [
                                   const Icon(
