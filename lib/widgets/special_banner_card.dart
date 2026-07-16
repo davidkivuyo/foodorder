@@ -43,7 +43,7 @@ class _SpecialBannerCardState extends State<SpecialBannerCard> {
     // Set up an automatic timer to slide to the next banner every 4 seconds
     _timer = Timer.periodic(const Duration(seconds: 4), (timer) {
       if (widget.imageUrls.isEmpty) return;
-      
+
       if (_currentPage < widget.imageUrls.length - 1) {
         _currentPage++;
       } else {
@@ -120,11 +120,13 @@ class _SpecialBannerCardState extends State<SpecialBannerCard> {
                         duration: const Duration(milliseconds: 200),
                         margin: const EdgeInsets.symmetric(horizontal: 4.0),
                         height: 8.0,
-                        width: _currentPage == index ? 24.0 : 8.0, // Expanded active dot
+                        width: _currentPage == index
+                            ? 24.0
+                            : 8.0, // Expanded active dot
                         decoration: BoxDecoration(
                           color: _currentPage == index
                               ? Colors.orange
-                              : Colors.white.withOpacity(0.6),
+                              : Colors.white.withValues(alpha: 0.6),
                           borderRadius: BorderRadius.circular(4.0),
                         ),
                       ),

@@ -13,6 +13,7 @@
 // limitations under the License.
 
 import 'package:firebase_core/firebase_core.dart';
+// ignore: depend_on_referenced_packages
 import 'package:firebase_core_platform_interface/src/pigeon/mocks.dart'
     show setupFirebaseCoreMocks;
 import 'package:flutter/services.dart';
