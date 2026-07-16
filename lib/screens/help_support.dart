@@ -109,6 +109,17 @@ class FaqScreen extends StatelessWidget {
               ),
             ],
           ),
+          ExpansionTile(
+            title: Text('Why the heck you need my location?'),
+            children: [
+              Padding(
+                padding: EdgeInsets.all(16.0),
+                child: Text(
+                  'We understand that concerns you and we care your privacy, your location is used to get the distance between your current position and the cafe in which you order the meal, and after the distance is retrieved time is calculated to give a fair and correct pickup window to ensure responsibility for food self pickup and fairness, Your location data never leaves your device or stored in our infrastructure.',
+                ),
+              ),
+            ],
+          ),
         ],
       ),
     );
