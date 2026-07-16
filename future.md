@@ -21,6 +21,8 @@
 
 3. create a new branch to add restaurants other than university ones
 
+4. Order History and Reorder: One-tap reorder from previous purchases — high-impact retention feature.
+
 # Updated CampusBite Roadmap
 
 ✔ Phase 0
