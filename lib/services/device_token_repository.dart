@@ -106,7 +106,8 @@ class DeviceTokenRepository {
       }
 
       // No saved doc ID or doc was deleted — create a new document
-      final docRef = await _firestore.collection(_collection).add({
+      // 🔍 DEBUG: Log the full payload that will be sent to Firestore
+      final Map<String, dynamic> payload = {
         'userId': userId,
         'role': role,
         'token': token,
@@ -117,7 +118,12 @@ class DeviceTokenRepository {
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
         'lastSeen': FieldValue.serverTimestamp(),
-      });
+      };
+      debugPrint(
+        '[DeviceTokenRepository] Creating device_tokens doc for userId=$userId '
+        'role=$role platform=$platform deviceId=$installationId',
+      );
+      final docRef = await _firestore.collection(_collection).add(payload);
 
       // Persist the new document ID scoped to this user
       await prefs.setString(userKey, docRef.id);

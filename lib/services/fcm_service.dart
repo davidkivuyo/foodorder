@@ -110,6 +110,13 @@ class FcmService {
       final token = await messaging.getToken(
         vapidKey: _vapidKey?.isNotEmpty == true ? _vapidKey : null,
       );
+
+      // 🔍 DEBUG: Log the raw token and userId so you can see them in adb logcat.
+      // Grep with: adb logcat | grep -i "FCM_TOKEN"
+      debugPrint(
+        '[FcmService] FCM_TOKEN >>> ${token ?? "null"}  (userId=$userId)',
+      );
+
       if (token == null || token.isEmpty) {
         debugPrint('[FcmService] No FCM token available');
         return false;
