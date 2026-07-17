@@ -19,7 +19,7 @@ jobs:
           java-version: '17'
 
       # Step 3: Set up Flutter (Pinned to a fully verified 40-character release SHA)
-      - uses: subosito/flutter-action@44037dbe3cee0cb67da510c9c71c48bf39930f30
+      - uses: subosito/flutter-action@1a44944d180802c6d71b3e8006e8979c6bb44e05
         with:
           channel: 'stable'
           cache: true
@@ -32,7 +32,7 @@ jobs:
 
       # Step 5: Deploy build/web folder to Cloudflare Pages (Pinned to a fully verified 40-character release SHA)
       - name: Lets Deploy
-        uses: cloudflare/wrangler-action@da0e0dfe58b7a431659754fdf3f186c529afbe65
+        uses: cloudflare/wrangler-action@da0e0df560738d810a95ff7430f87893c52a0a2f
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
