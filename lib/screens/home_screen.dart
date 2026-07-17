@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-/*If you want to add some logics over the banner click go to line 145, OR 
-you can use the onTap callback to handle the click event and perform any 
+/*If you want to add some logics over the banner click go to line 145, OR
+you can use the onTap callback to handle the click event and perform any
 desired actions based on the index of the clicked banner.
 */
 
@@ -138,31 +138,34 @@ class HomeScreen extends StatelessWidget {
                         ),
 
                         // Spacing
-                       const SizedBox(height: 18),
+                        const SizedBox(height: 18),
 
-                       // Promotional banner carousel loaded dynamically with a list of URLs
-                       SpecialBannerCard(
-                           imageUrls: const [
-                             'https://res.cloudinary.com/nrwglbxh/image/upload/v1783345398/banner2_mjqb1u.png',
-                             'https://res.cloudinary.com/nrwglbxh/image/upload/v1783345398/banner2_mjqb1u.png', // Add your second banner URL here
-                             'https://res.cloudinary.com/nrwglbxh/image/upload/v1783345398/banner2_mjqb1u.png', // Add your third banner URL here
-                            ],
-                           onTap: (index) {
-                             // You now receive the exact index of the banner that was clicked
-                             debugPrint("Promotional Banner at index $index clicked!");
-    
-                             // Example logic based on selection:
-                             /*if (index == 0) {
+                        // Promotional banner carousel loaded dynamically with a list of URLs
+                        SpecialBannerCard(
+                          imageUrls: const [
+                            'https://res.cloudinary.com/nrwglbxh/image/upload/v1783345398/banner2_mjqb1u.png',
+                            'https://res.cloudinary.com/nrwglbxh/image/upload/v1784272803/grilledmeat_dwcofz.png',
+                            'https://res.cloudinary.com/nrwglbxh/image/upload/v1784272347/IMG-20260717-WA0000_nd7jo0.jpg', // Add your second banner URL here
+                            // Add your third banner URL here
+                          ],
+                          onTap: (index) {
+                            // You now receive the exact index of the banner that was clicked
+                            debugPrint(
+                              "Promotional Banner at index $index clicked!",
+                            );
+
+                            // Example logic based on selection:
+                            /*if (index == 0) {
                                 // Do something for banner 1
                              } else if (index == 1) {
                                 // Do something for banner 2
                             }*/
-                           },
-                       ),
+                          },
+                        ),
 
-                       // Spacing
-                       const SizedBox(height: 18),
-                       
+                        // Spacing
+                        const SizedBox(height: 18),
+
                         // Dynamic sections from firestore
                         ...validSections.expand((section) {
                           final sectionItems = allItems
@@ -240,10 +243,7 @@ class CardRowItems extends StatelessWidget {
               Flexible(
                 child: Text(
                   title,
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
