@@ -15,8 +15,10 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:go_router/go_router.dart';
 import '../models/notification_model.dart';
 import '../services/notification_service.dart';
+import '../navigation/bottom_navigation.dart'; // deepLinkToTabIndex
 
 /// UI icon/color mapping for notification types.
 /// Kept separate from the model to avoid UI dependencies in pure data classes.
@@ -221,19 +223,21 @@ class _NotificationScreenState extends State<NotificationScreen> {
 
   void _navigateDeepLink(String deepLink) {
     try {
-      if (deepLink.startsWith('/orders/')) {
-        // Navigate to orders screen (index 3 in bottom nav)
-        // For now, pop back to main which will handle the navigation
-        Navigator.pop(context);
-      } else if (deepLink == '/account') {
-        Navigator.pop(context);
-      } else if (deepLink == '/strike-history') {
-        // Strikes are shown on the account screen
-        Navigator.pop(context);
+      final tabIndex = deepLinkToTabIndex(deepLink);
+
+      if (tabIndex != null) {
+        // Pop back to MainScreen and switch to the correct tab.
+        // Using GoRouter to navigate to /main with the tab query parameter.
+        if (mounted) {
+          context.go('/main?tab=$tabIndex');
+        }
       }
-      // Default: just stay on notifications screen
+      // For null tabIndex (e.g., '/notifications'), stay on the current screen.
     } catch (_) {
-      // Fallback: do nothing
+      // Fallback: pop back to main screen
+      try {
+        if (mounted) Navigator.pop(context);
+      } catch (_) {}
     }
   }
 

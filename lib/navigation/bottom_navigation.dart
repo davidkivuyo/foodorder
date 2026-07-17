@@ -21,9 +21,27 @@ import '../screens/order_screen.dart';
 import '../data/search_bar.dart';
 import 'package:dash_no_internet_screen/dash_no_internet_screen.dart';
 import '../services/cart_service.dart';
+import 'package:go_router/go_router.dart';
+import '../services/fcm_service.dart';
 import '../services/notification_service.dart';
 import '../widgets/cart_bottom_sheet.dart';
 import '../widgets/cart_fab.dart';
+
+/// Maps deep link paths to bottom navigation tab indices.
+/// Returns the index for the bottom nav bar, or null for unknown paths.
+int? deepLinkToTabIndex(String deepLink) {
+  if (deepLink == '/account' ||
+      deepLink == '/strike-history') {
+    return 4; // Account tab
+  }
+  if (deepLink == '/orders' || deepLink.startsWith('/orders/')) {
+    return 3; // Orders tab
+  }
+  if (deepLink == '/notifications') {
+    return null; // Notifications is a separate screen, not a tab
+  }
+  return 0; // Default: Home tab
+}
 
 // home screen
 class MainScreen extends StatefulWidget {
@@ -37,6 +55,75 @@ class MainScreen extends StatefulWidget {
 class _NavigationExampleState extends State<MainScreen> {
   int currentPageIndex = 0;
 
+  //─ FCM foreground notification banner ───────────────────────────────────
+
+  @override
+  void initState() {
+    super.initState();
+
+    // Check for deep link tab from GoRouter query parameter
+    _processDeepLinkQueryParam();
+
+    // Set up the foreground notification banner callback.
+    // MainScreen is wrapped in a Scaffold, so ScaffoldMessenger is available.
+    FcmService.onForegroundNotification = _showInAppBanner;
+  }
+
+  void _processDeepLinkQueryParam() {
+    // When navigated via a deep link, GoRouter adds a 'tab' query parameter.
+    // This allows FCM notification taps to open the correct tab.
+    try {
+      final uri = GoRouterState.of(context).uri;
+      final tabParam = uri.queryParameters['tab'];
+      if (tabParam != null && tabParam.isNotEmpty) {
+        final tabIndex = int.tryParse(tabParam);
+        if (tabIndex != null && tabIndex >= 0 && tabIndex <= 4) {
+          currentPageIndex = tabIndex;
+        }
+      }
+    } catch (_) {
+      // If GoRouterState isn't available (e.g., testing), ignore.
+    }
+  }
+
+  @override
+  void dispose() {
+    // Clear the callback to avoid stale references
+    FcmService.onForegroundNotification = null;
+    super.dispose();
+  }
+
+  void _showInAppBanner({required String title, required String body}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              body,
+              style: const TextStyle(fontSize: 13),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
+        duration: const Duration(seconds: 4),
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.fromLTRB(12, 0, 12, 80),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    );
+  }
   static const List<Widget> _pages = [
     HomeScreen(),
     CategoryScreen(),

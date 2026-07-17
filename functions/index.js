@@ -5,16 +5,12 @@
  * Combined deployment of all CampusBite Cloud Functions:
  *
  * 1) processExpiredPickups — Scheduled (every 5 min) automatic strike engine.
- *    Reads expired 'ready' orders, issues strikes, updates users, creates audit logs.
- *
  * 2) onOrderStatusChanged — Firestore trigger on orders/{orderId}.
- *    When status transitions to 'ready', writes readyAt, pickupDeadline, deadlineStatus.
- *
- * 3) deleteCloudinaryImage — Callable function.
- *    Deletes an image from Cloudinary (admin only, secrets-protected).
- *
- * 4) cleanupDeletedNotifications — Scheduled (every 24h) cleanup of old soft-deleted
- *    notifications.
+ * 3) onNewOrder — Firestore trigger on orders/{orderId} (document created).
+ * 4) onNewNotification — Firestore trigger on notifications/{notificationId} (FCM push).
+ * 5) deleteCloudinaryImage — Callable function (admin only, secrets-protected).
+ * 6) cleanupDeletedNotifications — Scheduled (every 24h) cleanup.
+ * 7) cleanupInactiveTokens — Scheduled (weekly) cleanup of stale device tokens.
  */
 
 // ── Imports ────────────────────────────────────────────────────────────────
@@ -58,6 +54,9 @@ function notificationEventId(action, orderId, suffix) {
 /**
  * Create a notification document in Firestore.
  * Skips creation if a notification with the same eventId already exists.
+ *
+ * Phase 8: FCM push delivery is handled by the onNewNotification trigger,
+ * NOT by this function. This function only writes to Firestore.
  *
  * @param {Object} params
  * @param {string} params.recipientId
@@ -122,6 +121,392 @@ async function createNotification({
   } catch (err) {
     console.error(`[createNotification] Error creating ${type}:`, err);
     return null;
+  }
+}
+
+/**
+ * Retry an async function with bounded exponential backoff and jitter.
+ *
+ * Permanent failures (determined by [isPermanent]) are not retried.
+ * Transient failures are retried up to [maxRetries] times.
+ *
+ * @param {Function} fn — async function to retry; receives attempt index (0-based)
+ * @param {Object} [options]
+ * @param {number} [options.maxRetries=3]
+ * @param {number} [options.baseDelayMs=200]
+ * @param {number} [options.maxDelayMs=4000]
+ * @param {Function} [options.isPermanent] — returns true if error should NOT be retried
+ * @return {Promise<*>}
+ */
+async function withRetry(fn, options = {}) {
+  const maxRetries = options.maxRetries ?? 3;
+  const baseDelayMs = options.baseDelayMs ?? 200;
+  const maxDelayMs = options.maxDelayMs ?? 4000;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn(attempt);
+    } catch (err) {
+      // If this is a permanent error, don't retry — throw immediately
+      if (options.isPermanent && options.isPermanent(err)) {
+        throw err;
+      }
+
+      // If this is the last attempt, rethrow
+      if (attempt >= maxRetries) {
+        throw err;
+      }
+
+      // Bounded exponential backoff with jitter
+      const delay = Math.min(baseDelayMs * Math.pow(2, attempt), maxDelayMs);
+      const jitter = Math.random() * delay;
+
+      console.warn(
+        `[withRetry] Attempt ${attempt + 1}/${maxRetries} failed, ` +
+        `retrying in ${Math.round(delay + jitter)}ms: ${err.message}`
+      );
+
+      await new Promise((resolve) => setTimeout(resolve, delay + jitter));
+    }
+  }
+}
+
+/**
+ * Determine if an FCM error is permanent (token should be deactivated).
+ * @param {Object} resp — a single sendEachForMulticast response item
+ * @return {boolean}
+ */
+function isFcmPermanentError(resp) {
+  if (!resp.error) return false;
+  const code = resp.error.code || "";
+  const msg = resp.error.message || "";
+  return (
+    code === "messaging/registration-token-not-registered" ||
+    code === "messaging/invalid-argument" ||
+    code === "messaging/invalid-registration-token" ||
+    code === "messaging/not-found" ||
+    code === "messaging/unregistered" ||
+    msg.includes("UNREGISTERED") ||
+    msg.includes("NotRegistered") ||
+    msg.includes("INVALID_ARGUMENT")
+  );
+}
+
+/**
+ * Deactivate an invalid token in Firestore (best-effort).
+ * Retries transient Firestore write failures with bounded backoff.
+ *
+ * @param {string} docId — device_tokens document ID
+ * @param {string} reason — deactivation reason string
+ * @return {Promise<boolean>} true if deactivation succeeded (or was already done)
+ */
+async function deactivateTokenDoc(docId, reason) {
+  return withRetry(
+    async () => {
+      await db.collection("device_tokens").doc(docId).update({
+        active: false,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        deactivationReason: reason,
+      });
+      return true;
+    },
+    {
+      maxRetries: 2,
+      baseDelayMs: 100,
+      maxDelayMs: 1000,
+      isPermanent: (err) =>
+        err.code === "NOT_FOUND" || // doc already deleted
+        err.code === "PERMISSION_DENIED",
+    },
+  );
+}
+
+/**
+ * Determine if a multicast-level error is permanent (not worth retrying).
+ * @param {Error} err
+ * @return {boolean}
+ */
+function isSendLevelPermanentError(err) {
+  const msg = err.message || "";
+  return (
+    err.code === "messaging/invalid-argument" ||
+    err.code === "messaging/third-party-auth-error" ||
+    err.code === "messaging/sender-id-mismatch" ||
+    msg.includes("no valid tokens") ||
+    msg.includes("no tokens")
+  );
+}
+
+/**
+ * Send an FCM push notification to all active devices belonging to a recipient.
+ *
+ * Queries the device_tokens collection for the recipient's active tokens
+ * and sends a multicast message. Invalid tokens are deactivated.
+ *
+ * Transient token-level FCM errors are retried with bounded exponential
+ * backoff with jitter. Transient device_tokens update errors are also
+ * retried. Permanent failures (UNREGISTERED, NOT_FOUND, etc.) are never
+ * retried; the token is deactivated immediately.
+ *
+ * @param {Object} params
+ * @param {string} params.recipientId — the user to send the push to
+ * @param {string} params.recipientRole — 'student' or 'admin'
+ * @param {string} params.title — notification title
+ * @param {string} params.body — notification body text
+ * @param {string} [params.deepLink] — deep link for notification tap navigation
+ * @param {string} [params.notificationId] — Firestore notification doc ID
+ * @param {string} [params.type] — notification type (e.g. 'ORDER_READY')
+ * @param {string} [params.orderId] — optional order ID
+ * @param {string} [params.eventId] — optional event ID for dedup
+ * @return {Promise<Object>} delivery results
+ */
+async function sendPushNotification({
+  recipientId,
+  recipientRole,
+  title,
+  body,
+  deepLink,
+  notificationId,
+  type,
+  orderId,
+  eventId,
+}) {
+  // These counters are updated across retries
+  let sentCount = 0;
+  let totalAttempted = 0;
+  const failures = [];
+
+  try {
+    // Step 1: Query active tokens for the recipient
+    const tokensSnapshot = await db
+        .collection("device_tokens")
+        .where("userId", "==", recipientId)
+        .where("active", "==", true)
+        .get();
+
+    if (tokensSnapshot.empty) {
+      console.log(
+        `[sendPush] No active tokens for ${recipientRole} ${recipientId} — skipping push`
+      );
+      return { sent: 0, total: 0, failures: [] };
+    }
+
+    let activeTokens = tokensSnapshot.docs.map((doc) => ({
+      token: doc.data().token,
+      docId: doc.id,
+    }));
+
+    totalAttempted = activeTokens.length;
+
+    console.log(
+      `[sendPush] Sending push to ${activeTokens.length} device(s) for ${recipientRole} ${recipientId}`
+    );
+
+    // Step 2: Build the base FCM message (tokens are added per attempt)
+    function buildMessage(tokenList) {
+      return {
+        tokens: tokenList.map((t) => t.token),
+        notification: {
+          title: title,
+          body: body,
+        },
+        data: {
+          notificationId: notificationId || "",
+          type: type || "",
+          orderId: orderId || "",
+          deepLink: deepLink || "",
+          eventId: eventId || "",
+          recipientId: recipientId,
+          recipientRole: recipientRole,
+        },
+        android: {
+          priority: "high",
+          notification: {
+            channelId: "campusbite_notifications",
+            priority: "high",
+            defaultSound: true,
+            defaultVibrateTimings: true,
+          },
+        },
+        apns: {
+          payload: {
+            aps: {
+              sound: "default",
+              badge: 1,
+              contentAvailable: true,
+            },
+          },
+          headers: {
+            "apns-priority": "10",
+          },
+        },
+        webpush: {
+          notification: {
+            title: title,
+            body: body,
+            icon: "/favicon.png",
+          },
+          fcmOptions: {
+            link: deepLink || "/",
+          },
+        },
+      };
+    }
+
+    // Step 3: Send the multicast with retry for transient failures
+    // We work with a pool of tokens, removing ones that succeed or are
+    // permanently invalid, and retrying the rest with backoff.
+    let remainingTokens = activeTokens;
+    let retryAttempt = 0;
+    const maxFcmRetries = 3;
+
+    while (remainingTokens.length > 0 && retryAttempt <= maxFcmRetries) {
+      const message = buildMessage(remainingTokens);
+
+      let response;
+      try {
+        response = await withRetry(
+          async () => {
+            return await admin.messaging().sendEachForMulticast(message);
+          },
+          {
+            maxRetries: 1, // inner retry for network-level glitches
+            baseDelayMs: 400,
+            maxDelayMs: 2000,
+            isPermanent: isSendLevelPermanentError,
+          },
+        );
+      } catch (sendErr) {
+        // The send itself failed permanently or exhausted all retries.
+        // Mark all remaining tokens as failed and stop.
+        console.error(
+          `[sendPush] Multicast send failed after retries: ${sendErr.message}`
+        );
+        for (const t of remainingTokens) {
+          failures.push({
+            tokenDocId: t.docId,
+            error: sendErr.message,
+            transient: true,
+          });
+        }
+        break;
+      }
+
+      // Process each response
+      const tokensToRetry = [];
+      const tokensToDeactivate = [];
+      let newlySent = 0;
+
+      for (let i = 0; i < response.responses.length; i++) {
+        const resp = response.responses[i];
+        const tokenEntry = remainingTokens[i];
+
+        if (resp.success) {
+          newlySent++;
+          continue;
+        }
+
+        if (isFcmPermanentError(resp)) {
+          // Permanent — deactivate immediately (never retry)
+          tokensToDeactivate.push({
+            docId: tokenEntry.docId,
+            reason: (resp.error && (resp.error.code || resp.error.message)) || "permanent_failure",
+          });
+          failures.push({
+            tokenDocId: tokenEntry.docId,
+            error: (resp.error && (resp.error.code || resp.error.message)) || "permanent_failure",
+            transient: false,
+          });
+        } else {
+          // Transient — retry if we have attempts left
+          const errorMsg = (resp.error && (resp.error.code || resp.error.message)) || "transient_failure";
+          if (retryAttempt < maxFcmRetries) {
+            tokensToRetry.push(tokenEntry);
+            console.warn(
+              `[sendPush] Transient failure for token ${tokenEntry.docId}, ` +
+              `will retry (attempt ${retryAttempt + 1}/${maxFcmRetries}): ${errorMsg}`
+            );
+          } else {
+            // Exhausted retries — record as failure
+            failures.push({
+              tokenDocId: tokenEntry.docId,
+              error: errorMsg,
+              transient: true,
+            });
+          }
+        }
+      }
+
+      sentCount += newlySent;
+
+      // Deactivate permanently invalid tokens (with retry for Firestore errors)
+      if (tokensToDeactivate.length > 0) {
+        console.log(
+          `[sendPush] Deactivating ${tokensToDeactivate.length} permanently invalid token(s)`
+        );
+        const deactivateResults = await Promise.allSettled(
+          tokensToDeactivate.map(({ docId, reason }) =>
+            deactivateTokenDoc(docId, reason).catch((err) => {
+              console.error(
+                `[sendPush] Failed to deactivate token ${docId} after retries: ${err.message}`
+              );
+              return false;
+            })
+          ),
+        );
+        // Log any final failures
+        for (let i = 0; i < deactivateResults.length; i++) {
+          if (
+            deactivateResults[i].status === "rejected" ||
+            deactivateResults[i].value === false
+          ) {
+            console.warn(
+              `[sendPush] Could not deactivate token ${tokensToDeactivate[i].docId} — ` +
+              `will be cleaned up by weekly scheduler`
+            );
+          }
+        }
+      }
+
+      // Prepare for next retry iteration
+      remainingTokens = tokensToRetry;
+
+      if (remainingTokens.length > 0 && retryAttempt < maxFcmRetries) {
+        // Bounded exponential backoff with jitter before next attempt
+        const delay = Math.min(200 * Math.pow(2, retryAttempt), 4000);
+        const jitter = Math.random() * delay;
+        console.log(
+          `[sendPush] Retrying ${remainingTokens.length} token(s) ` +
+          `in ${Math.round(delay + jitter)}ms (attempt ${retryAttempt + 2}/${maxFcmRetries + 1})`
+        );
+        await new Promise((resolve) => setTimeout(resolve, delay + jitter));
+      }
+
+      retryAttempt++;
+    }
+
+    return {
+      sent: sentCount,
+      total: totalAttempted,
+      failures: failures,
+    };
+  } catch (err) {
+    console.error(`[sendPush] Error sending push to ${recipientId}:`, err);
+
+    // The no-valid-tokens case at the send level is permanent
+    if (
+      err.message &&
+      (err.message.includes("no valid tokens") ||
+       err.message.includes("no tokens"))
+    ) {
+      return { sent: 0, total: 0, failures: [] };
+    }
+
+    return {
+      sent: sentCount,
+      total: totalAttempted || 0,
+      failures: [{ error: err.message, transient: true }],
+    };
   }
 }
 
@@ -225,7 +610,11 @@ exports.processExpiredPickups = functions
       const now = admin.firestore.Timestamp.now();
       let processedCount = 0;
       let errorCount = 0;
-      const processedStudentIds = new Set();
+      // Store both studentId and orderId for the notification loop.
+      // Using an array of objects ensures the orderId is accessible
+      // outside the .map() callback scope.
+      /** @type {Array<{studentId: string, orderId: string}>} */
+      const processedRecords = [];
 
       try {
         const expiredOrdersSnapshot = await db
@@ -244,7 +633,10 @@ exports.processExpiredPickups = functions
               const processed = await processExpiredOrder(transaction, freshSnapshot);
               if (processed) {
                 processedCount++;
-                processedStudentIds.add(orderSnapshot.data().studentId);
+                processedRecords.push({
+                  studentId: orderSnapshot.data().studentId,
+                  orderId: orderSnapshot.id,
+                });
               }
             });
           } catch (err) {
@@ -266,19 +658,11 @@ exports.processExpiredPickups = functions
       );
 
       // ── Notifications: Notify students about no-show strikes ──
-      // This runs outside the transaction — Firestore writes triggered by
-      // the transaction above are already committed by this point.
-      //
-      // Phase 7: Create notifications for each student who received a strike.
-      // Also create ACCOUNT_SUSPENDED notifications for students who were
-      // newly suspended (strikeCount >= 2).
-      // These are fire-and-forget; failures to create a notification do NOT
-      // affect the strike processing outcome (business logic independence).
       if (processedCount > 0) {
-        console.log(`[AutoStrike] Creating notifications for ${processedStudentIds.size} student(s)`);
-        for (const studentId of processedStudentIds) {
+        console.log(`[AutoStrike] Creating notifications for ${processedRecords.length} student(s)`);
+        for (const { studentId, orderId } of processedRecords) {
           try {
-            // Phase 7: ORDER_NO_SHOW notification
+            // Create ORDER_NO_SHOW notification (existing Phase 7 behavior)
             await createNotification({
               recipientId: studentId,
               recipientRole: "student",
@@ -292,13 +676,23 @@ exports.processExpiredPickups = functions
               createdBy: "system",
             });
 
-            // Phase 7: ACCOUNT_SUSPENDED notification
-            // Read the (already-updated) user doc to check if suspended
-            // Using orderId in eventId supports re-suspension after pardon
+            // Create STRIKE_ISSUED notification (per-strike, per-order)
+            await createNotification({
+              recipientId: studentId,
+              recipientRole: "student",
+              type: "STRIKE_ISSUED",
+              title: "Strike Added to Your Account",
+              message: "You received a strike for not collecting your order #" +
+                       `${orderId} on time. ` +
+                       "Please collect future orders promptly.",
+              deepLink: "/account",
+              eventId: notificationEventId("STRIKE_ISSUED", orderId),
+              createdBy: "system",
+            });
+
             const userDoc = await db.collection("users").doc(studentId).get();
             const strikeCount = userDoc.data()?.strikeCount ?? 0;
             if (strikeCount >= 2) {
-              const orderId = orderSnapshot.id;
               await createNotification({
                 recipientId: studentId,
                 recipientRole: "student",
@@ -313,12 +707,80 @@ exports.processExpiredPickups = functions
               });
             }
           } catch (notifErr) {
-            // Notifications must never break business logic.
             console.error(
               `[AutoStrike] Failed to create notification for ${studentId}:`, notifErr
             );
           }
         }
+      }
+
+      // ── PICKUP_REMINDER: Notify students about orders nearing their deadline ──
+      // Run after the expired-order processing so we don't send reminders
+      // for orders that just expired.
+      try {
+        const reminderWindowMinutes = 5;
+        const reminderThreshold = new admin.firestore.Timestamp(
+          now.seconds + reminderWindowMinutes * 60,
+          now.nanoseconds,
+        );
+
+        // Note: reminderSent is filtered client-side to avoid needing
+        // a composite index with 4 equality/range/inequality fields.
+        const nearingDeadlineOrders = await db
+            .collection("orders")
+            .where("status", "==", "ready")
+            .where("deadlineStatus", "==", "ACTIVE")
+            .where("pickupDeadline", "<=", reminderThreshold)
+            .where("pickupDeadline", ">", now) // Not yet expired
+            .get();
+
+        // Filter client-side: only orders not yet reminded
+        const ordersToRemind = nearingDeadlineOrders.docs.filter(
+          (doc) => !doc.data().reminderSent
+        );
+
+        if (ordersToRemind.length > 0) {
+          console.log(
+            `[AutoStrike] Sending PICKUP_REMINDER for ${ordersToRemind.length} order(s)`
+          );
+
+          const reminderPromises = ordersToRemind.map(
+            async (orderDoc) => {
+              const orderData = orderDoc.data();
+              const studentId = orderData.studentId;
+              if (!studentId) return;
+
+              try {
+                await createNotification({
+                  recipientId: studentId,
+                  recipientRole: "student",
+                  type: "PICKUP_REMINDER",
+                  title: "⏰ Pickup Reminder",
+                  message: `Your order #${orderDoc.id} is almost ready for pickup! ` +
+                           `Please collect it soon before the deadline expires.`,
+                  orderId: orderDoc.id,
+                  deepLink: `/orders/${orderDoc.id}`,
+                  eventId: notificationEventId("PICKUP_REMINDER", orderDoc.id),
+                  createdBy: "system",
+                });
+
+                // Mark the order as reminded to prevent duplicate reminders
+                await orderDoc.ref.update({
+                  reminderSent: true,
+                  updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                });
+              } catch (notifErr) {
+                console.error(
+                  `[AutoStrike] Failed to send PICKUP_REMINDER for order ${orderDoc.id}:`, notifErr
+                );
+              }
+            },
+          );
+
+          await Promise.allSettled(reminderPromises);
+        }
+      } catch (reminderErr) {
+        console.error("[AutoStrike] PICKUP_REMINDER error:", reminderErr);
       }
 
       return null;
@@ -337,12 +799,10 @@ exports.onOrderStatusChanged = onDocumentUpdated(
     const beforeData = event.data.before.data();
     const afterData = event.data.after.data();
 
-    // Only proceed if status changed to "ready"
     if (!beforeData || !afterData) return;
     if (beforeData.status === afterData.status) return;
     if (afterData.status !== "ready") return;
 
-    // Idempotency: if readyAt already exists, do nothing
     if (afterData.readyAt != null) return;
 
     const now = admin.firestore.Timestamp.now();
@@ -364,7 +824,6 @@ exports.onOrderStatusChanged = onDocumentUpdated(
       `Pickup deadline: ${deadline.toDate().toISOString()}`,
     );
 
-    // Phase 7: Notify the student that their order is ready
     const studentId = afterData.studentId;
     if (studentId) {
       try {
@@ -393,14 +852,6 @@ exports.onOrderStatusChanged = onDocumentUpdated(
 // FUNCTION 3: onNewOrder  (Firestore trigger — document created)
 // ════════════════════════════════════════════════════════════════════════════
 
-/**
- * When a student places a new order, notify all admin users.
- *
- * Queries for all users with role === 'admin' and creates a NEW_ORDER
- * notification for each admin. Uses per-admin eventId for dedup.
- *
- * Phase 7: Only Firestore delivery — FCM will be added later.
- */
 exports.onNewOrder = onDocumentCreated(
   {
     document: "orders/{orderId}",
@@ -421,7 +872,6 @@ exports.onNewOrder = onDocumentCreated(
     console.log(`[onNewOrder] New order ${orderId} placed by ${studentName} (${studentId})`);
 
     try {
-      // Find all admin users to notify
       const adminSnapshot = await db
           .collection("users")
           .where("role", "==", "admin")
@@ -442,7 +892,7 @@ exports.onNewOrder = onDocumentCreated(
           type: "NEW_ORDER",
           title: `New Order #${orderId}`,
           message: `${studentName} placed a new order worth ` +
-                   `Tsh ${Math.round(totalAmount)}.`, // using Tsh as the currency
+                   `Tsh ${Math.round(totalAmount)}.`,
           orderId: orderId,
           eventId: `NEW_ORDER_${orderId}_${adminId}`,
           deepLink: "/orders",
@@ -456,18 +906,118 @@ exports.onNewOrder = onDocumentCreated(
 
       await Promise.allSettled(notificationPromises);
     } catch (err) {
-      // Notifications must never break business logic — this is a trigger,
-      // so the order creation itself is unaffected by notification failures.
       console.error(`[onNewOrder] Error:`, err);
     }
   },
 );
 
 // ════════════════════════════════════════════════════════════════════════════
-// FUNCTION 4: deleteCloudinaryImage  (Callable — admin only)
+// FUNCTION 4: onNewNotification — FCM Push Delivery  (Firestore trigger)
 // ════════════════════════════════════════════════════════════════════════════
 
-// Define secrets that will be set via Firebase CLI
+/**
+ * When a notification document is created in Firestore, send an FCM push
+ * notification to the recipient's active devices.
+ *
+ * This is the central push delivery mechanism for Phase 8.
+ * The Firestore notification is always created FIRST (source of truth),
+ * then the push is sent asynchronously via this trigger.
+ *
+ * If push delivery fails, the notification remains in Firestore (no data loss).
+ * Invalid tokens are deactivated; transient errors are logged but tokens kept.
+ */
+exports.onNewNotification = onDocumentCreated(
+  {
+    document: "notifications/{notificationId}",
+    region: "us-central1",
+  },
+  async (event) => {
+    const notifData = event.data.data();
+    if (!notifData) {
+      console.log(`[onNewNotification] No data for notification ${event.params.notificationId} — skipping`);
+      return;
+    }
+
+    const notificationId = event.params.notificationId;
+    const recipientId = notifData.recipientId;
+    const recipientRole = notifData.recipientRole;
+
+    if (!recipientId || !recipientRole) {
+      console.log(`[onNewNotification] Missing recipient info — skipping push`);
+      return;
+    }
+
+    // ── Notification type-to-role allowlist ───────────────────────────
+    // This maps each notification type to the role(s) that may receive it.
+    // Admins receive only NEW_ORDER; student-only notifications are blocked
+    // from routing to admins, and vice versa.
+    const typeRoleAllowlist = {
+      // Admin-only notifications
+      NEW_ORDER: ["admin"],
+      // Student-only notifications
+      ORDER_ACCEPTED: ["student"],
+      ORDER_PREPARING: ["student"],
+      ORDER_READY: ["student"],
+      ORDER_NO_SHOW: ["student"],
+      STRIKE_ISSUED: ["student"],
+      STRIKE_REMOVED: ["student"],
+      ACCOUNT_REACTIVATED: ["student"],
+      ACCOUNT_SUSPENDED: ["student"],
+      PICKUP_REMINDER: ["student"],
+    };
+
+    const allowedRoles = typeRoleAllowlist[notifData.type];
+    if (!allowedRoles) {
+      console.log(
+        `[onNewNotification] Unknown type "${notifData.type}" — skipping push ` +
+        `for ${recipientRole} ${recipientId}`
+      );
+      return;
+    }
+
+    if (!allowedRoles.includes(recipientRole)) {
+      console.log(
+        `[onNewNotification] Role mismatch: ${notifData.type} not allowed for ` +
+        `${recipientRole} ${recipientId} — skipping push`
+      );
+      return;
+    }
+
+    console.log(
+      `[onNewNotification] Sending push for ${notifData.type} to ${recipientRole} ${recipientId}`
+    );
+
+    try {
+      const result = await sendPushNotification({
+        recipientId: recipientId,
+        recipientRole: recipientRole,
+        title: notifData.title || "CampusBite Update",
+        body: notifData.message || "",
+        deepLink: notifData.deepLink || null,
+        notificationId: notificationId,
+        type: notifData.type || "",
+        orderId: notifData.orderId || null,
+        eventId: notifData.eventId || null,
+      });
+
+      console.log(
+        `[onNewNotification] Push delivery for ${notificationId}: ` +
+        `${result.sent}/${result.total} sent, ` +
+        `${result.failures.length} failure(s)`
+      );
+    } catch (err) {
+      // Push failure must never affect the Firestore notification.
+      console.error(
+        `[onNewNotification] Push delivery error for ${notificationId}:`, err
+      );
+    }
+  },
+);
+
+// ════════════════════════════════════════════════════════════════════════════
+// FUNCTION 5: deleteCloudinaryImage  (Callable — admin only)
+// ════════════════════════════════════════════════════════════════════════════
+
 const CLOUDINARY_CLOUD_NAME = defineSecret("CLOUDINARY_CLOUD_NAME");
 const CLOUDINARY_API_KEY = defineSecret("CLOUDINARY_API_KEY");
 const CLOUDINARY_API_SECRET = defineSecret("CLOUDINARY_API_SECRET");
@@ -556,15 +1106,9 @@ exports.deleteCloudinaryImage = onCall(
 );
 
 // ════════════════════════════════════════════════════════════════════════════
-// FUNCTION 4: cleanupDeletedNotifications  (Scheduled — every 24 hours)
+// FUNCTION 6: cleanupDeletedNotifications  (Scheduled — every 24 hours)
 // ════════════════════════════════════════════════════════════════════════════
 
-/**
- * Clean up soft-deleted notifications older than 180 days.
- *
- * Runs once every 24 hours.
- * Never deletes active (non-deleted) notifications.
- */
 exports.cleanupDeletedNotifications = functions
     .runWith({
       memory: "128MB",
@@ -576,13 +1120,12 @@ exports.cleanupDeletedNotifications = functions
       console.log("[CleanupNotifications] Scheduled cleanup started...");
 
       const cutoff = new Date();
-      cutoff.setDate(cutoff.getDate() - 180); // 180 days ago
+      cutoff.setDate(cutoff.getDate() - 180);
 
       let deletedCount = 0;
       let errorCount = 0;
 
       try {
-        // Query soft-deleted notifications older than 180 days
         const oldNotifications = await db
             .collection("notifications")
             .where("deleted", "==", true)
@@ -593,7 +1136,6 @@ exports.cleanupDeletedNotifications = functions
           `[CleanupNotifications] Found ${oldNotifications.size} old deleted notification(s)`
         );
 
-        // Delete in batches of 500 (Firestore batch limit)
         let batch = db.batch();
         let batchSize = 0;
 
@@ -609,7 +1151,6 @@ exports.cleanupDeletedNotifications = functions
           }
         }
 
-        // Commit any remaining batch
         if (batchSize > 0) {
           await batch.commit();
         }
@@ -620,6 +1161,100 @@ exports.cleanupDeletedNotifications = functions
 
       console.log(
         `[CleanupNotifications] Cleanup complete: ${deletedCount} deleted, ${errorCount} errors`
+      );
+
+      return null;
+    });
+
+// ════════════════════════════════════════════════════════════════════════════
+// FUNCTION 7: cleanupInactiveTokens  (Scheduled — weekly)
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Weekly cleanup of stale device tokens.
+ *
+ * Removes all inactive tokens that have been inactive for more than 90 days.
+ * This keeps the device_tokens collection small and efficient.
+ *
+ * Phase 8: Token lifecycle management.
+ */
+exports.cleanupInactiveTokens = functions
+    .runWith({
+      memory: "128MB",
+      timeoutSeconds: 120,
+    })
+    .pubsub
+    .schedule("0 0 * * 0") // Weekly: Sunday at midnight UTC
+    .timeZone("UTC")
+    .onRun(async (context) => {
+      console.log("[CleanupTokens] Scheduled token cleanup started...");
+
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - 90); // 90 days ago
+
+      let deletedCount = 0;
+      let errorCount = 0;
+
+      try {
+        // Single query: all inactive tokens. We filter client-side for stale
+        // (older than 90 days) and permanently invalid (have deactivationReason).
+        // This avoids needing a composite index for a != query.
+        const allInactive = await db
+            .collection("device_tokens")
+            .where("active", "==", false)
+            .get();
+
+        // Separate into stale (old) and invalid (permanent failure) tokens
+        const staleTokens = allInactive.docs.filter(
+          (doc) => doc.data().updatedAt && doc.data().updatedAt.toDate() <= cutoff
+        );
+        const invalidTokens = allInactive.docs.filter(
+          (doc) => doc.data().deactivationReason
+        );
+
+        // Merge and deduplicate by doc ID
+        const seenIds = new Set();
+        const tokensToRemove = [];
+        for (const list of [staleTokens, invalidTokens]) {
+          for (const doc of list) {
+            if (!seenIds.has(doc.id)) {
+              seenIds.add(doc.id);
+              tokensToRemove.push(doc);
+            }
+          }
+        }
+
+        console.log(
+          `[CleanupTokens] Found ${staleTokens.length} stale (>90d) + ` +
+          `${invalidTokens.length - (tokensToRemove.length - staleTokens.length)} invalid ` +
+          `= ${tokensToRemove.length} token(s) to remove`
+        );
+
+        let batch = db.batch();
+        let batchSize = 0;
+
+        for (const doc of tokensToRemove) {
+          batch.delete(doc.ref);
+          batchSize++;
+          deletedCount++;
+
+          if (batchSize >= 500) {
+            await batch.commit();
+            batch = db.batch();
+            batchSize = 0;
+          }
+        }
+
+        if (batchSize > 0) {
+          await batch.commit();
+        }
+      } catch (err) {
+        errorCount++;
+        console.error("[CleanupTokens] Error:", err);
+      }
+
+      console.log(
+        `[CleanupTokens] Cleanup complete: ${deletedCount} deleted, ${errorCount} errors`
       );
 
       return null;

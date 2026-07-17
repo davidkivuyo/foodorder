@@ -3,11 +3,7 @@
 # NOT FULLFILLED
 4. add a fetch request to see if the already entered cafe is available or not.
 
-5. display poper messages instead of debugprint eg "debugPrint('[CartService] Cannot add unavailable item: ${item.title}"
-
 9. save the users passwords in their google account logged in their device and retrieve it upon attempts to login in both adminview and customerview
-
-10. display the time which a student is obliged to pickup the food if he or she didnot show on that time the cafe admin can be allowed to strike the student. Also notify the student when order is ready to be collected and show the time required to pickup the food. the time is calculated by the distance of the current user location and the cafe and the time taken to prepare the food.
 
 11. order screen should clean 24hrs and its history will be saved under /users/{userId}/history according to date, food item title and the total price.
 
@@ -23,7 +19,7 @@
 
 4. Order History and Reorder: One-tap reorder from previous purchases — high-impact retention feature.
 
-5.Performance Analytics: Daily/weekly revenue, top-selling dishes, peak order hours, average prep time, customer rating trends.
+5. Performance Analytics: Daily/weekly revenue, top-selling dishes, peak order hours, average prep time, customer rating trends.
 
 # Updated CampusBite Roadmap
 

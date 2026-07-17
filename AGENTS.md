@@ -136,29 +136,39 @@ After completing a feature:
 
 # Current Phase
 
-PHASE 7
+PHASE 8
 
 # TASK
 
-Implement Phase 7 of CampusBite.
+Implement Phase 8 of CampusBite.
 
-This phase introduces the production notification platform.
+This phase integrates Firebase Cloud Messaging (FCM) into the existing notification platform.
 
-The implementation must be scalable, production-ready, reusable and future-proof.
+Firebase Cloud Messaging has already been configured in Firebase Console.
 
-Notifications must react to business events.
+Do NOT recreate the Firebase project.
 
-Notifications must never control business logic.
+Do NOT modify Firebase Console settings.
 
-Business logic remains completely independent from notifications.
+Only implement the application and backend integration.
 
-The notification platform must be designed so Firebase Cloud Messaging (FCM) can be added later without modifying existing business logic.
+The implementation must be production-ready.
+
+The implementation must be secure.
+
+The implementation must minimise Firestore reads and writes.
+
+The implementation must minimise Cloud Function invocations.
+
+Do NOT change existing business logic.
+
+Do NOT redesign the notification platform.
 
 ---
 
-# EXISTING SYSTEM
+# CURRENT SYSTEM
 
-Already implemented:
+Already completed:
 
 ✓ Student App
 
@@ -168,39 +178,41 @@ Already implemented:
 
 ✓ Firestore
 
-✓ Orders
+✓ Notification Platform
 
-✓ Order Status Workflow
+✓ NotificationService
 
-✓ Distance-Based Pickup Deadlines
-
-✓ Automatic No-Show Detection
+✓ Cloud Functions
 
 ✓ Automatic Strike Engine
 
-✓ Admin Pardon
+✓ Automatic No Show
 
-✓ Account Suspension
+✓ Admin Dashboard
 
-Do NOT modify these features.
+✓ Audit Logs
+
+✓ Distance Based Pickup Logic
+
+Reuse all existing components.
 
 ---
 
 # OBJECTIVE
 
-Create a reusable notification platform that serves:
+Whenever NotificationService creates a notification:
 
-• Students
+Store notification in Firestore.
 
-• Cafe Admins
+Immediately send a Firebase Cloud Messaging push notification to the recipient.
 
-using the existing Firestore collection:
+Firestore remains the source of truth.
 
-notifications
+FCM is only the delivery mechanism.
 
-Do NOT create nested notification collections.
+If push delivery fails:
 
-Reuse the existing collection.
+The notification must still exist in Firestore.
 
 ---
 
@@ -214,255 +226,439 @@ NotificationService
 
 ↓
 
-Firestore notifications collection
+Create Firestore Notification
 
 ↓
 
-Student/Admin Apps
+Send Push Notification
 
 ↓
 
-(Future)
+Student Device
 
-Firebase Cloud Messaging
+or
 
-Business logic must never write directly into Firestore notifications.
+Admin Device
 
-Every notification must be created through NotificationService.
+Never send push notifications directly from Flutter.
 
----
-
-# NOTIFICATION SERVICE
-
-Create:
-
-notification_service.dart
-
-Responsibilities:
-
-Create notification
-
-Prevent duplicates
-
-Mark notification as read
-
-Mark all notifications as read
-
-Soft delete notification
-
-Support future FCM integration
-
-No widgets may construct notification documents.
-
-Cloud Functions and backend services should call NotificationService only.
+All push notifications must originate from backend Cloud Functions.
 
 ---
 
-# FIRESTORE COLLECTION
+# DEVICE TOKEN MANAGEMENT
 
-Use the existing collection:
+Each authenticated device must register its FCM token.
 
-notifications
+Store tokens inside Firestore.
 
-One document per notification.
+Collection:
 
-Document IDs:
+device_tokens
 
-Auto-generated.
+Document ID:
 
----
+Automatically generated.
 
-# DOCUMENT STRUCTURE
+Fields:
 
-Each notification document must contain:
+userId
 
-recipientId
+role
 
-recipientRole
+token
 
-type
+platform
 
-title
+deviceId
 
-message
-
-orderId
-
-eventId
-
-deepLink
-
-metadata
-
-read
-
-readAt
-
-deleted
-
-deletedAt
+appVersion
 
 createdAt
 
-createdBy
+updatedAt
 
----
+lastSeen
 
-# FIELD DEFINITIONS
+active
 
-recipientId
+Example:
 
-UID of recipient.
+device_tokens
 
-recipientRole
+tokenDoc
 
-Allowed values:
+userId
+
+uid123
+
+role
 
 student
 
-admin
+token
 
-type
+xxxxxx
 
-Notification type enum.
+platform
+
+android
+
+deviceId
+
+abcdef
+
+active
+
+true
+
+---
+
+# TOKEN LIFECYCLE
+
+When app starts:
+
+Retrieve current FCM token.
+
+If token changed:
+
+Update Firestore.
+
+When Firebase refreshes token:
+
+Automatically update Firestore.
+
+When user logs out:
+
+Deactivate token.
+
+Do not delete immediately.
+
+Set:
+
+active = false
+
+updatedAt = serverTimestamp()
+
+---
+
+# MULTIPLE DEVICES
+
+One user may own multiple devices.
+
+Never overwrite tokens.
+
+Each device receives its own document.
+
+NotificationService must send notifications to all active tokens belonging to the recipient.
+
+---
+
+# NOTIFICATION DELIVERY
+
+NotificationService already creates Firestore notifications.
+
+Extend it.
+
+After successful Firestore write:
+
+Send push notification.
+
+Never send push first.
+
+Firestore write is always first.
+
+---
+
+# CLOUD FUNCTIONS
+
+NotificationService must call:
+
+PushDeliveryService
+
+Responsibilities:
+
+Load active tokens
+
+Send multicast notification
+
+Handle invalid tokens
+
+Clean expired tokens
+
+Return delivery results
+
+NotificationService must never contain FCM code.
+
+Keep responsibilities separated.
+
+---
+
+# PUSH PAYLOAD
+
+Notification:
 
 title
 
-Short title.
+body
 
-message
+Data:
 
-Human-readable message.
+notificationId
+
+type
 
 orderId
 
-Optional.
-
-Null when not applicable.
+deepLink
 
 eventId
 
-Unique business event identifier.
+Do not include sensitive information.
 
-Used for duplicate prevention.
+Never include:
+
+Email
+
+Phone
+
+Location
+
+Authentication data
+
+---
+
+# CLICK ACTION
+
+When user taps notification:
+
+Open application.
+
+Navigate using:
 
 deepLink
-
-App navigation target.
 
 Examples:
 
 /orders/{orderId}
 
-/account
-
 /notifications
+
+/account
 
 /strike-history
 
-metadata
+Navigation must reuse the existing deep link implementation.
 
-Optional structured object.
+If the deep linking is not yet configured in the app, configure it cleanly without breaking existing features.
 
-Examples:
+---
 
-strikeCount
+# DELIVERY FAILURES
 
-cafeName
+If Firebase returns:
 
-pickupDeadline
+UNREGISTERED
 
-distanceMeters
+INVALID_ARGUMENT
 
-Never store sensitive personal information.
+NOT_FOUND
 
-read
+Deactivate token.
 
-Boolean.
+Do not retry.
 
-Default:
+Other transient failures may be retried according to Firebase best practices.
 
-false
-
-readAt
-
-Server timestamp.
-
-Null until read.
-
-deleted
-
-Boolean.
-
-Default:
-
-false
-
-deletedAt
-
-Server timestamp.
-
-Null until deleted.
-
-createdAt
-
-Server timestamp.
-
-createdBy
-
-Values:
-
-system
-
-admin
-
-future
+Never delete tokens during temporary failures.
 
 ---
 
 # DUPLICATE PROTECTION
 
-Every notification must contain:
+NotificationService already uses:
 
 eventId
 
-Examples:
+Continue using it.
 
-ORDER_READY_order123
+Never send duplicate push notifications.
 
-ORDER_ACCEPTED_order123
+One business event must produce:
 
-ORDER_PREPARING_order123
+One Firestore notification
 
-PICKUP_REMINDER_order123
+One push notification
 
-ORDER_NO_SHOW_order123
-
-STRIKE_ISSUED_order123
-
-STRIKE_REMOVED_user123_strike1
-
-ACCOUNT_SUSPENDED_user123
-
-ACCOUNT_REACTIVATED_user123
-
-NEW_ORDER_order123
-
-Before creating a notification:
-
-NotificationService must check for an existing notification with the same eventId.
-
-If found:
-
-Skip creation.
-
-Notification creation must be idempotent.
+per device.
 
 ---
 
-# NOTIFICATION TYPES
+# FOREGROUND HANDLING
 
-Student:
+If app is open:
+
+Display in-app notification banner.
+
+Still save notification to Firestore.
+
+Do not suppress notifications.
+
+---
+
+# BACKGROUND HANDLING
+
+Support:
+
+Background messages.
+
+Terminated application.
+
+Notification tap navigation.
+
+Do not duplicate notifications.
+
+---
+
+# FIRESTORE READ OPTIMISATION
+
+Notification creation:
+
+No additional reads.
+
+Push delivery:
+
+One indexed query:
+
+device_tokens
+
+WHERE
+
+userId == recipientId
+
+AND
+
+active == true
+
+Nothing else.
+
+---
+
+# FIRESTORE WRITE OPTIMISATION
+
+Write notification.
+
+Update invalid tokens only when necessary.
+
+Do not rewrite valid tokens.
+
+---
+
+# SECURITY
+
+Students
+
+Cannot create tokens for other users.
+
+Cannot modify another user's tokens.
+
+Admins
+
+Same restriction.
+
+Cloud Functions
+
+Read all active tokens.
+
+Flutter clients
+
+Only update their own device token.
+
+---
+
+# FIRESTORE RULES
+
+Protect:
+
+device_tokens
+
+Allow authenticated users to:
+
+Create their own token.
+
+Update their own token.
+
+Deactivate their own token.
+
+Deny access to tokens belonging to others.
+
+Cloud Functions retain administrative access.
+
+---
+
+# PERFORMANCE
+
+Target:
+
+One notification write.
+
+One token query.
+
+One multicast send.
+
+No polling.
+
+No unnecessary listeners.
+
+No duplicate Cloud Functions.
+
+---
+
+# PRIVACY
+
+Tokens are sensitive identifiers.
+
+Never expose another user's token.
+
+Never return tokens to clients.
+
+Never include tokens inside notifications.
+
+Never log token values in audit_log or anywhere.
+
+---
+
+# CLEANUP
+
+Create scheduled Cloud Function.
+
+Runs weekly.
+
+Removes:
+
+Inactive tokens older than 90 days.
+
+Removes invalid tokens.
+
+Keeps Firestore small.
+
+---
+
+# ADMIN APP
+
+Admins receive push notifications for:
+
+NEW_ORDER
+
+Only.
+
+Student notifications must never reach admins.
+
+---
+
+# STUDENT APP
+
+Receive push notifications for:
 
 ORDER_ACCEPTED
 
@@ -482,335 +678,17 @@ ACCOUNT_SUSPENDED
 
 ACCOUNT_REACTIVATED
 
-Admin:
-
-NEW_ORDER
-
-Use enums/constants.
-
-Never hardcode strings.
-
 ---
 
-# BUSINESS EVENT TRIGGERS
+# OFFLINE SUPPORT
 
-Generate notifications ONLY when business state changes.
+If device is offline:
 
-Student:
+Notification remains in Firestore.
 
-Order accepted
+Push is delivered when Firebase reconnects (subject to FCM behavior).
 
-Order preparing
-
-Order ready
-
-Pickup reminder
-
-Automatic no-show
-
-Strike issued
-
-Strike removed
-
-Account suspended
-
-Account reactivated
-
-Admin:
-
-Student places new order
-
-Notifications must never trigger business actions.
-
----
-
-# PICKUP REMINDER
-
-When an order transitions to READY:
-
-Schedule exactly ONE reminder.
-
-Reminder time:
-
-5 minutes before pickupDeadline.
-
-If the order is collected before the reminder:
-
-Cancel the reminder.
-
-If the order becomes NO_SHOW before the reminder:
-
-Cancel the reminder.
-
-Never send reminders for completed or expired orders.
-
----
-
-# FIRESTORE QUERIES
-
-Student App:
-
-recipientId == currentUser.uid
-
-recipientRole == student
-
-deleted == false
-
-Order by:
-
-createdAt DESC
-
-Limit:
-
-50
-
-Admin App:
-
-recipientId == currentAdmin.uid
-
-recipientRole == admin
-
-deleted == false
-
-Order by:
-
-createdAt DESC
-
-Limit:
-
-50
-
-Never download notifications for other users.
-
-Never perform collection scans.
-
----
-
-# FIRESTORE INDEXES
-
-Create composite indexes for:
-
-recipientId
-
-recipientRole
-
-deleted
-
-createdAt DESC
-
-Indexes must support all notification queries efficiently.
-
----
-
-# REAL-TIME LISTENERS
-
-Student App:
-
-Listen ONLY to:
-
-notifications
-
-filtered by:
-
-recipientId
-
-recipientRole
-
-deleted == false
-
-Admin App:
-
-Same pattern.
-
-Never subscribe to the entire notifications collection.
-
----
-
-# READ STATUS
-
-Opening a notification:
-
-Update ONLY:
-
-read = true
-
-readAt = serverTimestamp()
-
-Never rewrite the document.
-
----
-
-# MARK ALL READ
-
-Batch update:
-
-Unread notifications only.
-
-Do not rewrite already-read notifications.
-
----
-
-# SOFT DELETE
-
-Never permanently delete notifications immediately.
-
-Instead:
-
-deleted = true
-
-deletedAt = serverTimestamp()
-
-Apps ignore deleted notifications.
-
----
-
-# CLEANUP
-
-Create one scheduled Cloud Function.
-
-Runs:
-
-Once every 24 hours.
-
-Deletes notifications:
-
-Older than 180 days
-
-AND
-
-deleted == true
-
-Never delete active notifications.
-
----
-
-# DEEP LINKS
-
-Each notification contains:
-
-deepLink
-
-Examples:
-
-/orders/{orderId}
-
-/account
-
-/notifications
-
-/strike-history
-
-Notification tap should navigate directly.
-
-Navigation logic must remain outside NotificationService.
-
----
-
-# SECURITY
-
-Students:
-
-Read only their own notifications.
-
-Update only:
-
-read
-
-readAt
-
-deleted
-
-deletedAt
-
-Cannot modify:
-
-title
-
-message
-
-type
-
-recipientId
-
-eventId
-
-metadata
-
-Admins:
-
-Same permissions.
-
-Only backend creates notifications.
-
----
-
-# PRIVACY
-
-Never store:
-
-Student location
-
-Email address
-
-Phone number
-
-Authentication data
-
-Only include information required to display the notification.
-
----
-
-# PERFORMANCE
-
-Target:
-
-Exactly one notification write per event.
-
-Zero unnecessary reads.
-
-Indexed queries only.
-
-No polling.
-
-No duplicate listeners.
-
-No repeated notification generation.
-
----
-
-# FUTURE FCM SUPPORT
-
-NotificationService must expose a delivery abstraction.
-
-Current delivery:
-
-Firestore
-
-Future delivery:
-
-Firestore
-
-+
-
-Firebase Cloud Messaging
-
-Business services must not require modification when FCM is introduced.
-
----
-
-# ANALYTICS PREPARATION
-
-Design NotificationService so future analytics can record:
-
-Notification opened
-
-Notification dismissed
-
-Delivery success
-
-Without modifying business logic.
-
-No analytics implementation in this phase.
+Users always have the notification history inside the app.
 
 ---
 
@@ -818,19 +696,19 @@ No analytics implementation in this phase.
 
 Create:
 
-notification_service.dart
+push_delivery_service.dart
 
-notification_model.dart
+fcm_service.dart
 
-notification_repository.dart
+device_token_repository.dart
 
-Use repository pattern.
+Keep responsibilities separate.
 
-Business logic must remain outside widgets.
-
-Reuse existing architecture.
+Business logic must never contain FCM implementation.
 
 Avoid duplicate code.
+
+Reuse NotificationService.
 
 ---
 
@@ -838,47 +716,55 @@ Avoid duplicate code.
 
 Verify:
 
-✓ Order accepted notification
+✓ Student token registration
 
-✓ Preparing notification
+✓ Admin token registration
 
-✓ Ready notification
+✓ Token refresh
 
-✓ Pickup reminder
+✓ Multiple devices receive notifications
 
-✓ No-show notification
+✓ Invalid tokens are deactivated
 
-✓ Strike issued notification
+✓ Order Accepted push
 
-✓ Strike removed notification
+✓ Preparing push
 
-✓ Suspension notification
+✓ Ready push
 
-✓ Reactivation notification
+✓ Pickup Reminder push
 
-✓ New order notification for admins
+✓ No Show push
 
-✓ Duplicate events do not create duplicate notifications
+✓ Strike Issued push
 
-✓ Read status updates correctly
+✓ Strike Removed push
 
-✓ Mark all read works
+✓ Account Suspended push
 
-✓ Soft delete works
+✓ Account Reactivated push
 
-✓ Real-time updates work
+✓ Admin New Order push
 
-✓ Deep links navigate correctly
+✓ Foreground notifications
 
-✓ Existing ordering unaffected
+✓ Background notifications
 
-✓ Existing strike engine unaffected
+✓ Terminated app notifications
 
-✓ Existing admin workflow unaffected
+✓ Notification tap opens correct screen
 
-✓ Existing pickup countdown unaffected
+✓ Firestore notification always exists
 
-✓ Existing cart unaffected
+✓ Push failures do not affect Firestore notifications
+
+✓ Existing business logic unchanged
+
+✓ Existing notification platform unchanged
+
+✓ Existing strike engine unchanged
+
+✓ Existing admin workflow unchanged
 
 ---
 
@@ -890,33 +776,37 @@ Provide:
 
 2. Files modified
 
-3. NotificationService implementation
+3. PushDeliveryService implementation
 
-4. Firestore schema
+4. FCM client implementation
 
-5. Firestore indexes
+5. Firestore schema changes (device_tokens)
 
 6. Firestore Security Rule updates
 
-7. Scheduled cleanup Cloud Function
+7. Cloud Function updates
 
 8. Testing checklist
 
-Stop after completing Phase 7.
+Stop after completing Phase 8.
 
-Do NOT implement Firebase Cloud Messaging.
+Do NOT redesign NotificationService.
 
-Do NOT implement email notifications.
+Do NOT redesign Firestore notifications.
 
-Do NOT implement SMS notifications.
+Do NOT implement notification preferences.
 
-Do NOT implement notification preferences in this phase.
+Do NOT implement topic messaging.
+
+Do NOT implement marketing notifications.
+
+Maintain backward compatibility with the existing notification platform.
 
 ---
 
 # Phase Completion Criteria
 
-Phase 7 is complete when:
+Phase 8 is complete when:
 
 * the new features works well with past features.
 * App runs successfully.
