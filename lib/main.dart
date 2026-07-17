@@ -16,6 +16,7 @@ import 'package:campusbite/navigation/bottom_navigation.dart'; // deepLinkToTabI
 import 'package:campusbite/navigation/router.dart';
 import 'package:campusbite/services/fcm_service.dart';
 import 'package:campusbite/services/notification_service.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_web_plugins/url_strategy.dart';
@@ -40,6 +41,9 @@ Future<void> main() async {
     debugPrint('Firebase init error: $e\n$stack');
     // Continue — app degrades gracefully if Firebase is unavailable.
   }
+
+  // Register background message handler once at startup (not per-auth).
+  FirebaseMessaging.onBackgroundMessage(fcmBackgroundMessageHandler);
 
   usePathUrlStrategy();
   LicenseRegistry.addLicense(() async* {
@@ -96,6 +100,13 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> {
+  // Deduplication: prevent handling the same deep link twice within 5 seconds.
+  // This guards against redundant notification-tap processing (e.g., the same
+  // FCM notification being delivered via both onMessageOpenedApp and
+  // getInitialMessage, or the user tapping the same notification twice).
+  String? _lastHandledDeepLink;
+  DateTime? _lastHandledAt;
+
   @override
   void initState() {
     super.initState();
@@ -110,17 +121,38 @@ class _MyAppState extends State<MyApp> {
   }
 
   void _handleDeepLink(String deepLink) {
+    // Validate: reject empty deep links
+    if (deepLink.isEmpty) {
+      debugPrint('[FCM] Deep link navigation skipped: empty deep link');
+      return;
+    }
+
+    // Deduplicate: same deep link within 5 seconds is likely a duplicate
+    final now = DateTime.now();
+    if (deepLink == _lastHandledDeepLink &&
+        _lastHandledAt != null &&
+        now.difference(_lastHandledAt!) < const Duration(seconds: 5)) {
+      debugPrint('[FCM] Deep link navigation skipped: duplicate $deepLink');
+      return;
+    }
+    _lastHandledDeepLink = deepLink;
+    _lastHandledAt = now;
+
     debugPrint('[FCM] Deep link navigation: $deepLink');
 
-    // Convert deep link to a main screen tab and navigate via GoRouter
+    // Convert deep link to a main screen tab and navigate via GoRouter.
+    // This works whether the user is on the welcome screen or main screen.
     final tabIndex = deepLinkToTabIndex(deepLink);
     if (tabIndex != null) {
-      // Use GoRouter's push to navigate to the main screen with the
-      // appropriate tab selected via query parameter.
-      // This works whether the user is on the welcome screen or main screen.
       router.go('/main?tab=$tabIndex');
     } else if (deepLink == '/notifications') {
-      // Notifications are accessible from the main screen via the bell icon.
+      router.go('/main');
+    } else {
+      // Unrecognized deep link — fallback to main screen
+      debugPrint(
+        '[FCM] Deep link navigation: unrecognized path $deepLink, '
+        'falling back to /main',
+      );
       router.go('/main');
     }
   }

@@ -49,6 +49,10 @@ class FcmService {
   StreamSubscription<RemoteMessage>? _onMessageSub;
   StreamSubscription<RemoteMessage>? _onMessageOpenedAppSub;
 
+  // The currently authenticated user ID, stored during initialize() so that
+  // onLogout() can target the correct device document for deactivation.
+  String? _currentUserId;
+
   FcmService({
     required String role,
     DeviceTokenRepository? tokenRepository,
@@ -96,11 +100,19 @@ class FcmService {
       }
 
       // Register the token in Firestore
-      await _tokenRepository.registerToken(
+      final registered = await _tokenRepository.registerToken(
         userId: userId,
         role: _role,
         token: token,
       );
+
+      if (!registered) {
+        debugPrint('[FcmService] Token registration failed');
+        return false;
+      }
+
+      // Remember the current user for logout deactivation
+      _currentUserId = userId;
 
       // Listen for token refresh — store subscription for later cleanup
       _tokenRefreshSub = messaging.onTokenRefresh.listen((newToken) {
@@ -119,9 +131,6 @@ class FcmService {
           _handleNotificationTap(message);
         }
       });
-
-      // Background message handler (global, not a subscription — safe to set once)
-      FirebaseMessaging.onBackgroundMessage(fcmBackgroundMessageHandler);
 
       debugPrint('[FcmService] Initialized successfully for user $userId');
       return true;
@@ -143,17 +152,38 @@ class FcmService {
 
   /// Called when the user logs out — deactivate the token and clean up
   /// all subscriptions so no handlers remain active for the previous user.
+  ///
+  /// Clears [_currentUserId] only after the device-token deactivation
+  /// succeeds, so a transient failure does not lose the user ID needed
+  /// for a subsequent retry.
   Future<void> onLogout() async {
     // Cancel all subscriptions first — no handlers can fire for the old user.
     _cancelSubscriptions();
 
+    final userId = _currentUserId;
+    if (userId == null) return;
+
     try {
-      final token = await FirebaseMessaging.instance.getToken();
-      if (token != null && token.isNotEmpty) {
-        await _tokenRepository.deactivateToken(token: token);
+      final deactivated = await _tokenRepository.deactivateToken(
+        userId: userId,
+      );
+
+      if (deactivated) {
+        // Only clear the userId once the token has been successfully
+        // deactivated in Firestore.
+        _currentUserId = null;
+        debugPrint('[FcmService] Token deactivated for user $userId');
+      } else {
+        debugPrint(
+          '[FcmService] Token deactivation returned false for user $userId '
+          '- keeping userId for potential retry',
+        );
       }
     } catch (e) {
-      debugPrint('[FcmService] Logout token deactivation error: $e');
+      debugPrint(
+        '[FcmService] Token deactivation error for user $userId: $e '
+        '- keeping userId for potential retry',
+      );
     }
   }
 
@@ -164,12 +194,17 @@ class FcmService {
     required String newToken,
   }) async {
     try {
-      await _tokenRepository.registerToken(
+      final registered = await _tokenRepository.registerToken(
         userId: userId,
         role: _role,
         token: newToken,
       );
-      debugPrint('[FcmService] Token refreshed and registered');
+
+      if (registered) {
+        debugPrint('[FcmService] Token refreshed and registered');
+      } else {
+        debugPrint('[FcmService] Token refresh registration failed');
+      }
     } catch (e) {
       debugPrint('[FcmService] Token refresh registration error: $e');
     }

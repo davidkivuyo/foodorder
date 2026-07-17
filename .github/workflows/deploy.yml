@@ -18,10 +18,10 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
-      # Step 3: Set up Flutter
-      - uses: subosito/flutter-action@v2
+      # Step 3: Set up Flutter (Pinned to v2.23.0 action SHA + SDK 3.44.2)
+      - uses: subosito/flutter-action@1a44944d180802c6d71b3e8006e8979c6bb44e05
         with:
-          channel: 'stable'
+          flutter-version: '3.44.2'
           cache: true
 
       # Step 4: Build Flutter Web
@@ -30,9 +30,9 @@ jobs:
           flutter pub get
           flutter build web --release --base-href "/"
 
-      # Step 5: Deploy build/web folder to Cloudflare Pages
+      # Step 5: Deploy build/web folder to Cloudflare Pages (Pinned to wrangler-action@v3/v4 baseline)
       - name: Lets Deploy
-        uses: cloudflare/wrangler-action@v3
+        uses: cloudflare/wrangler-action@1029e900a30b42c4b8b693998b584d4fa1561701
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

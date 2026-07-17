@@ -15,6 +15,7 @@
 
 // ── Imports ────────────────────────────────────────────────────────────────
 
+const crypto = require("crypto");
 const functions = require("firebase-functions");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { onDocumentUpdated, onDocumentCreated } = require("firebase-functions/v2/firestore");
@@ -22,10 +23,33 @@ const { defineSecret } = require("firebase-functions/params");
 const admin = require("firebase-admin");
 const fetch = require("node-fetch");
 
+/**
+ * Generate a unique claim ID for delivery claim ownership.
+ * Used to prevent stale workers from finalizing or releasing claims
+ * that have been reclaimed by a newer worker.
+ * @return {string}
+ */
+function generateClaimId() {
+  return crypto.randomUUID();
+}
+
 admin.initializeApp();
 
 const db = admin.firestore();
 const PICKUP_WINDOW_MINUTES = 20;
+
+/**
+ * Lease duration for delivery claim records.
+ *
+ * When a claim is created with status 'pending' and a claimedAt timestamp,
+ * the claim is considered active for this duration. If the function crashes
+ * after claiming but before finalizing, the lease will expire and a
+ * subsequent retry can reclaim the token transactionally.
+ *
+ * 120 seconds is more than sufficient for the FCM send + response processing
+ * which typically completes in under 5 seconds.
+ */
+const CLAIM_LEASE_SECONDS = 120;
 
 // ── Shared helpers ─────────────────────────────────────────────────────────
 
@@ -238,6 +262,107 @@ function isSendLevelPermanentError(err) {
 }
 
 /**
+ * Atomically record or reclaim a per-device delivery attempt.
+ *
+ * Uses a Firestore transaction with a lease-based claim system:
+ *
+ * 1. **First claim** — If no record exists, creates one with status 'pending',
+ *    a unique `claimId`, and a `claimedAt` server timestamp.
+ * 2. **Already claimed (active lease)** — If a record exists with status
+ *    'pending' and `claimedAt` is within [CLAIM_LEASE_SECONDS], returns
+ *    `{claimed: false}` — the device is considered already in flight.
+ * 3. **Lease expired** — If a record exists with status 'pending' but
+ *    `claimedAt` is older than [CLAIM_LEASE_SECONDS], the lease is assumed
+ *    stale (e.g. the claiming function crashed). The transaction reclaims
+ *    it by updating `claimedAt` and generating a new `claimId`, then
+ *    returns `{claimed: true, claimId}`.
+ * 4. **Terminal states** — Records with status 'delivered' or 'failed'
+ *    are never reclaimed; returns `{claimed: false}`.
+ *
+ * The `claimId` is a unique identifier for each claim instance. All subsequent
+ * finalization and release operations require this `claimId` to match the
+ * current record. This prevents a stale worker (from a previous lease period)
+ * from modifying a claim that has been reclaimed by a newer worker.
+ *
+ * **Return value:**
+ * - `{claimed: true, claimId: string}` — claim was created or reclaimed.
+ * - `{claimed: false}` — record is terminal or within active lease.
+ * - **throws** — unexpected Firestore transaction error — the caller should
+ *   treat this as a retry-eligible failure.
+ *
+ * @param {string} eventId — notification event ID for dedup
+ * @param {string} deviceDocId — device_tokens document ID
+ * @return {Promise<{claimed: boolean, claimId?: string}>}
+ * @throws {Error} on unexpected Firestore errors
+ */
+async function recordDelivery(eventId, deviceDocId) {
+  const docId = `${eventId}_${deviceDocId}`;
+  const ref = db.collection("delivery_records").doc(docId);
+
+  try {
+    return await db.runTransaction(async (transaction) => {
+      const doc = await transaction.get(ref);
+
+      if (!doc.exists) {
+        // ── First claim — create the record ────────────────────────
+        const claimId = generateClaimId();
+        transaction.create(ref, {
+          eventId: eventId,
+          deviceDocId: deviceDocId,
+          status: "pending",
+          claimId: claimId,
+          errorMessage: null,
+          claimedAt: admin.firestore.FieldValue.serverTimestamp(),
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        return { claimed: true, claimId };
+      }
+
+      const data = doc.data();
+
+      // ── Terminal states — never reclaimed ────────────────────────
+      if (data.status === "delivered" || data.status === "failed") {
+        return { claimed: false };
+      }
+
+      // ── Lease check — is the claim still valid? ──────────────────
+      if (data.status === "pending" && data.claimedAt) {
+        const now = admin.firestore.Timestamp.now();
+        const claimedAt = data.claimedAt;
+        const elapsedMs =
+          (now.seconds - claimedAt.seconds) * 1000 +
+          (now.nanoseconds - claimedAt.nanoseconds) / 1e6;
+
+        if (elapsedMs < CLAIM_LEASE_SECONDS * 1000) {
+          // Lease still active — another instance is handling this device.
+          return { claimed: false };
+        }
+
+        // Lease expired — reclaim the token with a new claimId.
+        console.warn(
+          `[recordDelivery] Lease expired for ${docId} ` +
+          `(${Math.round(elapsedMs / 1000)}s old, old claimId=${data.claimId}) — reclaiming`
+        );
+      }
+
+      // ── Lease expired or unknown status — reclaim ────────────────
+      const claimId = generateClaimId();
+      transaction.update(ref, {
+        status: "pending",
+        claimId: claimId,
+        claimedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      return { claimed: true, claimId };
+    });
+  } catch (err) {
+    console.warn(
+      `[recordDelivery] Transaction error for ${docId}: ${err.message} — propagating`
+    );
+    throw err;
+  }
+}
+
+/**
  * Send an FCM push notification to all active devices belonging to a recipient.
  *
  * Queries the device_tokens collection for the recipient's active tokens
@@ -247,6 +372,11 @@ function isSendLevelPermanentError(err) {
  * backoff with jitter. Transient device_tokens update errors are also
  * retried. Permanent failures (UNREGISTERED, NOT_FOUND, etc.) are never
  * retried; the token is deactivated immediately.
+ *
+ * Per-device/event idempotency:
+ *   Before each retry, tokens that already have a successful `delivery_records`
+ *   entry for this event are skipped — they were already delivered on a
+ *   previous attempt even though FCM did not acknowledge it.
  *
  * @param {Object} params
  * @param {string} params.recipientId — the user to send the push to
@@ -316,8 +446,6 @@ async function sendPushNotification({
           orderId: orderId || "",
           deepLink: deepLink || "",
           eventId: eventId || "",
-          recipientId: recipientId,
-          recipientRole: recipientRole,
         },
         android: {
           priority: "high",
@@ -354,125 +482,278 @@ async function sendPushNotification({
     }
 
     // Step 3: Send the multicast with retry for transient failures
-    // We work with a pool of tokens, removing ones that succeed or are
-    // permanently invalid, and retrying the rest with backoff.
+    //
+    // Idempotent delivery uses a lease-based claim-then-finalize pattern:
+    //   1. BEFORE each attempt, transactionally claim each remaining token
+    //      via recordDelivery().  If the record doesn't exist, a new
+    //      'pending' claim is created.  If it exists but the lease has
+    //      expired (120s), the claim is reclaimed.  Terminal records
+    //      ('delivered'/'failed') are skipped.
+    //   2. Send only to tokens whose claims were CREATED or RECLAIMED
+    //      this round.  Tokens with active leases (from a prior attempt
+    //      that hasn't expired) are skipped — they are still in flight.
+    //   3. AFTER the multicast, finalize each claimed record as
+    //      'delivered' or 'failed' based on the FCM response.
+    //      Terminal records never have a lease (claimedAt is cleared).
+    //
+    // This lease mechanism provides crash recovery: if the function
+    // crashes after claiming but before finalizing, the lease expires
+    // and a subsequent retry reclaims the token and delivers again.
+    // At most one push per device is delivered per active lease period.
+    //
     let remainingTokens = activeTokens;
     let retryAttempt = 0;
     const maxFcmRetries = 3;
 
     while (remainingTokens.length > 0 && retryAttempt <= maxFcmRetries) {
-      const message = buildMessage(remainingTokens);
+      // ── Step 3a: Claim tokens for this attempt ──────────────────
+      // Atomically create a 'pending' record for each token.  Only tokens
+      // whose claim succeeds (first-time claim) get sent.  Tokens with
+      // existing claims (ALREADY_EXISTS) are already handled.
+      const claimedTokens = [];
+      const claimPromises = [];
+      // claimErrors is hoisted to the while-loop level so errors from one
+      // iteration are not discarded when remainingTokens is reassigned below.
+      let claimErrors = [];
 
-      let response;
-      try {
-        response = await withRetry(
-          async () => {
-            return await admin.messaging().sendEachForMulticast(message);
-          },
-          {
-            maxRetries: 1, // inner retry for network-level glitches
-            baseDelayMs: 400,
-            maxDelayMs: 2000,
-            isPermanent: isSendLevelPermanentError,
-          },
-        );
-      } catch (sendErr) {
-        // The send itself failed permanently or exhausted all retries.
-        // Mark all remaining tokens as failed and stop.
-        console.error(
-          `[sendPush] Multicast send failed after retries: ${sendErr.message}`
-        );
+      if (eventId) {
         for (const t of remainingTokens) {
-          failures.push({
-            tokenDocId: t.docId,
-            error: sendErr.message,
-            transient: true,
-          });
+          // recordDelivery:
+          //   returns true  → first claim (send this round)
+          //   returns false → already claimed (skip)
+          //   throws        → unexpected error (retry next iteration)
+          const p = recordDelivery(eventId, t.docId)
+            .then((result) => {
+              // result: {claimed: true, claimId} or {claimed: false}
+              if (result.claimed) {
+                // Attach the claimId to the token entry so
+                // finalizeDelivery and releaseDeliveryClaim can
+                // verify ownership.
+                claimedTokens.push({
+                  token: t.token,
+                  docId: t.docId,
+                  claimId: result.claimId,
+                });
+              }
+            })
+            .catch((err) => {
+              claimErrors.push(t);
+              console.warn(
+                `[sendPush] Claim failed for token ${t.docId}: ` +
+                `${err.message} — will retry`
+              );
+            });
+          claimPromises.push(p);
         }
+        await Promise.allSettled(claimPromises);
+
+        const skippedCount = claimPromises.length -
+          claimedTokens.length - claimErrors.length;
+        if (skippedCount > 0) {
+          console.log(
+            `[sendPush] Skipped ${skippedCount} already-claimed device(s)`
+          );
+        }
+      } else {
+        // No eventId — no idempotency possible; send to all remaining.
+        claimedTokens.push(...remainingTokens);
+      }
+
+      // Early exit: nothing to send and nothing to retry.
+      if (claimedTokens.length === 0 && claimErrors.length === 0) {
         break;
       }
 
-      // Process each response
-      const tokensToRetry = [];
-      const tokensToDeactivate = [];
-      let newlySent = 0;
+      if (claimedTokens.length === 0) {
+        // No claims, but claimErrors exist with retries left.
+        // Skip the send+process block and go directly to iteration setup.
+      } else {
+        // ── Some claims succeeded — send the multicast ─────────────
+        const message = buildMessage(claimedTokens);
 
-      for (let i = 0; i < response.responses.length; i++) {
-        const resp = response.responses[i];
-        const tokenEntry = remainingTokens[i];
-
-        if (resp.success) {
-          newlySent++;
-          continue;
+        let response;
+        try {
+          response = await withRetry(
+            async () => {
+              return await admin.messaging().sendEachForMulticast(message);
+            },
+            {
+              maxRetries: 1,
+              baseDelayMs: 400,
+              maxDelayMs: 2000,
+              isPermanent: isSendLevelPermanentError,
+            },
+          );
+        } catch (sendErr) {
+          console.error(
+            `[sendPush] Multicast send failed after retries: ${sendErr.message}`
+          );
+          const finalizePromises = claimedTokens.map((t) =>
+            eventId
+              ? finalizeDelivery(eventId, t.docId, "failed", sendErr.message, t.claimId)
+              : Promise.resolve()
+          );
+          await Promise.allSettled(finalizePromises);
+          for (const t of claimedTokens) {
+            failures.push({
+              tokenDocId: t.docId,
+              error: sendErr.message,
+              transient: true,
+            });
+          }
+          break;
         }
 
-        if (isFcmPermanentError(resp)) {
-          // Permanent — deactivate immediately (never retry)
-          tokensToDeactivate.push({
-            docId: tokenEntry.docId,
-            reason: (resp.error && (resp.error.code || resp.error.message)) || "permanent_failure",
-          });
-          failures.push({
-            tokenDocId: tokenEntry.docId,
-            error: (resp.error && (resp.error.code || resp.error.message)) || "permanent_failure",
-            transient: false,
-          });
-        } else {
-          // Transient — retry if we have attempts left
-          const errorMsg = (resp.error && (resp.error.code || resp.error.message)) || "transient_failure";
-          if (retryAttempt < maxFcmRetries) {
+        // ── Step 3b: Process FCM responses ────────────────────────
+        const tokensToRetry = [];
+        const tokensToDeactivate = [];
+        const tokensToRelease = [];
+        let newlySent = 0;
+        const finalizePromises = [];
+
+        for (let i = 0; i < response.responses.length; i++) {
+          const resp = response.responses[i];
+          const tokenEntry = claimedTokens[i];
+
+          if (resp.success) {
+            newlySent++;
+            if (eventId) {
+              finalizePromises.push(
+                finalizeDelivery(eventId, tokenEntry.docId, "delivered", null, tokenEntry.claimId)
+              );
+            }
+            continue;
+          }
+
+          if (isFcmPermanentError(resp)) {
+            if (eventId) {
+              finalizePromises.push(
+                finalizeDelivery(
+                  eventId,
+                  tokenEntry.docId,
+                  "failed",
+                  (resp.error && (resp.error.code || resp.error.message)) || "permanent_failure",
+                  tokenEntry.claimId,
+                )
+              );
+            }
+            tokensToDeactivate.push({
+              docId: tokenEntry.docId,
+              reason: (resp.error && (resp.error.code || resp.error.message)) || "permanent_failure",
+            });
+            failures.push({
+              tokenDocId: tokenEntry.docId,
+              error: (resp.error && (resp.error.code || resp.error.message)) || "permanent_failure",
+              transient: false,
+            });
+          } else {
+            const errorMsg = (resp.error && (resp.error.code || resp.error.message)) || "transient_failure";
+            if (retryAttempt < maxFcmRetries) {
+              tokensToRelease.push({ tokenEntry, errorMsg });
+            } else {
+              if (eventId) {
+                finalizePromises.push(
+                  finalizeDelivery(eventId, tokenEntry.docId, "failed", errorMsg, tokenEntry.claimId)
+                );
+              }
+              failures.push({
+                tokenDocId: tokenEntry.docId,
+                error: errorMsg,
+                transient: true,
+              });
+            }
+          }
+        }
+
+        sentCount += newlySent;
+
+        // ── Release pending claims for transient failures ──────────
+        if (tokensToRelease.length > 0 && eventId) {
+          const releaseResults = await Promise.allSettled(
+            tokensToRelease.map(async ({ tokenEntry, errorMsg }) => {
+              const released = await releaseDeliveryClaim(eventId, tokenEntry.docId, tokenEntry.claimId);
+              return { tokenEntry, errorMsg, released };
+            }),
+          );
+
+          for (const result of releaseResults) {
+            if (result.status === "rejected") {
+              console.warn(
+                `[sendPush] releaseDeliveryClaim rejected: ${result.reason?.message || "unknown error"}`
+              );
+              continue;
+            }
+
+            const { tokenEntry, errorMsg, released } = result.value;
+            if (released) {
+              tokensToRetry.push(tokenEntry);
+              console.warn(
+                `[sendPush] Transient failure for token ${tokenEntry.docId}, ` +
+                `will retry (attempt ${retryAttempt + 1}/${maxFcmRetries}): ${errorMsg}`
+              );
+            } else {
+              // Claim could not be released (persistent Firestore error or
+              // all retries exhausted).  Do NOT terminalize the token:
+              // the pending claim with its lease remains in Firestore.
+              // The lease will expire after CLAIM_LEASE_SECONDS (120s),
+              // and the next function invocation will reclaim it via
+              // recordDelivery().
+              failures.push({
+                tokenDocId: tokenEntry.docId,
+                error: errorMsg,
+                transient: true,
+              });
+              console.warn(
+                `[sendPush] Could not release claim for token ${tokenEntry.docId} — ` +
+                `pending claim preserved for lease-based recovery: ${errorMsg}`
+              );
+            }
+          }
+        } else if (tokensToRelease.length > 0) {
+          for (const { tokenEntry, errorMsg } of tokensToRelease) {
             tokensToRetry.push(tokenEntry);
             console.warn(
               `[sendPush] Transient failure for token ${tokenEntry.docId}, ` +
               `will retry (attempt ${retryAttempt + 1}/${maxFcmRetries}): ${errorMsg}`
             );
-          } else {
-            // Exhausted retries — record as failure
-            failures.push({
-              tokenDocId: tokenEntry.docId,
-              error: errorMsg,
-              transient: true,
-            });
           }
         }
-      }
 
-      sentCount += newlySent;
+        if (finalizePromises.length > 0) {
+          await Promise.allSettled(finalizePromises);
+        }
 
-      // Deactivate permanently invalid tokens (with retry for Firestore errors)
-      if (tokensToDeactivate.length > 0) {
-        console.log(
-          `[sendPush] Deactivating ${tokensToDeactivate.length} permanently invalid token(s)`
-        );
-        const deactivateResults = await Promise.allSettled(
-          tokensToDeactivate.map(({ docId, reason }) =>
-            deactivateTokenDoc(docId, reason).catch((err) => {
-              console.error(
-                `[sendPush] Failed to deactivate token ${docId} after retries: ${err.message}`
-              );
-              return false;
-            })
-          ),
-        );
-        // Log any final failures
-        for (let i = 0; i < deactivateResults.length; i++) {
-          if (
-            deactivateResults[i].status === "rejected" ||
-            deactivateResults[i].value === false
-          ) {
-            console.warn(
-              `[sendPush] Could not deactivate token ${tokensToDeactivate[i].docId} — ` +
-              `will be cleaned up by weekly scheduler`
-            );
+        if (tokensToDeactivate.length > 0) {
+          console.log(`[sendPush] Deactivating ${tokensToDeactivate.length} permanently invalid token(s)`);
+          const deactivateResults = await Promise.allSettled(
+            tokensToDeactivate.map(({ docId, reason }) =>
+              deactivateTokenDoc(docId, reason).catch((err) => {
+                console.error(`[sendPush] Failed to deactivate token ${docId} after retries: ${err.message}`);
+                return false;
+              })
+            ),
+          );
+          for (let i = 0; i < deactivateResults.length; i++) {
+            if (deactivateResults[i].status === "rejected" || deactivateResults[i].value === false) {
+              console.warn(`[sendPush] Could not deactivate token ${tokensToDeactivate[i].docId} — will be cleaned up by weekly scheduler`);
+            }
           }
         }
+
+        // Merge FCM retry tokens into the next iteration.
+        remainingTokens = tokensToRetry;
       }
 
-      // Prepare for next retry iteration
-      remainingTokens = tokensToRetry;
+      // ── Merge claim errors into the next iteration ──────────────
+      // claimErrors are tokens whose recordDelivery call threw (unexpected
+      // Firestore error).  They were not sent this round and must be retried.
+      // Merge them into remainingTokens so the next while-loop iteration
+      // attempts them again.
+      if (claimErrors.length > 0) {
+        remainingTokens.push(...claimErrors);
+      }
 
       if (remainingTokens.length > 0 && retryAttempt < maxFcmRetries) {
-        // Bounded exponential backoff with jitter before next attempt
         const delay = Math.min(200 * Math.pow(2, retryAttempt), 4000);
         const jitter = Math.random() * delay;
         console.log(
@@ -510,8 +791,122 @@ async function sendPushNotification({
   }
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// FUNCTION 1: processExpiredPickups  (Scheduled — every 5 minutes)
+/**
+ * Finalize a delivery record by updating its status from 'pending' to its
+ * final outcome.
+ *
+ * Verifies [claimId] ownership before updating: if the current record's
+ * claimId does not match the provided [claimId], the operation is skipped
+ * (the claim was reclaimed by a newer worker).
+ *
+ * This is best-effort; failures (including claimId mismatch) are logged
+ * but never block the push flow.
+ *
+ * @param {string} eventId
+ * @param {string} deviceDocId
+ * @param {'delivered'|'failed'} status
+ * @param {string} [errorMessage]
+ * @param {string} [claimId] — expected claimId for ownership verification
+ * @return {Promise<void>}
+ */
+async function finalizeDelivery(eventId, deviceDocId, status, errorMessage, claimId) {
+  const docId = `${eventId}_${deviceDocId}`;
+  const ref = db.collection("delivery_records").doc(docId);
+  try {
+    // ── Ownership check: verify claimId matches ───────────────────
+    if (claimId) {
+      const doc = await ref.get();
+      if (doc.exists && doc.data().claimId !== claimId) {
+        // The claim was reclaimed by a newer worker.  This is expected
+        // when the lease expired before finalization completed.
+        console.warn(
+          `[finalizeDelivery] claimId mismatch for ${docId}: ` +
+          `expected ${claimId}, got ${doc.data().claimId} — skipping`
+        );
+        return;
+      }
+    }
+
+    await ref.update({
+      status: status,
+      errorMessage: errorMessage || null,
+      claimId: admin.firestore.FieldValue.delete(),
+      claimedAt: admin.firestore.FieldValue.delete(),
+    });
+  } catch (err) {
+    console.warn(
+      `[finalizeDelivery] Error updating ${docId} to ${status}: ${err.message}`
+    );
+  }
+}
+
+/**
+ * Release a pending delivery claim by deleting its delivery_records document.
+ *
+ * Verifies [claimId] ownership before deleting: if the current record's
+ * claimId does not match the provided [claimId], the deletion is skipped
+ * (the claim was reclaimed by a newer worker — the lease expiration will
+ * serve as recovery).
+ *
+ * Uses [withRetry] to retry transient Firestore delete failures with bounded
+ * exponential backoff. Releasing the claim allows the next retry to reclaim
+ * the token via `recordDelivery()` rather than waiting for the lease to
+ * expire.
+ *
+ * Reads the document first: if it does not exist (already released), returns
+ * true immediately without calling delete.  Transient delete failures are
+ * retried.  PERMISSION_DENIED and claimId mismatch are never retried.
+ *
+ * @param {string} eventId
+ * @param {string} deviceDocId
+ * @param {string} [claimId] — expected claimId for ownership verification
+ * @return {Promise<boolean>} true if the claim was released, false otherwise
+ */
+async function releaseDeliveryClaim(eventId, deviceDocId, claimId) {
+  const docId = `${eventId}_${deviceDocId}`;
+  const ref = db.collection("delivery_records").doc(docId);
+
+  try {
+    return await withRetry(
+      async () => {
+        const doc = await ref.get();
+        if (!doc.exists) {
+          // Document already deleted — the claim is already released.
+          return true;
+        }
+
+        // ── Ownership check: verify claimId matches ───────────────
+        if (claimId && doc.data().claimId !== claimId) {
+          // The claim was reclaimed by a newer worker.  Return true
+          // because from the old worker's perspective the claim was
+          // already released (the new worker now owns it).  This avoids
+          // a redundant finalizeDelivery attempt from the caller.
+          console.warn(
+            `[releaseDeliveryClaim] claimId mismatch for ${docId}: ` +
+            `expected ${claimId}, got ${doc.data().claimId} — ` +
+            `claim already reclaimed, treating as released`
+          );
+          return true;
+        }
+
+        await ref.delete();
+        return true;
+      },
+      {
+        maxRetries: 2,
+        baseDelayMs: 100,
+        maxDelayMs: 1000,
+        isPermanent: (err) =>
+          err.code === "PERMISSION_DENIED",
+      },
+    );
+  } catch (err) {
+    console.warn(
+      `[releaseDeliveryClaim] Failed to release claim ${docId}: ${err.message}`
+    );
+    return false;
+  }
+}
 // ════════════════════════════════════════════════════════════════════════════
 
 /**
@@ -1173,8 +1568,11 @@ exports.cleanupDeletedNotifications = functions
 /**
  * Weekly cleanup of stale device tokens.
  *
- * Removes all inactive tokens that have been inactive for more than 90 days.
- * This keeps the device_tokens collection small and efficient.
+ * Removes:
+ * 1. Inactive tokens that have been inactive for more than 90 days.
+ * 2. Inactive tokens with a deactivationReason (permanently invalid).
+ * 3. Orphaned active tokens with no update in 180+ days — safety net for
+ *    the migration from {userId}_{platform} doc IDs to auto-generated IDs.
  *
  * Phase 8: Token lifecycle management.
  */
@@ -1189,15 +1587,19 @@ exports.cleanupInactiveTokens = functions
     .onRun(async (context) => {
       console.log("[CleanupTokens] Scheduled token cleanup started...");
 
-      const cutoff = new Date();
-      cutoff.setDate(cutoff.getDate() - 90); // 90 days ago
+      const cutoff90 = new Date();
+      cutoff90.setDate(cutoff90.getDate() - 90); // 90 days ago
+
+      const cutoff180 = new Date();
+      cutoff180.setDate(cutoff180.getDate() - 180); // 180 days ago
 
       let deletedCount = 0;
       let errorCount = 0;
 
       try {
-        // Single query: all inactive tokens. We filter client-side for stale
-        // (older than 90 days) and permanently invalid (have deactivationReason).
+        // ── Query 1: Inactive tokens ────────────────────────────────
+        // We filter client-side for stale (older than 90 days) and
+        // permanently invalid (have deactivationReason).
         // This avoids needing a composite index for a != query.
         const allInactive = await db
             .collection("device_tokens")
@@ -1206,16 +1608,29 @@ exports.cleanupInactiveTokens = functions
 
         // Separate into stale (old) and invalid (permanent failure) tokens
         const staleTokens = allInactive.docs.filter(
-          (doc) => doc.data().updatedAt && doc.data().updatedAt.toDate() <= cutoff
+          (doc) => doc.data().updatedAt && doc.data().updatedAt.toDate() <= cutoff90
         );
         const invalidTokens = allInactive.docs.filter(
           (doc) => doc.data().deactivationReason
         );
 
-        // Merge and deduplicate by doc ID
+        // ── Query 2: Orphaned active tokens (migration safety net) ──
+        // Catch active=true docs that were never deactivated (e.g. old
+        // {userId}_{platform} docs that never received a push after the
+        // migration to auto-generated IDs).
+        //
+        // These have stale tokens that will never be valid, but are still
+        // marked active. We remove them after 180 days of no updates.
+        const orphanedActive = await db
+            .collection("device_tokens")
+            .where("active", "==", true)
+            .where("updatedAt", "<=", cutoff180)
+            .get();
+
+        // ── Merge & deduplicate by doc ID ───────────────────────────
         const seenIds = new Set();
         const tokensToRemove = [];
-        for (const list of [staleTokens, invalidTokens]) {
+        for (const list of [staleTokens, invalidTokens, orphanedActive.docs]) {
           for (const doc of list) {
             if (!seenIds.has(doc.id)) {
               seenIds.add(doc.id);
@@ -1225,9 +1640,10 @@ exports.cleanupInactiveTokens = functions
         }
 
         console.log(
-          `[CleanupTokens] Found ${staleTokens.length} stale (>90d) + ` +
-          `${invalidTokens.length - (tokensToRemove.length - staleTokens.length)} invalid ` +
-          `= ${tokensToRemove.length} token(s) to remove`
+          `[CleanupTokens] stale(>90d): ${staleTokens.length}, ` +
+          `invalid: ${invalidTokens.length}, ` +
+          `orphaned active(>180d): ${orphanedActive.size} ` +
+          `→ removing ${tokensToRemove.length} total`
         );
 
         let batch = db.batch();
