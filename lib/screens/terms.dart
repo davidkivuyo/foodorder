@@ -51,15 +51,15 @@ These Terms govern your use of the Campus Bite
 4. Ordering and Payments
 • Placing Orders: Orders made through the App are subject to acceptance by the vendor.
 • Pricing: Prices include food, taxes, delivery fees, and platform fees displayed at the app. Prices may change without notice.
-• Allergies: Campus Bite is a platform and cannot guarantee food is free of allergens. You must communicate severe dietary restrictions directly to the vendor.
+• Allergies: Campus Bite is a digital platform and cannot guarantee food is free of allergens. You must communicate severe dietary restrictions directly to the vendor.
 
 5. Delivery and Pick-up
 • Currently we do not offer any delivery services, This is a self pick based app.
-• Delivery Times: Estimated delivery times are provided for convenience and are not guaranteed.
+• Food preparation Times: Estimated preparation times are provided for convenience and are not guaranteed.
 
 6. Cancellations and Refunds
-• Cancellations: Orders cannot be cancelled by you when you press the "Place order & notify cafe" button.
-• Refund Policy: Incorrect or missing items must be reported within 2 hours of delivery for a case-by-case review.
+• Cancellations: Orders cannot be cancelled by you after you press the "Place order & notify cafe" button.
+• Refund Policy: Refund is subject to the corresponding ordered cafes rules.
 
 7. User Conduct
 You agree to use the application only for lawful purposes. You agree not to place fake orders, harass vendors, or attempt to hack the App's security.
@@ -69,7 +69,7 @@ To ensure a reliable service for everyone, the App tracks your order collection 
 • 0% (Good Standing): Your account is safe and operating normally.
 • Penalty Increases (up to 50%): Failing to pick up your ordered food increases your penalty percentage. Reaching 50% serves as a critical warning.
 • 100% (Ordering Restricted): If your penalty status reaches 100% due to repeated uncollected food, your ability to place new orders will be disabled. You will still be able to log in, browse the App, and view menus, but you cannot check out.
-• Restoring Order Privileges: To remove the ordering restriction after reaching 100%, you must contact the App Administrator directly to appeal.
+• Restoring Order Privileges: To remove the ordering restriction after reaching 100%, you must contact the App Administrator directly to appeal or consider informing the support team.
 
 9. Intellectual Property
 All content, features, and functionality of the application are the exclusive property of the application owner(s). Refer the License.
