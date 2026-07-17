@@ -450,7 +450,6 @@ async function sendPushNotification({
         android: {
           priority: "high",
           notification: {
-            channelId: "campusbite_notifications",
             priority: "high",
             defaultSound: true,
             defaultVibrateTimings: true,

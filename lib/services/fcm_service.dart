@@ -34,6 +34,16 @@ class FcmService {
   final DeviceTokenRepository _tokenRepository;
   final String _role;
 
+  /// Web VAPID key for Firebase Cloud Messaging.
+  ///
+  /// Required for web push notifications. Obtain from:
+  /// Firebase Console > Project Settings > Cloud Messaging > Web Push certificates
+  ///
+  /// Set to your VAPID public key string (e.g. "BAlk...").
+  /// When null or empty, web push will attempt auto-configuration
+  /// via the project's messagingSenderId.
+  final String? _vapidKey;
+
   /// Callback invoked when a notification deepLink should be navigated.
   /// Set this from the app's navigation layer.
   static void Function(String deepLink)? onDeepLinkNavigation;
@@ -56,7 +66,9 @@ class FcmService {
   FcmService({
     required String role,
     DeviceTokenRepository? tokenRepository,
+    String? vapidKey,
   })  : _role = role,
+        _vapidKey = vapidKey,
         _tokenRepository = tokenRepository ?? DeviceTokenRepository();
 
   // ── Initialization ─────────────────────────────────────────────────────────
@@ -93,7 +105,11 @@ class FcmService {
       }
 
       // Get the current FCM token
-      final token = await messaging.getToken();
+      // On web, the VAPID key is required for the browser's Push API.
+      // On Android/iOS, the vapidKey parameter is ignored by the SDK.
+      final token = await messaging.getToken(
+        vapidKey: _vapidKey?.isNotEmpty == true ? _vapidKey : null,
+      );
       if (token == null || token.isEmpty) {
         debugPrint('[FcmService] No FCM token available');
         return false;

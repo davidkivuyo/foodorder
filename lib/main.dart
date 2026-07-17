@@ -26,8 +26,12 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'firebase_options.dart';
 
 /// Global FCM service instance shared across the app.
+///
+/// [vapidKey] is required for web push notifications. Obtain from:
+/// Firebase Console > Project Settings > Cloud Messaging > Web Push certificates
 final FcmService fcmService = FcmService(
   role: NotificationService.roleStudent,
+  vapidKey: 'BH_URF31cImwh5AXlb4gLqWuIgeQ6m8KYovL48DyGYsvBl9rArOr90vbetUVPQDEUD09JBzuMffO6zTlfjN-J2g',
 );
 
 Future<void> main() async {
