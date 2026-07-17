@@ -21,7 +21,7 @@ jobs:
       # Step 3: Set up Flutter (Pinned to v2.23.0 action SHA + SDK 3.44.2)
       - uses: subosito/flutter-action@1a44944d180802c6d71b3e8006e8979c6bb44e05
         with:
-          flutter-version: '3.44.2'
+          channel: 'stable'
           cache: true
 
       # Step 4: Build Flutter Web
