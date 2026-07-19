@@ -141,17 +141,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
               border: Border.all(color: Colors.green.shade100),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(.08),
+                  color: Colors.black.withValues(alpha: .08),
                   blurRadius: 18,
                   offset: const Offset(0, 8),
                 ),
               ],
             ),
             child: Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 24,
-                vertical: 28,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
               child: Form(
                 key: _formKey,
                 child: Column(
@@ -175,10 +172,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     const Text(
                       "Join the campus food community",
                       textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Colors.black54,
-                        fontSize: 16,
-                      ),
+                      style: TextStyle(color: Colors.black54, fontSize: 16),
                     ),
                     const SizedBox(height: 28),
 
@@ -282,7 +276,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                     ..onTap = () => context.push('/terms'),
                                 ),
                                 const TextSpan(
-                                  text: " to prevent bans or account suspension.",
+                                  text:
+                                      " to prevent bans or account suspension.",
                                 ),
                               ],
                             ),
@@ -302,7 +297,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         onPressed: isLoading ? null : _handleRegister,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF116522),
-                          disabledBackgroundColor: const Color(0xFF116522).withOpacity(0.6),
+                          disabledBackgroundColor: const Color(
+                            0xFF116522,
+                          ).withValues(alpha: 0.6),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
@@ -401,7 +398,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 borderRadius: BorderRadius.circular(18),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.06),
+                    color: Colors.black.withValues(alpha: 0.06),
                     blurRadius: 20,
                     offset: const Offset(0, 10),
                   ),
@@ -419,11 +416,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
     return Scaffold(
       backgroundColor: const Color(0xfff5f5f5),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          child: bodyWidget,
-        ),
-      ),
+      body: SafeArea(child: SingleChildScrollView(child: bodyWidget)),
     );
   }
 }

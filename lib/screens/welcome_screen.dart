@@ -36,7 +36,7 @@ class WelcomeScreen extends StatelessWidget {
           ),
 
           // Dark Overlay
-          Container(color: Colors.black.withOpacity(0.35)),
+          Container(color: Colors.black.withValues(alpha: 0.35)),
 
           SafeArea(
             child: Center(
@@ -45,7 +45,10 @@ class WelcomeScreen extends StatelessWidget {
                   maxWidth: isDesktop ? 480 : double.infinity,
                 ),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 28,
+                    vertical: 20,
+                  ),
                   child: Column(
                     children: [
                       /// Logo
@@ -134,7 +137,10 @@ class WelcomeScreen extends StatelessWidget {
                         onTap: () => context.push('/login'),
                         child: RichText(
                           text: const TextSpan(
-                            style: TextStyle(color: Colors.white70, fontSize: 18),
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 18,
+                            ),
                             children: [
                               TextSpan(text: "Already have an account? "),
                               TextSpan(
