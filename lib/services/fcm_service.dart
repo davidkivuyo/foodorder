@@ -64,11 +64,10 @@ class FcmService {
   String? _currentUserId;
 
   FcmService({
-    required String role,
+    required this._role,
     DeviceTokenRepository? tokenRepository,
     String? vapidKey,
-  })  : _role = role,
-        _vapidKey = vapidKey,
+  })  : _vapidKey = vapidKey,
         _tokenRepository = tokenRepository ?? DeviceTokenRepository();
 
   // ── Initialization ─────────────────────────────────────────────────────────

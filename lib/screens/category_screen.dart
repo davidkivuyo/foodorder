@@ -16,6 +16,8 @@ import 'package:flutter/material.dart';
 import '../data/food_data.dart';
 import '../widgets/cafe_selection_dialog.dart';
 import '../widgets/cart_fab.dart';
+import '../widgets/hover_card_scale.dart';
+
 
 class _Category {
   final String display;
@@ -185,6 +187,29 @@ class Cards extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final double screenWidth = MediaQuery.of(context).size.width;
+    final bool isDesktop = screenWidth >= 850;
+
+    if (isDesktop) {
+      return GridView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        itemCount: items.length,
+        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+          maxCrossAxisExtent: 320,
+          mainAxisSpacing: 16,
+          crossAxisSpacing: 16,
+          childAspectRatio: 1.35, // Adjust this ratio so cards look nicely proportioned
+        ),
+        itemBuilder: (context, index) {
+          return HoverCardScale(
+            child: FoodCard(item: items[index]),
+          );
+        },
+      );
+    }
+
+    // Default mobile list
     return ListView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
@@ -235,7 +260,7 @@ class FoodCard extends StatelessWidget {
         ),
 
         Padding(
-          padding: EdgeInsets.all(4),
+          padding: const EdgeInsets.all(4),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -261,7 +286,7 @@ class FoodCard extends StatelessWidget {
                     },
                     child: Container(
                       padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(
+                      decoration: const BoxDecoration(
                         color: Colors.orange,
                         shape: BoxShape.circle,
                       ),

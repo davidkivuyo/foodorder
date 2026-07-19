@@ -18,7 +18,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:go_router/go_router.dart';
 import '../models/notification_model.dart';
 import '../services/notification_service.dart';
-import '../navigation/bottom_navigation.dart'; // deepLinkToTabIndex
+
 
 /// UI icon/color mapping for notification types.
 /// Kept separate from the model to avoid UI dependencies in pure data classes.
@@ -361,6 +361,10 @@ class _NotificationScreenState extends State<NotificationScreen> {
         },
       ),
     );
+  }
+  
+  Object? deepLinkToTabIndex(String deepLink) {
+    return null;
   }
 }
 
