@@ -110,11 +110,6 @@ class FcmService {
         vapidKey: _vapidKey?.isNotEmpty == true ? _vapidKey : null,
       );
 
-      // 🔍 DEBUG: Log the raw token and userId so you can see them in adb logcat.
-      // Grep with: adb logcat | grep -i "FCM_TOKEN"
-      debugPrint(
-        '[FcmService] FCM_TOKEN >>> ${token ?? "null"}  (userId=$userId)',
-      );
 
       if (token == null || token.isEmpty) {
         debugPrint('[FcmService] No FCM token available');
@@ -154,7 +149,7 @@ class FcmService {
         }
       });
 
-      debugPrint('[FcmService] Initialized successfully for user $userId');
+      debugPrint('[FcmService] Initialized successfully');
       return true;
     } catch (e, stack) {
       debugPrint('[FcmService] Initialization error: $e\n$stack');
@@ -194,16 +189,16 @@ class FcmService {
         // Only clear the userId once the token has been successfully
         // deactivated in Firestore.
         _currentUserId = null;
-        debugPrint('[FcmService] Token deactivated for user $userId');
+        debugPrint('[FcmService] Token deactivated');
       } else {
         debugPrint(
-          '[FcmService] Token deactivation returned false for user $userId '
+          '[FcmService] Token deactivation returned false '
           '- keeping userId for potential retry',
         );
       }
     } catch (e) {
       debugPrint(
-        '[FcmService] Token deactivation error for user $userId: $e '
+        '[FcmService] Token deactivation error: $e '
         '- keeping userId for potential retry',
       );
     }

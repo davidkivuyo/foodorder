@@ -22,9 +22,7 @@ class FirebaseMsg {
   Future<void> initFCM() async {
     await msgService.requestPermission();
 
-    final String? token = await msgService.getToken();
-    debugPrint('FCM Token: $token');
-
+    // Token is registered silently; not printed to avoid token spoofing risk.
     FirebaseMessaging.onBackgroundMessage(handleNotification);
 
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
