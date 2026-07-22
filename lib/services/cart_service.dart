@@ -39,6 +39,13 @@ class CartService extends ChangeNotifier {
   /// Cached user name used when placing orders.
   String _cachedUserName = '';
 
+  /// Returns items in the cart whose food item is no longer available.
+  List<CartItem> get outOfStockItems =>
+      _cartItems.where((item) => !item.foodItem.available).toList();
+
+  /// Whether any cart items are currently out of stock.
+  bool get hasOutOfStockItems => _cartItems.any((item) => !item.foodItem.available);
+
   double get totalAmount {
     return _cartItems.fold(
       0.0,
@@ -96,51 +103,95 @@ class CartService extends ChangeNotifier {
         .collection('cart')
         .snapshots()
         .listen((snapshot) async {
-          final List<CartItem> updatedItems = [];
-
-          for (final doc in snapshot.docs) {
-            final data = doc.data();
-            final foodItemId = data['foodItemId'] as String?;
-            final quantity = (data['quantity'] as num?)?.toInt() ?? 1;
-            final selectedCafe = data['selectedCafe'] as String?;
-
-            if (foodItemId == null || foodItemId.isEmpty) continue;
-
-            // Fetch FoodItem details from cache or Firestore
-            FoodItem? foodItem = _foodItemsCache[foodItemId];
-            if (foodItem == null) {
-              try {
-                final foodDoc = await FirebaseFirestore.instance
-                    .collection('food_items')
-                    .doc(foodItemId)
-                    .get();
-                if (foodDoc.exists && foodDoc.data() != null) {
-                  foodItem = FoodItem.fromMap(foodDoc.data()!, id: foodDoc.id);
-                  _foodItemsCache[foodItemId] = foodItem;
-                }
-              } catch (e) {
-                debugPrint(
-                  '[CartService] Error fetching food item $foodItemId: $e',
-                );
-              }
-            }
-
-            if (foodItem != null) {
-              updatedItems.add(
-                CartItem(
-                  id: doc.id,
-                  foodItem: foodItem,
-                  quantity: quantity,
-                  selectedCafe: selectedCafe,
-                ),
-              );
-            }
-          }
-
-          _cartItems.clear();
-          _cartItems.addAll(updatedItems);
-          notifyListeners();
+          await _syncCartItems(snapshot);
         });
+  }
+
+  /// Re-fetches food item data for all cart items from Firestore.
+  ///
+  /// This ensures availability changes made by the admin (e.g., marking
+  /// an item out of stock) are reflected immediately in the cart UI.
+  Future<void> refreshCartItemAvailability() async {
+    if (_cartItems.isEmpty) return;
+
+    bool changed = false;
+    for (final item in _cartItems) {
+      try {
+        final foodDoc = await FirebaseFirestore.instance
+            .collection('food_items')
+            .doc(item.foodItem.id)
+            .get();
+        if (foodDoc.exists && foodDoc.data() != null) {
+          final freshItem =
+              FoodItem.fromMap(foodDoc.data()!, id: foodDoc.id);
+          // Update the cache
+          _foodItemsCache[item.foodItem.id] = freshItem;
+          // Check if availability actually changed
+          if (freshItem.available != item.foodItem.available) {
+            changed = true;
+          }
+          // Mutate the cart item's foodItem reference
+          item.foodItem.available = freshItem.available;
+        }
+      } catch (e) {
+        debugPrint(
+          '[CartService] Error refreshing food item ${item.foodItem.id}: $e',
+        );
+      }
+    }
+
+    if (changed) {
+      notifyListeners();
+    }
+  }
+
+  /// Sync local cart state from a Firestore query snapshot.
+  Future<void> _syncCartItems(QuerySnapshot snapshot) async {
+    final List<CartItem> updatedItems = [];
+
+    for (final doc in snapshot.docs) {
+      final data = doc.data() as Map<String, dynamic>?;
+      if (data == null) continue;
+      final foodItemId = data['foodItemId'] as String?;
+      final quantity = (data['quantity'] as num?)?.toInt() ?? 1;
+      final selectedCafe = data['selectedCafe'] as String?;
+
+      if (foodItemId == null || foodItemId.isEmpty) continue;
+
+      // Fetch FoodItem details from cache or Firestore
+      FoodItem? foodItem = _foodItemsCache[foodItemId];
+      if (foodItem == null) {
+        try {
+          final foodDoc = await FirebaseFirestore.instance
+              .collection('food_items')
+              .doc(foodItemId)
+              .get();
+          if (foodDoc.exists && foodDoc.data() != null) {
+            foodItem = FoodItem.fromMap(foodDoc.data()!, id: foodDoc.id);
+            _foodItemsCache[foodItemId] = foodItem;
+          }
+        } catch (e) {
+          debugPrint(
+            '[CartService] Error fetching food item $foodItemId: $e',
+          );
+        }
+      }
+
+      if (foodItem != null) {
+        updatedItems.add(
+          CartItem(
+            id: doc.id,
+            foodItem: foodItem,
+            quantity: quantity,
+            selectedCafe: selectedCafe,
+          ),
+        );
+      }
+    }
+
+    _cartItems.clear();
+    _cartItems.addAll(updatedItems);
+    notifyListeners();
   }
 
   void _cancelCartSubscription() {

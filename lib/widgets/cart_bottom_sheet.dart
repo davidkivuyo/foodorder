@@ -36,6 +36,12 @@ class _CartBottomSheetState extends State<CartBottomSheet> {
   void initState() {
     super.initState();
     _loadSuspensionStatus();
+    _refreshAvailability();
+  }
+
+  Future<void> _refreshAvailability() async {
+    await _cartService.refreshCartItemAvailability();
+    if (mounted) setState(() {});
   }
 
   Future<void> _loadSuspensionStatus() async {
@@ -150,6 +156,92 @@ class _CartBottomSheetState extends State<CartBottomSheet> {
                               ),
                             ),
                           ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+              ],
+
+              // Out-of-Stock Warning Banner — shown when some cart items
+              // are no longer available (admin marked them unavailable).
+              if (_cartService.hasOutOfStockItems) ...[
+                const SizedBox(height: 4),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.orange.shade300),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              color: Colors.orange.shade100,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Icon(
+                              Icons.warning_amber_rounded,
+                              size: 18,
+                              color: Colors.orange.shade800,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Text(
+                            'Some items are unavailable',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.orange.shade900,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      ..._cartService.outOfStockItems.map(
+                        (item) => Padding(
+                          padding: const EdgeInsets.only(left: 34, top: 2),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.block,
+                                size: 14,
+                                color: Colors.orange.shade700,
+                              ),
+                              const SizedBox(width: 6),
+                              Flexible(
+                                child: Text(
+                                  '${item.foodItem.title} ×${item.quantity} — removed from stock',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.orange.shade800,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Remove these items to place your order.',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.orange.shade700,
                         ),
                       ),
                     ],
@@ -409,7 +501,8 @@ class _CartBottomSheetState extends State<CartBottomSheet> {
                             width: double.infinity,
                             height: 50,
                             child: ElevatedButton(
-                              onPressed: _isSuspended == true
+                              onPressed: _isSuspended == true ||
+                                      _cartService.hasOutOfStockItems
                                   ? null
                                   : () async {
                                       // First check if the account is suspended

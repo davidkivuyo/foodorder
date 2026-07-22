@@ -24,6 +24,7 @@ import '../widgets/cafe_selection_dialog.dart';
 import '../widgets/cart_fab.dart';
 import '../widgets/hover_card_scale.dart';
 import '../widgets/special_banner_card.dart';
+import '../widgets/stock_badge.dart';
 import 'common_food.dart';
 
 class HomeScreen extends StatelessWidget {
@@ -312,6 +313,8 @@ class CardRowItems extends StatelessWidget {
                                   ),
                                 ),
                               ),
+                              // Stock overlay badge
+                              StockOverlayBadge(inStock: item.available),
                             ],
                           ),
 
@@ -338,18 +341,24 @@ class CardRowItems extends StatelessWidget {
                                       ),
                                     ),
                                     GestureDetector(
-                                      onTap: () {
-                                        addToCartWithCafeCheck(context, item);
-                                      },
+                                      onTap: item.available
+                                          ? () => addToCartWithCafeCheck(context, item)
+                                          : null,
                                       child: Container(
                                         padding: const EdgeInsets.all(6),
-                                        decoration: const BoxDecoration(
-                                          color: Colors.orange,
+                                        decoration: BoxDecoration(
+                                          color: item.available
+                                              ? Colors.orange
+                                              : Colors.grey.shade300,
                                           shape: BoxShape.circle,
                                         ),
-                                        child: const Icon(
-                                          Icons.add_rounded,
-                                          color: Colors.white,
+                                        child: Icon(
+                                          item.available
+                                              ? Icons.add_rounded
+                                              : Icons.block,
+                                          color: item.available
+                                              ? Colors.white
+                                              : Colors.grey.shade500,
                                           size: 18,
                                         ),
                                       ),
@@ -449,6 +458,9 @@ class ItemDescriptionsHome extends StatelessWidget {
                     ),
                   ),
 
+                  // Stock overlay badge
+                  StockOverlayBadge(inStock: item.available),
+
                   SafeArea(
                     child: Padding(
                       padding: const EdgeInsets.all(16),
@@ -507,11 +519,17 @@ class ItemDescriptionsHome extends StatelessWidget {
                         ),
                       ],
                     ),
+                    const SizedBox(height: 8),
+                    // Stock status inline
+                    Center(
+                      child: StockBadge(inStock: item.available, fontSize: 12),
+                    ),
                     const SizedBox(height: 10),
                     Center(
                       child: ElevatedButton(
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.orange,
+                          backgroundColor:
+                              item.available ? Colors.orange : Colors.grey.shade400,
                           foregroundColor: Colors.white,
                           elevation: 1,
                           padding: const EdgeInsets.symmetric(
@@ -522,15 +540,19 @@ class ItemDescriptionsHome extends StatelessWidget {
                             borderRadius: BorderRadius.circular(10),
                           ),
                         ),
-                        onPressed: () {
-                          addToCartWithCafeCheck(context, item);
-                        },
-                        child: const Row(
+                        onPressed: item.available
+                            ? () => addToCartWithCafeCheck(context, item)
+                            : null,
+                        child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.shopping_cart),
-                            SizedBox(width: 8),
-                            Text('add to cart'),
+                            Icon(
+                              item.available
+                                  ? Icons.shopping_cart
+                                  : Icons.block,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(item.available ? 'add to cart' : 'unavailable'),
                           ],
                         ),
                       ),
@@ -577,30 +599,37 @@ class CategoriesTitles extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  AspectRatio(
-                    aspectRatio: 2.2,
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(16),
-                      child: GestureDetector(
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => ItemDescriptionsHome(item: item),
+                  Stack(
+                    children: [
+                      AspectRatio(
+                        aspectRatio: 2.2,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(16),
+                          child: GestureDetector(
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) =>
+                                      ItemDescriptionsHome(item: item),
+                                ),
+                              );
+                            },
+                            child: Hero(
+                              tag:
+                                  'home_${item.displayCafe}_${item.title}_${item.image}',
+                              child: item.buildImage(
+                                height: 100,
+                                width: double.infinity,
+                                fit: BoxFit.cover,
+                              ),
                             ),
-                          );
-                        },
-                        child: Hero(
-                          tag:
-                              'home_${item.displayCafe}_${item.title}_${item.image}',
-                          child: item.buildImage(
-                            height: 100,
-                            width: double.infinity,
-                            fit: BoxFit.cover,
                           ),
                         ),
                       ),
-                    ),
+                      // Stock overlay badge
+                      StockOverlayBadge(inStock: item.available),
+                    ],
                   ),
 
                   Padding(
@@ -625,18 +654,24 @@ class CategoriesTitles extends StatelessWidget {
                             ),
                             const SizedBox(width: 8),
                             GestureDetector(
-                              onTap: () {
-                                addToCartWithCafeCheck(context, item);
-                              },
+                              onTap: item.available
+                                  ? () => addToCartWithCafeCheck(context, item)
+                                  : null,
                               child: Container(
                                 padding: const EdgeInsets.all(6),
-                                decoration: const BoxDecoration(
-                                  color: Colors.orange,
+                                decoration: BoxDecoration(
+                                  color: item.available
+                                      ? Colors.orange
+                                      : Colors.grey.shade300,
                                   shape: BoxShape.circle,
                                 ),
-                                child: const Icon(
-                                  Icons.add_rounded,
-                                  color: Colors.white,
+                                child: Icon(
+                                  item.available
+                                      ? Icons.add_rounded
+                                      : Icons.block,
+                                  color: item.available
+                                      ? Colors.white
+                                      : Colors.grey.shade500,
                                   size: 18,
                                   semanticLabel: 'add item',
                                 ),

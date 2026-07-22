@@ -18,6 +18,7 @@ import '../data/food_data.dart';
 import '../widgets/cafe_selection_dialog.dart';
 import '../widgets/cart_fab.dart';
 import '../widgets/hover_card_scale.dart';
+import '../widgets/stock_badge.dart';
 import 'home_screen.dart';
 
 // ---------------------------------------------------------------------------
@@ -340,29 +341,36 @@ class _CommonFoodCard extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // ── Food image (tappable → detail screen) ───────────────────────
-        AspectRatio(
-          aspectRatio: 2.2,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: GestureDetector(
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => ItemDescriptionsHome(item: item),
+        Stack(
+          children: [
+            AspectRatio(
+              aspectRatio: 2.2,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: GestureDetector(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => ItemDescriptionsHome(item: item),
+                      ),
+                    );
+                  },
+                  child: Hero(
+                    tag:
+                        'common_${item.displayCafe}_${item.title}_${item.image}',
+                    child: item.buildImage(
+                      height: 100,
+                      width: double.infinity,
+                      fit: BoxFit.cover,
+                    ),
                   ),
-                );
-              },
-              child: Hero(
-                tag: 'common_${item.displayCafe}_${item.title}_${item.image}',
-                child: item.buildImage(
-                  height: 100,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
                 ),
               ),
             ),
-          ),
+            // Stock overlay badge
+            StockOverlayBadge(inStock: item.available),
+          ],
         ),
 
         // ── Card details ────────────────────────────────────────────────
@@ -389,18 +397,22 @@ class _CommonFoodCard extends StatelessWidget {
                   const SizedBox(width: 8),
                   // Add to cart button
                   GestureDetector(
-                    onTap: () {
-                      addToCartWithCafeCheck(context, item);
-                    },
+                    onTap: item.available
+                        ? () => addToCartWithCafeCheck(context, item)
+                        : null,
                     child: Container(
                       padding: const EdgeInsets.all(6),
-                      decoration: const BoxDecoration(
-                        color: Color(0xFFF5820D),
+                      decoration: BoxDecoration(
+                        color: item.available
+                            ? const Color(0xFFF5820D)
+                            : Colors.grey.shade300,
                         shape: BoxShape.circle,
                       ),
-                      child: const Icon(
-                        Icons.add_rounded,
-                        color: Colors.white,
+                      child: Icon(
+                        item.available ? Icons.add_rounded : Icons.block,
+                        color: item.available
+                            ? Colors.white
+                            : Colors.grey.shade500,
                         size: 18,
                         semanticLabel: 'add item',
                       ),
