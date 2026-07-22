@@ -17,7 +17,6 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../data/food_data.dart';
 import '../services/search_service.dart';
-import '../widgets/stock_badge.dart';
 import '../screens/home_screen.dart'; // To open ItemDescriptionsHome detail screen
 
 class SearchBarScreen extends StatefulWidget {
@@ -403,13 +402,9 @@ class _SearchBarScreenState extends State<SearchBarScreen> {
                                     color: Colors.black87,
                                   ),
                                 ),
-                              ),
-                              const SizedBox(width: 4),
-                              // Availability Badge
-                              StockBadge(inStock: item.available),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
+                              ),                          ],
+                        ),
+                        const SizedBox(height: 4),
                           Text(
                             item.category,
                             style: TextStyle(
