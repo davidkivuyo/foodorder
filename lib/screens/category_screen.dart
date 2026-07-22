@@ -19,7 +19,6 @@ import '../widgets/cart_fab.dart';
 import '../widgets/hover_card_scale.dart';
 import '../widgets/stock_badge.dart';
 
-
 class _Category {
   final String display;
   final String value;
@@ -200,12 +199,11 @@ class Cards extends StatelessWidget {
           maxCrossAxisExtent: 320,
           mainAxisSpacing: 16,
           crossAxisSpacing: 16,
-          childAspectRatio: 1.35, // Adjust this ratio so cards look nicely proportioned
+          childAspectRatio:
+              1.35, // Adjust this ratio so cards look nicely proportioned
         ),
         itemBuilder: (context, index) {
-          return HoverCardScale(
-            child: FoodCard(item: items[index]),
-          );
+          return HoverCardScale(child: FoodCard(item: items[index]));
         },
       );
     }
@@ -306,7 +304,9 @@ class FoodCard extends StatelessWidget {
                             ? Colors.white
                             : Colors.grey.shade500,
                         size: 18,
-                        semanticLabel: 'add item',
+                        semanticLabel: item.available
+                            ? 'add item to cart'
+                            : 'item unavailable',
                       ),
                     ),
                   ),
@@ -532,8 +532,9 @@ class ItemDescriptionsCategories extends StatelessWidget {
                     Center(
                       child: ElevatedButton(
                         style: ElevatedButton.styleFrom(
-                          backgroundColor:
-                              item.available ? Colors.orange : Colors.grey.shade400,
+                          backgroundColor: item.available
+                              ? Colors.orange
+                              : Colors.grey.shade400,
                           foregroundColor: Colors.white,
                           elevation: 1,
                           padding: const EdgeInsets.symmetric(
@@ -556,7 +557,9 @@ class ItemDescriptionsCategories extends StatelessWidget {
                                   : Icons.block,
                             ),
                             const SizedBox(width: 8),
-                            Text(item.available ? 'add to cart' : 'unavailable'),
+                            Text(
+                              item.available ? 'add to cart' : 'unavailable',
+                            ),
                           ],
                         ),
                       ),

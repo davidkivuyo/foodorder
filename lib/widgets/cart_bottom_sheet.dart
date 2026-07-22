@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:geolocator/geolocator.dart';
@@ -32,16 +33,110 @@ class _CartBottomSheetState extends State<CartBottomSheet> {
   final CartService _cartService = CartService();
   bool? _isSuspended;
 
+  /// Per-document listeners keyed by food item ID — only listens to
+  /// items currently in the cart, not the entire collection.
+  final Map<String, StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>>
+      _foodItemListeners = {};
+
   @override
   void initState() {
     super.initState();
+    _cartService.addListener(_onCartChanged);
     _loadSuspensionStatus();
     _refreshAvailability();
+    _reconcileFoodItemSubscriptions();
+  }
+
+  @override
+  void dispose() {
+    _cartService.removeListener(_onCartChanged);
+    _cancelAllFoodItemListeners();
+    super.dispose();
+  }
+
+  /// Called whenever CartService notifies listeners (cart contents changed).
+  /// Keeps per-document subscriptions in sync with the current cart items.
+  void _onCartChanged() {
+    _reconcileFoodItemSubscriptions();
+  }
+
+  /// Cancel all active per-document listeners.
+  void _cancelAllFoodItemListeners() {
+    for (final sub in _foodItemListeners.values) {
+      sub.cancel();
+    }
+    _foodItemListeners.clear();
+  }
+
+  /// Reconcile active subscriptions with the current cart item IDs.
+  ///
+  /// Cancels listeners for items removed from the cart and adds
+  /// listeners for new items, without re-subscribing to existing ones.
+  void _reconcileFoodItemSubscriptions() {
+    final cartItems = _cartService.cartItems;
+    final wantedIds = cartItems.map((item) => item.foodItem.id).toSet();
+
+    // Remove listeners for items no longer in the cart.
+    _foodItemListeners.removeWhere((id, sub) {
+      if (!wantedIds.contains(id)) {
+        sub.cancel();
+        return true;
+      }
+      return false;
+    });
+
+    // Add listeners for new cart items.
+    for (final id in wantedIds) {
+      if (_foodItemListeners.containsKey(id)) continue;
+
+      final sub = FirebaseFirestore.instance
+          .collection('food_items')
+          .doc(id)
+          .snapshots()
+          .listen((snapshot) {
+            _onFoodItemChanged(snapshot);
+          });
+      _foodItemListeners[id] = sub;
+    }
+  }
+
+  /// Handle a single food-item document snapshot — update availability
+  /// in-place for the matching cart item, if it changed.
+  void _onFoodItemChanged(
+    DocumentSnapshot<Map<String, dynamic>> snapshot,
+  ) {
+    if (!mounted || !snapshot.exists) return;
+
+    final data = snapshot.data();
+    if (data == null) return;
+
+    final newAvailable = data['available'] as bool? ?? true;
+    final docId = snapshot.id;
+
+    final cartItems = _cartService.cartItems;
+    final idx = cartItems.indexWhere((item) => item.foodItem.id == docId);
+    if (idx < 0) return;
+
+    final item = cartItems[idx];
+    if (item.foodItem.available != newAvailable) {
+      item.foodItem.available = newAvailable;
+      if (mounted) setState(() {});
+    }
   }
 
   Future<void> _refreshAvailability() async {
     await _cartService.refreshCartItemAvailability();
     if (mounted) setState(() {});
+  }
+
+  /// Remove all out-of-stock items from the cart in batch.
+  Future<void> _removeOutOfStockItems() async {
+    for (final item in _cartService.outOfStockItems) {
+      await _cartService.deleteFromCart(item.foodItem);
+    }
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   Future<void> _loadSuspensionStatus() async {
@@ -236,12 +331,29 @@ class _CartBottomSheetState extends State<CartBottomSheet> {
                           ),
                         ),
                       ),
-                      const SizedBox(height: 6),
-                      Text(
-                        'Remove these items to place your order.',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: Colors.orange.shade700,
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: _removeOutOfStockItems,
+                          icon: const Icon(Icons.remove_circle_outline, size: 16),
+                          label: const Text('Remove unavailable items'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.orange.shade800,
+                            side: BorderSide(color: Colors.orange.shade300),
+                            backgroundColor: Colors.orange.shade50,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            textStyle: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                         ),
                       ),
                     ],
@@ -505,6 +617,48 @@ class _CartBottomSheetState extends State<CartBottomSheet> {
                                       _cartService.hasOutOfStockItems
                                   ? null
                                   : () async {
+                                      // Revalidate availability immediately
+                                      // before the order action in case the
+                                      // live subscription hasn't caught up.
+                                      await _cartService
+                                          .refreshCartItemAvailability();
+                                      if (!context.mounted) return;
+
+                                      // If items went out of stock since the
+                                      // button was enabled, bail out.
+                                      if (_cartService.hasOutOfStockItems) {
+                                        if (mounted) setState(() {});
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          SnackBar(
+                                            content: const Row(
+                                              children: [
+                                                Icon(
+                                                  Icons.warning_amber_rounded,
+                                                  color: Colors.white,
+                                                  size: 20,
+                                                ),
+                                                SizedBox(width: 10),
+                                                Expanded(
+                                                  child: Text(
+                                                    'Some items are no longer '
+                                                    'available. Please remove '
+                                                    'them to place your order.',
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            backgroundColor:
+                                                Colors.orange.shade800,
+                                            behavior:
+                                                SnackBarBehavior.floating,
+                                            duration:
+                                                const Duration(seconds: 5),
+                                          ),
+                                        );
+                                        return;
+                                      }
+
                                       // First check if the account is suspended
                                       final suspended = await _cartService
                                           .isAccountSuspended();
