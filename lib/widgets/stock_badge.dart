@@ -37,36 +37,36 @@ class StockBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (inStock) return const SizedBox.shrink();
+
     return Container(
       padding: EdgeInsets.symmetric(
         horizontal: horizontalPadding,
         vertical: verticalPadding,
       ),
       decoration: BoxDecoration(
-        color: inStock ? Colors.green.shade50 : const Color(0xFFFFEBEE),
+        color: const Color(0xFFFFEBEE),
         borderRadius: BorderRadius.circular(6),
         border: Border.all(
-          color: inStock ? Colors.green.shade200 : const Color(0xFFEF9A9A),
+          color: const Color(0xFFEF9A9A),
           width: 0.5,
         ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (!inStock) ...[
-            Icon(
-              Icons.remove_shopping_cart_outlined,
-              size: fontSize + 2,
-              color: const Color(0xFFC62828),
-            ),
-            const SizedBox(width: 3),
-          ],
+          Icon(
+            Icons.remove_shopping_cart_outlined,
+            size: fontSize + 2,
+            color: const Color(0xFFC62828),
+          ),
+          const SizedBox(width: 3),
           Text(
-            inStock ? 'In Stock' : 'Out of Stock',
+            'Out of Stock',
             style: TextStyle(
               fontSize: fontSize,
               fontWeight: FontWeight.w600,
-              color: inStock ? Colors.green.shade700 : const Color(0xFFC62828),
+              color: const Color(0xFFC62828),
             ),
           ),
         ],
@@ -86,29 +86,29 @@ class StockOverlayBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (inStock) return const SizedBox.shrink();
+
     return Positioned(
       top: 8,
       right: 8,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         decoration: BoxDecoration(
-          color: inStock
-              ? Colors.green.shade700.withValues(alpha: 0.85)
-              : const Color(0xFFC62828).withValues(alpha: 0.85),
+          color: const Color(0xFFC62828).withValues(alpha: 0.85),
           borderRadius: BorderRadius.circular(8),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              inStock ? Icons.check_circle_outline : Icons.block,
+            const Icon(
+              Icons.block,
               size: 12,
               color: Colors.white,
             ),
             const SizedBox(width: 4),
-            Text(
-              inStock ? 'In Stock' : 'Out of Stock',
-              style: const TextStyle(
+            const Text(
+              'Out of Stock',
+              style: TextStyle(
                 fontSize: 10,
                 fontWeight: FontWeight.w600,
                 color: Colors.white,
