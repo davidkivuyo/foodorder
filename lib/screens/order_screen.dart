@@ -75,7 +75,9 @@ class _OrdersScreenState extends State<OrdersScreen>
 
     for (final item in order.items) {
       // Ensure the FoodItem has a non-empty document ID
-      final foodItemId = item.foodItem.id.isNotEmpty ? item.foodItem.id : item.id;
+      final foodItemId = item.foodItem.id.isNotEmpty
+          ? item.foodItem.id
+          : item.id;
       final targetFoodItem = item.foodItem.id.isNotEmpty
           ? item.foodItem
           : FoodItem(
@@ -162,16 +164,18 @@ class _OrdersScreenState extends State<OrdersScreen>
             'totalAmount': total,
             'createdAt': FieldValue.serverTimestamp(),
             'items': items
-                .map((i) => {
-                      'foodItemId': i.foodItem.id,
-                      'title': i.foodItem.title,
-                      'price': i.foodItem.price,
-                      'quantity': i.quantity,
-                      'image': i.foodItem.image,
-                      'selectedCafe': i.selectedCafe,
-                      'category': i.foodItem.category,
-                      'displayCafe': i.foodItem.displayCafe,
-                    })
+                .map(
+                  (i) => {
+                    'foodItemId': i.foodItem.id,
+                    'title': i.foodItem.title,
+                    'price': i.foodItem.price,
+                    'quantity': i.quantity,
+                    'image': i.foodItem.image,
+                    'selectedCafe': i.selectedCafe,
+                    'category': i.foodItem.category,
+                    'displayCafe': i.foodItem.displayCafe,
+                  },
+                )
                 .toList(),
           });
 
@@ -269,18 +273,22 @@ class _OrdersScreenState extends State<OrdersScreen>
           orders.sort((a, b) => b.orderTime.compareTo(a.orderTime));
 
           final activeOrders = orders
-              .where((o) =>
-                  o.status == OrderStatus.pending ||
-                  o.status == OrderStatus.accepted ||
-                  o.status == OrderStatus.preparing ||
-                  o.status == OrderStatus.ready)
+              .where(
+                (o) =>
+                    o.status == OrderStatus.pending ||
+                    o.status == OrderStatus.accepted ||
+                    o.status == OrderStatus.preparing ||
+                    o.status == OrderStatus.ready,
+              )
               .toList();
 
           final completedOrders = orders
-              .where((o) =>
-                  o.status == OrderStatus.collected ||
-                  o.status == OrderStatus.rejected ||
-                  o.status == OrderStatus.noShow)
+              .where(
+                (o) =>
+                    o.status == OrderStatus.collected ||
+                    o.status == OrderStatus.rejected ||
+                    o.status == OrderStatus.noShow,
+              )
               .toList();
 
           return TabBarView(
@@ -312,7 +320,7 @@ class _OrdersScreenState extends State<OrdersScreen>
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: Colors.orange.withOpacity(0.1),
+                color: Colors.orange.withValues(alpha: 0.1),
                 shape: BoxShape.circle,
               ),
               child: const Icon(
@@ -353,7 +361,11 @@ class _OrdersScreenState extends State<OrdersScreen>
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.history_toggle_off, size: 54, color: Colors.grey.shade400),
+            Icon(
+              Icons.history_toggle_off,
+              size: 54,
+              color: Colors.grey.shade400,
+            ),
             const SizedBox(height: 16),
             const Text(
               'No past orders yet',
@@ -373,7 +385,11 @@ class _OrdersScreenState extends State<OrdersScreen>
       padding: const EdgeInsets.all(12),
       itemCount: completedOrders.length,
       itemBuilder: (context, index) {
-        return _buildOrderCard(context, completedOrders[index], isActive: false);
+        return _buildOrderCard(
+          context,
+          completedOrders[index],
+          isActive: false,
+        );
       },
     );
   }
@@ -409,7 +425,10 @@ class _OrdersScreenState extends State<OrdersScreen>
                       ),
                       Text(
                         'Pre-plan meals for upcoming days & order in 1 tap',
-                        style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey.shade600,
+                        ),
                       ),
                     ],
                   ),
@@ -463,7 +482,8 @@ class _OrdersScreenState extends State<OrdersScreen>
                             ),
                             const SizedBox(height: 20),
                             OutlinedButton.icon(
-                              onPressed: () => _showAddPlannedOrderDialog(context),
+                              onPressed: () =>
+                                  _showAddPlannedOrderDialog(context),
                               icon: const Icon(Icons.add_task),
                               label: const Text('Create Your First Plan'),
                               style: OutlinedButton.styleFrom(
@@ -481,21 +501,26 @@ class _OrdersScreenState extends State<OrdersScreen>
                       itemBuilder: (context, index) {
                         final doc = docs[index];
                         final data = doc.data();
-                        final title = data['title'] as String? ?? 'Planned Meal';
+                        final title =
+                            data['title'] as String? ?? 'Planned Meal';
                         final note = data['note'] as String? ?? '';
-                        final total = (data['totalAmount'] as num?)?.toDouble() ?? 0.0;
+                        final total =
+                            (data['totalAmount'] as num?)?.toDouble() ?? 0.0;
                         final dateTS = data['plannedDate'] as Timestamp?;
                         final plannedDate = dateTS?.toDate() ?? DateTime.now();
                         final rawItems = data['items'] as List? ?? [];
 
-                        final List<CartItem> parsedItems = rawItems.map((itemMap) {
+                        final List<CartItem> parsedItems = rawItems.map((
+                          itemMap,
+                        ) {
                           return CartItem(
                             id: itemMap['foodItemId'] ?? '',
                             foodItem: FoodItem.fromMap(
                               itemMap as Map<String, dynamic>,
                               id: itemMap['foodItemId'] ?? '',
                             ),
-                            quantity: (itemMap['quantity'] as num?)?.toInt() ?? 1,
+                            quantity:
+                                (itemMap['quantity'] as num?)?.toInt() ?? 1,
                             selectedCafe: itemMap['selectedCafe'] as String?,
                           );
                         }).toList();
@@ -512,7 +537,8 @@ class _OrdersScreenState extends State<OrdersScreen>
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
                                   children: [
                                     Expanded(
                                       child: Text(
@@ -529,7 +555,9 @@ class _OrdersScreenState extends State<OrdersScreen>
                                         vertical: 4,
                                       ),
                                       decoration: BoxDecoration(
-                                        color: Colors.orange.withOpacity(0.12),
+                                        color: Colors.orange.withValues(
+                                          alpha: 0.12,
+                                        ),
                                         borderRadius: BorderRadius.circular(12),
                                       ),
                                       child: Row(
@@ -557,7 +585,8 @@ class _OrdersScreenState extends State<OrdersScreen>
                                         size: 20,
                                         color: Colors.red,
                                       ),
-                                      onPressed: () => _deletePlannedOrder(doc.id),
+                                      onPressed: () =>
+                                          _deletePlannedOrder(doc.id),
                                     ),
                                   ],
                                 ),
@@ -576,7 +605,9 @@ class _OrdersScreenState extends State<OrdersScreen>
 
                                 ...parsedItems.map(
                                   (i) => Padding(
-                                    padding: const EdgeInsets.symmetric(vertical: 2),
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 2,
+                                    ),
                                     child: Row(
                                       mainAxisAlignment:
                                           MainAxisAlignment.spaceBetween,
@@ -620,8 +651,9 @@ class _OrdersScreenState extends State<OrdersScreen>
                                           );
                                         }
                                         if (!context.mounted) return;
-                                        ScaffoldMessenger.of(context)
-                                            .showSnackBar(
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
                                           SnackBar(
                                             content: Text(
                                               'Loaded "$title" into cart!',
@@ -637,14 +669,18 @@ class _OrdersScreenState extends State<OrdersScreen>
                                                   showDragHandle: true,
                                                   builder: (_) =>
                                                       CartBottomSheet(
-                                                          onOrderPlaced: () {}),
+                                                        onOrderPlaced: () {},
+                                                      ),
                                                 );
                                               },
                                             ),
                                           ),
                                         );
                                       },
-                                      icon: const Icon(Icons.shopping_cart_checkout, size: 16),
+                                      icon: const Icon(
+                                        Icons.shopping_cart_checkout,
+                                        size: 16,
+                                      ),
                                       label: const Text('Order Now'),
                                       style: ElevatedButton.styleFrom(
                                         backgroundColor: Colors.green.shade800,
@@ -673,7 +709,11 @@ class _OrdersScreenState extends State<OrdersScreen>
 
   // ── ORDER CARD WIDGET ──────────────────────────────────────────────────────
 
-  Widget _buildOrderCard(BuildContext context, FoodOrder order, {required bool isActive}) {
+  Widget _buildOrderCard(
+    BuildContext context,
+    FoodOrder order, {
+    required bool isActive,
+  }) {
     final visuals = _statusVisuals(order.status);
 
     return Card(
@@ -706,7 +746,7 @@ class _OrdersScreenState extends State<OrdersScreen>
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: visuals.color.withOpacity(0.12),
+                    color: visuals.color.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
@@ -865,7 +905,10 @@ class _OrdersScreenState extends State<OrdersScreen>
                     OutlinedButton.icon(
                       onPressed: () => _showOrderDetailsDialog(context, order),
                       icon: const Icon(Icons.info_outline, size: 14),
-                      label: const Text('Details', style: TextStyle(fontSize: 12)),
+                      label: const Text(
+                        'Details',
+                        style: TextStyle(fontSize: 12),
+                      ),
                       style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 10,
@@ -956,7 +999,7 @@ class _OrdersScreenState extends State<OrdersScreen>
                         vertical: 4,
                       ),
                       decoration: BoxDecoration(
-                        color: visuals.color.withOpacity(0.12),
+                        color: visuals.color.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
@@ -1054,7 +1097,10 @@ class _OrdersScreenState extends State<OrdersScreen>
                   children: [
                     const Text(
                       'Total Amount:',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     Text(
                       'Tsh ${order.totalAmount.toInt()}',
@@ -1077,7 +1123,8 @@ class _OrdersScreenState extends State<OrdersScreen>
                           Navigator.pop(context);
                           _showAddPlannedOrderDialog(
                             context,
-                            prefilledTitle: 'Meal based on Order #${order.orderId.substring(0, 4)}',
+                            prefilledTitle:
+                                'Meal based on Order #${order.orderId.substring(0, 4)}',
                             prefilledItems: order.items,
                           );
                         },
@@ -1129,7 +1176,8 @@ class _OrdersScreenState extends State<OrdersScreen>
     ];
 
     int currentStepIndex = steps.indexWhere((s) => s.status == currentStatus);
-    if (currentStatus == OrderStatus.rejected || currentStatus == OrderStatus.noShow) {
+    if (currentStatus == OrderStatus.rejected ||
+        currentStatus == OrderStatus.noShow) {
       currentStepIndex = -1;
     }
 
@@ -1144,7 +1192,11 @@ class _OrdersScreenState extends State<OrdersScreen>
         children: [
           const Text(
             'Order Status Progress',
-            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black54),
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: Colors.black54,
+            ),
           ),
           const SizedBox(height: 10),
           Row(
@@ -1169,7 +1221,9 @@ class _OrdersScreenState extends State<OrdersScreen>
                       step.label,
                       style: TextStyle(
                         fontSize: 10,
-                        fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+                        fontWeight: isCurrent
+                            ? FontWeight.bold
+                            : FontWeight.normal,
                         color: isReached ? Colors.orange.shade900 : Colors.grey,
                       ),
                       textAlign: TextAlign.center,
@@ -1191,7 +1245,9 @@ class _OrdersScreenState extends State<OrdersScreen>
     String? prefilledTitle,
     List<CartItem>? prefilledItems,
   }) {
-    final titleController = TextEditingController(text: prefilledTitle ?? 'Tomorrow Lunch');
+    final titleController = TextEditingController(
+      text: prefilledTitle ?? 'Tomorrow Lunch',
+    );
     final noteController = TextEditingController();
     DateTime selectedDate = DateTime.now().add(const Duration(days: 1));
 
@@ -1243,16 +1299,24 @@ class _OrdersScreenState extends State<OrdersScreen>
                       contentPadding: EdgeInsets.zero,
                       title: Text(
                         'Target Date: ${_formatPlannedDate(selectedDate)}',
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
                       ),
                       trailing: IconButton(
-                        icon: const Icon(Icons.calendar_month, color: Colors.orange),
+                        icon: const Icon(
+                          Icons.calendar_month,
+                          color: Colors.orange,
+                        ),
                         onPressed: () async {
                           final picked = await showDatePicker(
                             context: context,
                             initialDate: selectedDate,
                             firstDate: DateTime.now(),
-                            lastDate: DateTime.now().add(const Duration(days: 30)),
+                            lastDate: DateTime.now().add(
+                              const Duration(days: 30),
+                            ),
                           );
                           if (picked != null) {
                             setDialogState(() {
@@ -1266,7 +1330,10 @@ class _OrdersScreenState extends State<OrdersScreen>
                     const Divider(),
                     const Text(
                       'Items in this Meal Plan:',
-                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     const SizedBox(height: 6),
 
@@ -1288,7 +1355,9 @@ class _OrdersScreenState extends State<OrdersScreen>
                                   style: const TextStyle(fontSize: 13),
                                 ),
                               ),
-                              Text('Tsh ${(i.foodItem.price * i.quantity).toInt()}'),
+                              Text(
+                                'Tsh ${(i.foodItem.price * i.quantity).toInt()}',
+                              ),
                             ],
                           ),
                         ),
@@ -1331,7 +1400,9 @@ class _OrdersScreenState extends State<OrdersScreen>
 
   // ── HELPER FORMATTERS ──────────────────────────────────────────────────────
 
-  ({Color color, String icon, String label}) _statusVisuals(OrderStatus status) {
+  ({Color color, String icon, String label}) _statusVisuals(
+    OrderStatus status,
+  ) {
     switch (status) {
       case OrderStatus.pending:
         return (color: Colors.orange, icon: '⏳', label: 'Pending');
@@ -1361,8 +1432,18 @@ class _OrdersScreenState extends State<OrdersScreen>
 
   String _formatFullDateTime(DateTime dt) {
     final months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     final hourStr = dt.hour.toString().padLeft(2, '0');
     final minStr = dt.minute.toString().padLeft(2, '0');
@@ -1375,12 +1456,24 @@ class _OrdersScreenState extends State<OrdersScreen>
     if (dt.year == now.year && dt.month == now.month && dt.day == now.day) {
       return 'Today';
     }
-    if (dt.year == tomorrow.year && dt.month == tomorrow.month && dt.day == tomorrow.day) {
+    if (dt.year == tomorrow.year &&
+        dt.month == tomorrow.month &&
+        dt.day == tomorrow.day) {
       return 'Tomorrow';
     }
     final months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     return '${dt.day} ${months[dt.month - 1]}';
   }
