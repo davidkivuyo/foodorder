@@ -158,9 +158,13 @@ class FoodOrder {
       if (raw == null) return [];
       if (raw is List) {
         return raw.map((itemMap) {
+          final foodItemId = itemMap['foodItemId'] as String? ?? itemMap['id'] as String? ?? '';
           return CartItem(
-            id: itemMap['foodItemId'] ?? '',
-            foodItem: FoodItem.fromMap(itemMap as Map<String, dynamic>),
+            id: foodItemId,
+            foodItem: FoodItem.fromMap(
+              itemMap as Map<String, dynamic>,
+              id: foodItemId,
+            ),
             quantity: (itemMap['quantity'] as num?)?.toInt() ?? 1,
             selectedCafe: itemMap['selectedCafe'] as String?,
           );
@@ -171,9 +175,13 @@ class FoodOrder {
         try {
           final decoded = jsonDecode(raw) as List;
           return decoded.map((itemMap) {
+            final foodItemId = itemMap['foodItemId'] as String? ?? itemMap['id'] as String? ?? '';
             return CartItem(
-              id: itemMap['foodItemId'] ?? '',
-              foodItem: FoodItem.fromMap(itemMap as Map<String, dynamic>),
+              id: foodItemId,
+              foodItem: FoodItem.fromMap(
+                itemMap as Map<String, dynamic>,
+                id: foodItemId,
+              ),
               quantity: (itemMap['quantity'] as num?)?.toInt() ?? 1,
               selectedCafe: itemMap['selectedCafe'] as String?,
             );

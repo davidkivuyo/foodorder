@@ -16,6 +16,8 @@ import 'package:flutter/material.dart';
 import '../data/food_data.dart';
 import '../widgets/cafe_selection_dialog.dart';
 import '../widgets/cart_fab.dart';
+import '../widgets/hover_card_scale.dart';
+import '../widgets/stock_badge.dart';
 
 class _Category {
   final String display;
@@ -185,6 +187,28 @@ class Cards extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final double screenWidth = MediaQuery.of(context).size.width;
+    final bool isDesktop = screenWidth >= 850;
+
+    if (isDesktop) {
+      return GridView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        itemCount: items.length,
+        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+          maxCrossAxisExtent: 320,
+          mainAxisSpacing: 16,
+          crossAxisSpacing: 16,
+          childAspectRatio:
+              1.35, // Adjust this ratio so cards look nicely proportioned
+        ),
+        itemBuilder: (context, index) {
+          return HoverCardScale(child: FoodCard(item: items[index]));
+        },
+      );
+    }
+
+    // Default mobile list
     return ListView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
@@ -209,33 +233,40 @@ class FoodCard extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        AspectRatio(
-          aspectRatio: 2.2,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: GestureDetector(
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => ItemDescriptionsCategories(item: item),
+        Stack(
+          children: [
+            AspectRatio(
+              aspectRatio: 2.2,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: GestureDetector(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => ItemDescriptionsCategories(item: item),
+                      ),
+                    );
+                  },
+                  child: Hero(
+                    tag:
+                        'category_${item.displayCafe}_${item.title}_${item.image}',
+                    child: item.buildImage(
+                      height: 100,
+                      width: double.infinity,
+                      fit: BoxFit.cover,
+                    ),
                   ),
-                );
-              },
-              child: Hero(
-                tag: 'category_${item.displayCafe}_${item.title}_${item.image}',
-                child: item.buildImage(
-                  height: 100,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
                 ),
               ),
             ),
-          ),
+            // Stock overlay badge
+            StockOverlayBadge(inStock: item.available),
+          ],
         ),
 
         Padding(
-          padding: EdgeInsets.all(4),
+          padding: const EdgeInsets.all(4),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -256,20 +287,26 @@ class FoodCard extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
                   GestureDetector(
-                    onTap: () {
-                      addToCartWithCafeCheck(context, item);
-                    },
+                    onTap: item.available
+                        ? () => addToCartWithCafeCheck(context, item)
+                        : null,
                     child: Container(
                       padding: const EdgeInsets.all(6),
                       decoration: BoxDecoration(
-                        color: Colors.orange,
+                        color: item.available
+                            ? Colors.orange
+                            : Colors.grey.shade300,
                         shape: BoxShape.circle,
                       ),
-                      child: const Icon(
-                        Icons.add_rounded,
-                        color: Colors.white,
+                      child: Icon(
+                        item.available ? Icons.add_rounded : Icons.block,
+                        color: item.available
+                            ? Colors.white
+                            : Colors.grey.shade500,
                         size: 18,
-                        semanticLabel: 'add item',
+                        semanticLabel: item.available
+                            ? 'add item to cart'
+                            : 'item unavailable',
                       ),
                     ),
                   ),
@@ -425,6 +462,9 @@ class ItemDescriptionsCategories extends StatelessWidget {
                     ),
                   ),
 
+                  // Stock overlay badge
+                  StockOverlayBadge(inStock: item.available),
+
                   SafeArea(
                     child: Padding(
                       padding: const EdgeInsets.all(16),
@@ -483,33 +523,43 @@ class ItemDescriptionsCategories extends StatelessWidget {
                         ),
                       ],
                     ),
+                    const SizedBox(height: 8),
+                    // Stock status inline
+                    Center(
+                      child: StockBadge(inStock: item.available, fontSize: 12),
+                    ),
                     const SizedBox(height: 10),
                     Center(
                       child: ElevatedButton(
                         style: ElevatedButton.styleFrom(
-                          backgroundColor:
-                              Colors.orange, // Button background color
-                          foregroundColor: Colors.white, // Text and icon color
-                          elevation: 1, // Shadow depth
+                          backgroundColor: item.available
+                              ? Colors.orange
+                              : Colors.grey.shade400,
+                          foregroundColor: Colors.white,
+                          elevation: 1,
                           padding: const EdgeInsets.symmetric(
                             horizontal: 30,
                             vertical: 15,
                           ),
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(
-                              10,
-                            ), // Rounded corners
+                            borderRadius: BorderRadius.circular(10),
                           ),
                         ),
-                        onPressed: () {
-                          addToCartWithCafeCheck(context, item);
-                        },
+                        onPressed: item.available
+                            ? () => addToCartWithCafeCheck(context, item)
+                            : null,
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
-                          children: const [
-                            Icon(Icons.shopping_cart),
-                            SizedBox(width: 8),
-                            Text('add to cart'),
+                          children: [
+                            Icon(
+                              item.available
+                                  ? Icons.shopping_cart
+                                  : Icons.block,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              item.available ? 'add to cart' : 'unavailable',
+                            ),
                           ],
                         ),
                       ),

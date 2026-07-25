@@ -47,18 +47,18 @@ class AuthService {
               .collection('users')
               .doc(credential.user!.uid)
               .set({
-            'fullName': fullName.trim(),
-            'email': email.trim(),
-            'role': 'student',
-            'createdAt': FieldValue.serverTimestamp(),
-            // Strike management fields
-            'strikePercentage': 0,
-            'strikeCount': 0,
-            'accountStatus': 'ACTIVE',
-            'lastStrikeAt': null,
-            'lastPardonAt': null,
-            'updatedAt': FieldValue.serverTimestamp(),
-          });
+                'fullName': fullName.trim(),
+                'email': email.trim(),
+                'role': 'student',
+                'createdAt': FieldValue.serverTimestamp(),
+                // Strike management fields
+                'strikePercentage': 0,
+                'strikeCount': 0,
+                'accountStatus': 'ACTIVE',
+                'lastStrikeAt': null,
+                'lastPardonAt': null,
+                'updatedAt': FieldValue.serverTimestamp(),
+              });
 
           // Set welcome screen flag for the newly registered user
           final prefs = await SharedPreferences.getInstance();
@@ -73,7 +73,7 @@ class AuthService {
       }
       return null; // success
     } catch (e, stack) {
-      debugPrint('[AuthService] register error: $e');
+      debugPrint('[AuthService] register error: type=${e.runtimeType}');
       debugPrint('[AuthService] stack: $stack');
       return _extractUserFriendlyError(e);
     }
@@ -92,7 +92,7 @@ class AuthService {
       );
       return null; // success
     } catch (e, stack) {
-      debugPrint('[AuthService] signIn error: $e');
+      debugPrint('[AuthService] signIn error: type=${e.runtimeType}');
       debugPrint('[AuthService] stack: $stack');
       return _extractUserFriendlyError(e);
     }
@@ -110,9 +110,7 @@ class AuthService {
   /// firebase_auth and returns a clean, user-facing string.
   String _extractUserFriendlyError(Object e) {
     if (e is FirebaseAuthException) {
-      debugPrint(
-        '[AuthService] FirebaseAuthException — code="${e.code}" message="${e.message}"',
-      );
+      debugPrint('[AuthService] FirebaseAuthException — code="${e.code}"');
 
       // Try mapping by code first.
       final mapped = _mapErrorCode(e.code);
@@ -129,7 +127,7 @@ class AuthService {
 
     if (e is PlatformException) {
       debugPrint(
-        '[AuthService] PlatformException — code="${e.code}" message="${e.message}" details=${e.details}',
+        '[AuthService] PlatformException — code="${e.code}" message="${e.message}"',
       );
 
       // Details map may carry the real Firebase code.
@@ -148,7 +146,7 @@ class AuthService {
       return msg.isNotEmpty ? msg : 'Authentication failed. Please try again.';
     }
 
-    debugPrint('[AuthService] Unknown exception type: ${e.runtimeType} — $e');
+    debugPrint('[AuthService] Unknown exception type: ${e.runtimeType}');
     return 'An unexpected error occurred. Please try again.';
   }
 

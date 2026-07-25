@@ -120,8 +120,7 @@ class DeviceTokenRepository {
         'lastSeen': FieldValue.serverTimestamp(),
       };
       debugPrint(
-        '[DeviceTokenRepository] Creating device_tokens doc for userId=$userId '
-        'role=$role platform=$platform deviceId=$installationId',
+        '[DeviceTokenRepository] Creating device_tokens doc',
       );
       final docRef = await _firestore.collection(_collection).add(payload);
 
@@ -130,7 +129,7 @@ class DeviceTokenRepository {
 
       return true;
     } catch (e) {
-      debugPrint('[DeviceTokenRepository] registerToken error: $e');
+      debugPrint('[DeviceTokenRepository] registerToken error: type=${e.runtimeType}');
       return false;
     }
   }
@@ -160,7 +159,7 @@ class DeviceTokenRepository {
 
       return true;
     } catch (e) {
-      debugPrint('[DeviceTokenRepository] deactivateToken error: $e');
+      debugPrint('[DeviceTokenRepository] deactivateToken error: type=${e.runtimeType}');
       return false;
     }
   }

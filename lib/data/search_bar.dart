@@ -147,9 +147,12 @@ class _SearchBarScreenState extends State<SearchBarScreen> {
             onSubmitted: _performSearch,
             style: const TextStyle(fontSize: 16, color: Colors.black87),
             decoration: InputDecoration(
-              hintText: '  Search for food, tags, category...',
-              hintStyle: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-              prefixIcon: Icon(Icons.search, color: Colors.black, size: 20),
+              hintText: '🔍Dishes, tags, category',
+              hintStyle: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.normal,
+                color: Colors.grey.shade400,
+              ),
               suffixIcon: _searchQuery.isNotEmpty
                   ? IconButton(
                       icon: const Icon(
@@ -210,26 +213,7 @@ class _SearchBarScreenState extends State<SearchBarScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
-                Icons.fastfood_outlined,
-                size: 80,
-                color: Colors.grey.shade300,
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'Search Your Next Meal',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black87,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Type food name, category (e.g. Burgers, Drinks), or dietary tags (e.g. Spicy, Vegan).',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
-              ),
+              Icon(Icons.fastfood_outlined, size: 80, color: Colors.black),
             ],
           ),
         ),
@@ -400,26 +384,6 @@ class _SearchBarScreenState extends State<SearchBarScreen> {
                                     fontSize: 16,
                                     fontWeight: FontWeight.bold,
                                     color: Colors.black87,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 4),
-                              // Availability Badge
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 6,
-                                  vertical: 2,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: Colors.green.shade50,
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: Text(
-                                  'In Stock',
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.green.shade700,
                                   ),
                                 ),
                               ),

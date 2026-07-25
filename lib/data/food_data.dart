@@ -29,7 +29,7 @@ class FoodItem {
   final List<String> availableCafes;
   final String time;
   final String section;
-  final bool available;
+  bool available;
   final bool featured;
   final int quantity;
   final List<String> dietaryTags;
@@ -38,7 +38,7 @@ class FoodItem {
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
-  const FoodItem({
+  FoodItem({
     this.id = '',
     this.image = '',
     this.title = '',

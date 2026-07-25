@@ -34,10 +34,20 @@ class CartService extends ChangeNotifier {
   StreamSubscription<User?>? _authSubscription;
   StreamSubscription<QuerySnapshot>? _cartSubscription;
 
+  /// Incremented on each snapshot so overlapping async syncs don't apply stale results.
+  int _cartSyncGeneration = 0;
+
   List<CartItem> get cartItems => List.unmodifiable(_cartItems);
 
   /// Cached user name used when placing orders.
   String _cachedUserName = '';
+
+  /// Returns items in the cart whose food item is no longer available.
+  List<CartItem> get outOfStockItems =>
+      _cartItems.where((item) => !item.foodItem.available).toList();
+
+  /// Whether any cart items are currently out of stock.
+  bool get hasOutOfStockItems => _cartItems.any((item) => !item.foodItem.available);
 
   double get totalAmount {
     return _cartItems.fold(
@@ -61,6 +71,7 @@ class CartService extends ChangeNotifier {
         _listenToCart(user.uid);
       } else {
         _cancelCartSubscription();
+        _cartSyncGeneration++; // Invalidate in-flight syncs from the old user.
         _cartItems.clear();
         notifyListeners();
       }
@@ -96,51 +107,109 @@ class CartService extends ChangeNotifier {
         .collection('cart')
         .snapshots()
         .listen((snapshot) async {
-          final List<CartItem> updatedItems = [];
-
-          for (final doc in snapshot.docs) {
-            final data = doc.data();
-            final foodItemId = data['foodItemId'] as String?;
-            final quantity = (data['quantity'] as num?)?.toInt() ?? 1;
-            final selectedCafe = data['selectedCafe'] as String?;
-
-            if (foodItemId == null || foodItemId.isEmpty) continue;
-
-            // Fetch FoodItem details from cache or Firestore
-            FoodItem? foodItem = _foodItemsCache[foodItemId];
-            if (foodItem == null) {
-              try {
-                final foodDoc = await FirebaseFirestore.instance
-                    .collection('food_items')
-                    .doc(foodItemId)
-                    .get();
-                if (foodDoc.exists && foodDoc.data() != null) {
-                  foodItem = FoodItem.fromMap(foodDoc.data()!, id: foodDoc.id);
-                  _foodItemsCache[foodItemId] = foodItem;
-                }
-              } catch (e) {
-                debugPrint(
-                  '[CartService] Error fetching food item $foodItemId: $e',
-                );
-              }
-            }
-
-            if (foodItem != null) {
-              updatedItems.add(
-                CartItem(
-                  id: doc.id,
-                  foodItem: foodItem,
-                  quantity: quantity,
-                  selectedCafe: selectedCafe,
-                ),
-              );
-            }
-          }
-
-          _cartItems.clear();
-          _cartItems.addAll(updatedItems);
-          notifyListeners();
+          // Capture the generation BEFORE starting the async work so that
+          // a newer snapshot that arrives while this sync is in flight will
+          // have a higher generation, making this one a no-op on completion.
+          final capturedGeneration = ++_cartSyncGeneration;
+          await _syncCartItems(snapshot, generation: capturedGeneration);
         });
+  }
+
+  /// Re-fetches food item data for all cart items from Firestore.
+  ///
+  /// This ensures availability changes made by the admin (e.g., marking
+  /// an item out of stock) are reflected immediately in the cart UI.
+  Future<void> refreshCartItemAvailability() async {
+    if (_cartItems.isEmpty) return;
+
+    bool changed = false;
+    for (final item in _cartItems) {
+      try {
+        final foodDoc = await FirebaseFirestore.instance
+            .collection('food_items')
+            .doc(item.foodItem.id)
+            .get();
+        if (foodDoc.exists && foodDoc.data() != null) {
+          final freshItem =
+              FoodItem.fromMap(foodDoc.data()!, id: foodDoc.id);
+          // Update the cache
+          _foodItemsCache[item.foodItem.id] = freshItem;
+          // Check if availability actually changed
+          if (freshItem.available != item.foodItem.available) {
+            changed = true;
+          }
+          // Mutate the cart item's foodItem reference
+          item.foodItem.available = freshItem.available;
+        }
+      } catch (e) {
+        debugPrint(
+          '[CartService] Error refreshing food item ${item.foodItem.id}: $e',
+        );
+      }
+    }
+
+    if (changed) {
+      notifyListeners();
+    }
+  }
+
+  /// Sync local cart state from a Firestore query snapshot.
+  ///
+  /// If [generation] is provided and is stale (older than the current
+  /// [_cartSyncGeneration]), the sync is skipped to prevent older async
+  /// results from overwriting newer ones.
+  Future<void> _syncCartItems(
+    QuerySnapshot snapshot, {
+    int? generation,
+  }) async {
+    final List<CartItem> updatedItems = [];
+
+    for (final doc in snapshot.docs) {
+      final data = doc.data() as Map<String, dynamic>?;
+      if (data == null) continue;
+      final foodItemId = data['foodItemId'] as String?;
+      final quantity = (data['quantity'] as num?)?.toInt() ?? 1;
+      final selectedCafe = data['selectedCafe'] as String?;
+
+      if (foodItemId == null || foodItemId.isEmpty) continue;
+
+      // Fetch FoodItem details from cache or Firestore
+      FoodItem? foodItem = _foodItemsCache[foodItemId];
+      if (foodItem == null) {
+        try {
+          final foodDoc = await FirebaseFirestore.instance
+              .collection('food_items')
+              .doc(foodItemId)
+              .get();
+          if (foodDoc.exists && foodDoc.data() != null) {
+            foodItem = FoodItem.fromMap(foodDoc.data()!, id: foodDoc.id);
+            _foodItemsCache[foodItemId] = foodItem;
+          }
+        } catch (e) {
+          debugPrint(
+            '[CartService] Error fetching food item $foodItemId: $e',
+          );
+        }
+      }
+
+      if (foodItem != null) {
+        updatedItems.add(
+          CartItem(
+            id: doc.id,
+            foodItem: foodItem,
+            quantity: quantity,
+            selectedCafe: selectedCafe,
+          ),
+        );
+      }
+    }
+
+    // Discard this sync if a newer snapshot has already been processed.
+    if (generation != null && generation != _cartSyncGeneration) return;
+
+    _cartItems.clear();
+    _cartItems.addAll(updatedItems);
+    notifyListeners();
   }
 
   void _cancelCartSubscription() {
@@ -150,7 +219,7 @@ class CartService extends ChangeNotifier {
 
   // ---------- Cart Operations ----------
 
-  void addToCart(FoodItem item, {String? selectedCafe}) async {
+  Future<void> addToCart(FoodItem item, {String? selectedCafe}) async {
     final userId = FirebaseAuth.instance.currentUser?.uid;
     if (userId == null || item.id.isEmpty) return;
     
@@ -187,7 +256,7 @@ class CartService extends ChangeNotifier {
     }
   }
 
-  void removeFromCart(FoodItem item) async {
+  Future<void> removeFromCart(FoodItem item) async {
     final userId = FirebaseAuth.instance.currentUser?.uid;
     if (userId == null || item.id.isEmpty) return;
 
@@ -216,7 +285,7 @@ class CartService extends ChangeNotifier {
     }
   }
 
-  void deleteFromCart(FoodItem item) async {
+  Future<void> deleteFromCart(FoodItem item) async {
     final userId = FirebaseAuth.instance.currentUser?.uid;
     if (userId == null || item.id.isEmpty) return;
 
@@ -299,6 +368,12 @@ class CartService extends ChangeNotifier {
   ///
   /// Student location is NEVER persisted to Firestore for privacy.
   /// Distance and pickup window are stored as anonymized values.
+  ///
+  /// The order is written inside a Firestore transaction that re-reads
+  /// the current `available` field of every food item.  If any item is
+  /// unavailable at that moment, the transaction is aborted and `null`
+  /// is returned — the UI-level check is only a hint; this is the
+  /// authoritative enforcement point.
   Future<String?> placeOrder({
     GeoPoint? cafeLocation,
     String? cafeId,
@@ -310,22 +385,28 @@ class CartService extends ChangeNotifier {
     final userId = FirebaseAuth.instance.currentUser?.uid;
     if (userId == null) return null;
 
-    // Generate a unique order ID
+    // Build the serialised order data before the transaction — we need
+    // a snapshot of _cartItems at this point; any stock changes that
+    // happen during the transaction will be caught by the reads inside.
     final timestamp = DateTime.now().millisecondsSinceEpoch;
     final randomSuffix = timestamp % 9000;
     final newOrderId = 'CB-${1000 + randomSuffix}';
 
-    // Build the order document — use cached name or fallback to Firebase displayName
     final displayName = _cachedUserName.isNotEmpty
         ? _cachedUserName
         : (FirebaseAuth.instance.currentUser?.displayName ?? 'Student');
     final hasDistanceData = cafeLocation != null && distanceMeters != null;
+    final itemsSnapshot = List<CartItem>.from(_cartItems);
+    final itemsTotal = itemsSnapshot.fold<double>(
+      0.0, (total, item) => total + item.foodItem.price * item.quantity,
+    );
+
     final newOrder = FoodOrder(
       orderId: newOrderId,
       userId: userId,
       userName: displayName,
-      items: List.from(_cartItems),
-      totalAmount: totalAmount,
+      items: itemsSnapshot,
+      totalAmount: itemsTotal,
       orderTime: DateTime.now(),
       status: OrderStatus.pending,
       pickupWindowMinutes: pickupWindowMinutes ?? 20,
@@ -335,18 +416,68 @@ class CartService extends ChangeNotifier {
       distanceMeters: distanceMeters,
     );
 
-    try {
-      // Save to Firestore under 'orders' collection with the generated ID
-      await FirebaseFirestore.instance
-          .collection('orders')
-          .doc(newOrderId)
-          .set(newOrder.toFirestore());
+    final orderData = newOrder.toFirestore();
+    final firestore = FirebaseFirestore.instance;
 
-      // Clear the cart after successful order placement
+    try {
+      await firestore.runTransaction((transaction) async {
+        // ── 1. Re-read every food item's availability inside the transaction ──
+        final unavailableItems = <String>[];
+
+        for (final item in itemsSnapshot) {
+          final foodRef =
+              firestore.collection('food_items').doc(item.foodItem.id);
+          final foodSnapshot = await transaction.get(foodRef);
+
+          if (!foodSnapshot.exists) {
+            unavailableItems.add(item.foodItem.title);
+            continue;
+          }
+
+          final foodData =
+              foodSnapshot.data();
+          final available =
+              (foodData?['available'] as bool?) ?? true;
+
+          if (!available) {
+            unavailableItems.add(item.foodItem.title);
+          }
+        }
+
+        // If any item is unavailable, abort — Firestore throws
+        // an AbortedException which we catch below as a failure.
+        if (unavailableItems.isNotEmpty) {
+          throw FirebaseException(
+            plugin: 'firestore',
+            code: 'failed-precondition',
+            message:
+                'Some items are no longer available: ${unavailableItems.join(', ')}',
+          );
+        }
+
+        // ── 2. All items pass — atomically write the order ──
+        transaction.set(
+          firestore.collection('orders').doc(newOrderId),
+          orderData,
+        );
+      });
+
+      // Transaction committed successfully — now clear the cart
+      // (outside the transaction because the cart is a subcollection
+      // of a document we didn't read within the transaction).
       await clearCart();
 
       debugPrint('[CartService] Order placed successfully: $newOrderId');
       return newOrderId;
+    } on FirebaseException catch (e) {
+      if (e.code == 'failed-precondition') {
+        debugPrint('[CartService] Order rejected — unavailable items: $e');
+      } else if (e.code == 'aborted') {
+        debugPrint('[CartService] Transaction conflict; order not placed');
+      } else {
+        debugPrint('[CartService] Error placing order: $e');
+      }
+      return null;
     } catch (e) {
       debugPrint('[CartService] Error placing order: $e');
       return null;

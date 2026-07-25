@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import 'package:campusbite/navigation/bottom_navigation.dart'; // deepLinkToTabIndex
+// deepLinkToTabIndex
 import 'package:campusbite/navigation/router.dart';
 import 'package:campusbite/services/fcm_service.dart';
 import 'package:campusbite/services/notification_service.dart';
@@ -172,5 +172,9 @@ class _MyAppState extends State<MyApp> {
         textTheme: GoogleFonts.dmSansTextTheme(Theme.of(context).textTheme),
       ),
     );
+  }
+  
+  Object? deepLinkToTabIndex(String deepLink) {
+    return null;
   }
 }

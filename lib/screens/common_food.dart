@@ -17,6 +17,8 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../data/food_data.dart';
 import '../widgets/cafe_selection_dialog.dart';
 import '../widgets/cart_fab.dart';
+import '../widgets/hover_card_scale.dart';
+import '../widgets/stock_badge.dart';
 import 'home_screen.dart';
 
 // ---------------------------------------------------------------------------
@@ -119,7 +121,6 @@ class _CommonFoodCircle extends StatelessWidget {
       );
     }
 
-    // No URL yet – show a styled placeholder ready for Firebase Storage
     return _placeholder();
   }
 
@@ -127,7 +128,7 @@ class _CommonFoodCircle extends StatelessWidget {
     return Container(
       width: 72,
       height: 72,
-      decoration: BoxDecoration(shape: BoxShape.circle),
+      decoration: const BoxDecoration(shape: BoxShape.circle),
       child: const Icon(Icons.restaurant, size: 32, color: Colors.black),
     );
   }
@@ -146,17 +147,13 @@ class _CommonFoodCircle extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Circular image with a subtle orange ring
             Container(
               width: 76,
               height: 76,
-              decoration: BoxDecoration(shape: BoxShape.circle),
+              decoration: const BoxDecoration(shape: BoxShape.circle),
               child: ClipOval(child: _buildCircleImage()),
             ),
-
             const SizedBox(height: 6),
-
-            // Food title
             Text(
               food.title,
               maxLines: 1,
@@ -168,10 +165,7 @@ class _CommonFoodCircle extends StatelessWidget {
                 color: Colors.black87,
               ),
             ),
-
             const SizedBox(height: 2),
-
-            // Prep time
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -194,16 +188,17 @@ class _CommonFoodCircle extends StatelessWidget {
 // No AppBar – uses a custom back button instead.
 // ---------------------------------------------------------------------------
 class CommonFoodList extends StatelessWidget {
-  // ignore: library_private_types_in_public_api
   final _CommonFoodItem food;
 
-  // ignore: library_private_types_in_public_api
   const CommonFoodList({super.key, required this.food});
 
   @override
   Widget build(BuildContext context) {
+    final double screenWidth = MediaQuery.of(context).size.width;
+    final bool isDesktop = screenWidth >= 850;
+
     return Scaffold(
-      floatingActionButton: const CartFab(),
+      floatingActionButton: isDesktop ? null : const CartFab(),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
       body: SafeArea(
         child: StreamBuilder<List<FoodItem>>(
@@ -225,9 +220,6 @@ class CommonFoodList extends StatelessWidget {
               );
             }
 
-            // Filter items whose title contains the common food name (case-insensitive).
-            // When Firestore has a dedicated field/tag for common-food categories this
-            // filter can be updated accordingly.
             final allItems = snapshot.data ?? [];
             final filtered = allItems.where((item) {
               return item.title.toLowerCase().contains(
@@ -243,7 +235,6 @@ class CommonFoodList extends StatelessWidget {
                   padding: const EdgeInsets.fromLTRB(8, 12, 16, 8),
                   child: Row(
                     children: [
-                      // Back button
                       IconButton(
                         icon: const Icon(Icons.arrow_back),
                         onPressed: () => Navigator.pop(context),
@@ -253,7 +244,6 @@ class CommonFoodList extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(width: 4),
-                      // Title matches the tapped category
                       Flexible(
                         child: Text(
                           food.title,
@@ -270,7 +260,7 @@ class CommonFoodList extends StatelessWidget {
                   ),
                 ),
 
-                // ── Vertical food list ─────────────────────────────────────
+                // ── Responsive food layout ──────────────────────────────────
                 Expanded(
                   child: filtered.isEmpty
                       ? Center(
@@ -297,17 +287,35 @@ class CommonFoodList extends StatelessWidget {
                             ),
                           ),
                         )
-                      : ListView.builder(
-                          padding: const EdgeInsets.all(10.0),
-                          itemCount: filtered.length,
-                          itemBuilder: (context, index) {
-                            final item = filtered[index];
-                            return Padding(
-                              padding: const EdgeInsets.only(bottom: 24.0),
-                              child: _CommonFoodCard(item: item),
-                            );
-                          },
-                        ),
+                      : isDesktop
+                          ? GridView.builder(
+                              padding: const EdgeInsets.all(16.0),
+                              itemCount: filtered.length,
+                              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                                maxCrossAxisExtent: 320,
+                                mainAxisSpacing: 16,
+                                crossAxisSpacing: 16,
+                                childAspectRatio: 1.35,
+                              ),
+                              itemBuilder: (context, index) {
+                                return HoverCardScale(
+                                  child: _CommonFoodCard(item: filtered[index]),
+                                );
+                              },
+                            )
+                          : ListView.builder(
+                              padding: const EdgeInsets.all(10.0),
+                              itemCount: filtered.length,
+                              itemBuilder: (context, index) {
+                                final item = filtered[index];
+                                return Padding(
+                                  padding: const EdgeInsets.only(bottom: 24.0),
+                                  child: HoverCardScale(
+                                    child: _CommonFoodCard(item: item),
+                                  ),
+                                );
+                              },
+                            ),
                 ),
               ],
             );
@@ -333,29 +341,36 @@ class _CommonFoodCard extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // ── Food image (tappable → detail screen) ───────────────────────
-        AspectRatio(
-          aspectRatio: 2.2,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: GestureDetector(
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => ItemDescriptionsHome(item: item),
+        Stack(
+          children: [
+            AspectRatio(
+              aspectRatio: 2.2,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: GestureDetector(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => ItemDescriptionsHome(item: item),
+                      ),
+                    );
+                  },
+                  child: Hero(
+                    tag:
+                        'common_${item.displayCafe}_${item.title}_${item.image}',
+                    child: item.buildImage(
+                      height: 100,
+                      width: double.infinity,
+                      fit: BoxFit.cover,
+                    ),
                   ),
-                );
-              },
-              child: Hero(
-                tag: 'common_${item.displayCafe}_${item.title}_${item.image}',
-                child: item.buildImage(
-                  height: 100,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
                 ),
               ),
             ),
-          ),
+            // Stock overlay badge
+            StockOverlayBadge(inStock: item.available),
+          ],
         ),
 
         // ── Card details ────────────────────────────────────────────────
@@ -382,18 +397,22 @@ class _CommonFoodCard extends StatelessWidget {
                   const SizedBox(width: 8),
                   // Add to cart button
                   GestureDetector(
-                    onTap: () {
-                      addToCartWithCafeCheck(context, item);
-                    },
+                    onTap: item.available
+                        ? () => addToCartWithCafeCheck(context, item)
+                        : null,
                     child: Container(
                       padding: const EdgeInsets.all(6),
-                      decoration: const BoxDecoration(
-                        color: Color(0xFFF5820D),
+                      decoration: BoxDecoration(
+                        color: item.available
+                            ? const Color(0xFFF5820D)
+                            : Colors.grey.shade300,
                         shape: BoxShape.circle,
                       ),
-                      child: const Icon(
-                        Icons.add_rounded,
-                        color: Colors.white,
+                      child: Icon(
+                        item.available ? Icons.add_rounded : Icons.block,
+                        color: item.available
+                            ? Colors.white
+                            : Colors.grey.shade500,
                         size: 18,
                         semanticLabel: 'add item',
                       ),

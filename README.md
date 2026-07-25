@@ -28,6 +28,7 @@ A Flutter mobile application that lets university students browse the campus caf
 - [Search System](#search-system)
 - [Distance-Based Pickup Deadline & Location-Based Calculations](#distance-based-pickup-deadline--location-based-calculations)
 - [Order Lifecycle](#order-lifecycle)
+- [Meal Planning & Reordering System](#meal-planning--reordering-system)
 - [Student Discipline & Automatic Strike Engine](#student-discipline--automatic-strike-engine)
 - [Production Notification Platform](#production-notification-platform)
 - [Environment & Secrets](#environment--secrets)
@@ -437,6 +438,31 @@ firebase functions:secrets:set CLOUDINARY_API_SECRET
 | `quantity` | number | Number of this item in cart |
 | `cafe` | string | Selected cafe |
 
+### `users/{userId}/plans/{planId}` (subcollection)
+
+Stores the student's saved meal plans.
+
+| Field | Type | Description |
+|---|---|---|
+| `title` | string | Custom name of the plan (e.g., "Tuesday Breakfast") |
+| `note` | string | Optional student instructions or notes |
+| `totalAmount` | number | Pre-calculated estimated total price of all items in TZS |
+| `plannedDate` | timestamp | User-selected target date and time for the meal plan |
+| `createdAt` | timestamp | Server timestamp when the meal plan was saved |
+| `items` | array\<map\> | List of plan items (representing serialized `CartItem` elements) |
+
+#### Structure of `items` Map inside `plans`
+Each map in the `items` array contains:
+- `foodItemId` (string): ID of the food item.
+- `title` (string): Name of the food item.
+- `price` (number): Price of the food item in TZS.
+- `quantity` (number): Number of units requested.
+- `image` (string): Cloudinary image URL.
+- `selectedCafe` (string): Selected cafe name.
+- `category` (string): Food category name.
+- `displayCafe` (string): Display name of the cafe.
+
+
 ### `notifications/{docId}`
 
 | Field | Type | Description |
@@ -527,6 +553,8 @@ The student app uses `go_router` with authentication-aware redirects:
 - **Cart & Checkout** — Add items, choose target cafe, and review total amount before placing orders.
 - **Distance-Based Pickup Window** — Automatically calculates walking distance to target cafe using GPS/Geolocator and requests corresponding pickup time window at checkout (from 10 to 25 minutes) to ensure freshness.
 - **Orders & Countdown Timers** — Track active order statuses and see real-time pickup countdown timers synced with server-enforced deadlines.
+- **One-Tap Reordering** — Reorder entire past orders with one tap from the order history. Automatically checks current availability/stock levels for each item before loading them into the active cart.
+- **Meal Planning** — Pre-plan customized meals for upcoming days, study breaks, or campus events. Save custom plans directly from the active cart or convert a past order into a plan, then load and purchase in one click when ready.
 - **Student Discipline Card** — Transparent in-app view of current strikes and suspension status.
 - **Notification Center** — In-app notification feed supporting real-time alerts for order status changes, pickup reminders, strike actions, and account suspension events.
 
@@ -613,6 +641,47 @@ Student places order
         └── Deadline expires ──→ NO_SHOW (deadlineStatus = EXPIRED)
                                   └──→ Strike issued to student
 ```
+
+---
+
+## Meal Planning & Reordering System
+
+CampusBite provides students with tools to plan meals in advance and quickly repeat past orders. These features improve convenience and decrease checkout friction, especially during busy campus hours.
+
+### 1. One-Tap Reordering
+To speed up the checkout process for recurring meals, students can reorder all items from any past order with a single click.
+
+#### Reorder Flow
+1. **Access History**: The student navigates to the **Orders** tab and selects the **History** sub-tab showing past completed or cancelled orders.
+2. **Trigger Reorder**:
+   - Tap the **Reorder** button directly on the past order card.
+   - Or open the order's detailed bottom sheet and tap the **Reorder All** button.
+3. **Availability & Validation Check**:
+   - The system retrieves the items from the past order and verifies each item's current `available` status in real-time.
+   - **Available Items**: Automatically added to the student's active shopping cart with the original quantities and selected cafes.
+   - **Unavailable / Out-of-Stock Items**: Excluded from the cart.
+4. **User Feedback**:
+   - If items are successfully added, a green SnackBar is displayed: `Reordered X items to cart!`. It includes an **OPEN CART** action button to proceed directly to checkout.
+   - If some items are unavailable, the SnackBar notifies the user: `Reordered X items to cart! (Y item out of stock)`.
+   - If all items in the order are unavailable, a red SnackBar alerts the user: `Items in this order are currently unavailable.` and no changes are made to the cart.
+
+### 2. Meal Planning
+Students can pre-schedule meals for upcoming study sessions, exam weeks, or daily schedules. Planned meals are saved to Firestore and can be transferred to the cart instantly.
+
+#### Creating a Meal Plan
+* **From Cart**: If a student has items in their active cart, they can navigate to the **Orders** tab → **Planned** tab and click **Create Your First Plan** / **Plan an Upcoming Meal** (or click the Calendar icon at the top of the Orders tab).
+* **From Past Orders**: When viewing details of a past order, the user can click **Save as Plan** to create a plan pre-populated with those items.
+* **Plan Customization**: The **Plan an Upcoming Meal** dialog prompts the user to enter:
+  - **Plan Name** (e.g., "Monday Study Group Lunch", "Post-Exam Dinner").
+  - **Target Date & Time**: Selected using an interactive date/time picker.
+  - **Custom Note** (e.g., "Add extra spicy sauce").
+  - The dialog displays a summary of the items and the estimated total cost.
+* **Storage**: Clicking **Save Plan** uploads the plan as a document in the `users/{userId}/plans` subcollection on Firestore.
+
+#### Managing & Checkout of Planned Meals
+* **Viewing Plans**: Saved plans are streamed in real-time under the **Planned** tab, ordered chronologically by their planned date.
+* **Instant Load-to-Cart**: Each plan card features a shopping cart button (`Order`). Clicking it iterates through the plan's saved items, adding them directly to the active cart, and displays a SnackBar saying `Loaded "[Plan Title]" into cart!` with an **OPEN CART** action to check out.
+* **Deleting Plans**: Students can permanently delete plans by tapping the trash icon on the card, which executes a direct Firestore delete operation on that document.
 
 ---
 
