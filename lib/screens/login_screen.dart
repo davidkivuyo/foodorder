@@ -107,11 +107,11 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
           const SizedBox(height: 24),
 
-          // University Email Label
+          // Email Label
           Align(
             alignment: Alignment.centerLeft,
             child: Text(
-              'University Email',
+              'Email',
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
