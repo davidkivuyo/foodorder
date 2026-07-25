@@ -147,8 +147,12 @@ class _SearchBarScreenState extends State<SearchBarScreen> {
             onSubmitted: _performSearch,
             style: const TextStyle(fontSize: 16, color: Colors.black87),
             decoration: InputDecoration(
-              hintText: '  Search for food, tags, category...',
-              hintStyle: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+              hintText: 'Search for food, tags, category...',
+              hintStyle: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.normal,
+                color: Colors.grey.shade400,
+              ),
               prefixIcon: Icon(Icons.search, color: Colors.black, size: 20),
               suffixIcon: _searchQuery.isNotEmpty
                   ? IconButton(
@@ -223,12 +227,6 @@ class _SearchBarScreenState extends State<SearchBarScreen> {
                   fontWeight: FontWeight.bold,
                   color: Colors.black87,
                 ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Type food name, category (e.g. Burgers, Drinks), or dietary tags (e.g. Spicy, Vegan).',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
               ),
             ],
           ),
@@ -402,9 +400,10 @@ class _SearchBarScreenState extends State<SearchBarScreen> {
                                     color: Colors.black87,
                                   ),
                                 ),
-                              ),                          ],
-                        ),
-                        const SizedBox(height: 4),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
                           Text(
                             item.category,
                             style: TextStyle(
