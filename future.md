@@ -1,6 +1,8 @@
 # future implementation plans
 
 # NOT FULLFILLED
+3. ADD A Verification email step to disallow other peoples emails and stop email misuse
+
 4. add a fetch request to see if the already entered cafe is available or not.
 
 9. save the users passwords in their google account logged in their device and retrieve it upon attempts to login in both adminview and customerview
