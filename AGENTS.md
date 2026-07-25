@@ -109,6 +109,7 @@ lib/
 ├── models/
 ├── services/
 ├── navigation/
+├── repositories/
 
 Avoid unnecessary complexity.
 
@@ -136,579 +137,479 @@ After completing a feature:
 
 # Current Phase
 
-PHASE 8
+PHASE 9
 
 # TASK
 
-Implement Phase 8 of CampusBite.
-
-This phase integrates Firebase Cloud Messaging (FCM) into the existing notification platform.
-
-Firebase Cloud Messaging has already been configured in Firebase Console.
-
-Do NOT recreate the Firebase project.
-
-Do NOT modify Firebase Console settings.
-
-Only implement the application and backend integration.
+Implement secure Email Verification and Forgot Password functionality for CampusBite.
 
 The implementation must be production-ready.
 
-The implementation must be secure.
+The implementation must prioritize security over convenience.
 
-The implementation must minimise Firestore reads and writes.
+Do NOT redesign the authentication system.
 
-The implementation must minimise Cloud Function invocations.
+Do NOT replace Firebase Authentication.
 
-Do NOT change existing business logic.
-
-Do NOT redesign the notification platform.
+Reuse the existing authentication flow.
 
 ---
 
 # CURRENT SYSTEM
 
-Already completed:
+Already implemented:
 
-✓ Student App
+✓ Firebase Authentication
 
-✓ Cafe Admin App
+✓ Student Registration
 
-✓ Authentication
+✓ Student Login
 
-✓ Firestore
+✓ Firestore Users Collection
 
-✓ Notification Platform
-
-✓ NotificationService
-
-✓ Cloud Functions
-
-✓ Automatic Strike Engine
-
-✓ Automatic No Show
-
-✓ Admin Dashboard
-
-✓ Audit Logs
-
-✓ Distance Based Pickup Logic
-
-Reuse all existing components.
+Reuse the existing code.
 
 ---
 
 # OBJECTIVE
 
-Whenever NotificationService creates a notification:
+Implement:
 
-Store notification in Firestore.
+1. Email Verification
 
-Immediately send a Firebase Cloud Messaging push notification to the recipient.
+2. Forgot Password
 
-Firestore remains the source of truth.
+using Firebase Authentication.
 
-FCM is only the delivery mechanism.
+Do NOT implement custom OTP verification.
 
-If push delivery fails:
+Do NOT build a custom email service.
 
-The notification must still exist in Firestore.
-
----
-
-# ARCHITECTURE
-
-Business Event
-
-↓
-
-NotificationService
-
-↓
-
-Create Firestore Notification
-
-↓
-
-Send Push Notification
-
-↓
-
-Student Device
-
-or
-
-Admin Device
-
-Never send push notifications directly from Flutter.
-
-All push notifications must originate from backend Cloud Functions.
+Use Firebase's built-in secure email verification and password reset mechanisms.
 
 ---
 
-# DEVICE TOKEN MANAGEMENT
+# EMAIL VERIFICATION FLOW
 
-Each authenticated device must register its FCM token.
+Registration
 
-Store tokens inside Firestore.
+↓
 
-Collection:
+Firebase creates account
 
-device_tokens
+↓
 
-Document ID:
+Firebase sends verification email
 
-Automatically generated.
+↓
 
-Fields:
+User opens email
 
-userId
+↓
 
-role
+User clicks verification link
 
-token
+↓
 
-platform
+Returns to app
 
-deviceId
+↓
 
-appVersion
+User taps "I've Verified My Email"
 
-createdAt
+↓
 
-updatedAt
+Reload Firebase user
 
-lastSeen
+↓
 
-active
+If verified
 
-Example:
+↓
 
-device_tokens
+Create Firestore user profile (if not already created)
 
-tokenDoc
+↓
 
-userId
+Enter application
 
-uid123
+---
 
-role
+# REGISTRATION
 
-student
+After successful account creation:
 
-token
+Immediately send verification email.
 
-xxxxxx
+Use:
 
-platform
+sendEmailVerification()
 
-android
+Never skip this step.
 
-deviceId
+---
 
-abcdef
+# FIRESTORE PROFILE CREATION
 
-active
+Do NOT create the Firestore user profile before email verification.
+
+Only create:
+
+users/{uid}
+
+after
+
+emailVerified == true
+
+This prevents unused and fake accounts from polluting Firestore.
+
+---
+
+# VERIFY EMAIL SCREEN
+
+Create:
+
+VerifyEmailScreen
+
+Display:
+
+• Verification instructions
+
+• Registered email address
+
+Buttons:
+
+I've Verified My Email
+
+Resend Verification Email
+
+Change Email
+
+Logout
+
+Do not automatically proceed without user confirmation.
+
+---
+
+# VERIFICATION CHECK
+
+When the user taps:
+
+I've Verified My Email
+
+Execute:
+
+Reload Firebase user.
+
+Check:
+
+currentUser.emailVerified
+
+If:
+
+false
+
+Show:
+
+"Your email has not been verified yet."
+
+Remain on VerifyEmailScreen.
+
+If:
 
 true
 
----
+Create Firestore profile (if missing).
 
-# TOKEN LIFECYCLE
-
-When app starts:
-
-Retrieve current FCM token.
-
-If token changed:
-
-Update Firestore.
-
-When Firebase refreshes token:
-
-Automatically update Firestore.
-
-When user logs out:
-
-Deactivate token.
-
-Do not delete immediately.
-
-Set:
-
-active = false
-
-updatedAt = serverTimestamp()
+Navigate to Home.
 
 ---
 
-# MULTIPLE DEVICES
+# RESEND EMAIL
 
-One user may own multiple devices.
+Allow users to resend verification email.
 
-Never overwrite tokens.
+Implement cooldown.
 
-Each device receives its own document.
+Cooldown:
 
-NotificationService must send notifications to all active tokens belonging to the recipient.
+60 seconds.
 
----
+Disable the resend button during cooldown.
 
-# NOTIFICATION DELIVERY
-
-NotificationService already creates Firestore notifications.
-
-Extend it.
-
-After successful Firestore write:
-
-Send push notification.
-
-Never send push first.
-
-Firestore write is always first.
+Prevent spam.
 
 ---
 
-# CLOUD FUNCTIONS
+# CHANGE EMAIL
 
-NotificationService must call:
+Allow the user to cancel registration.
 
-PushDeliveryService
+Delete the unverified Firebase account if appropriate.
 
-Responsibilities:
+Return to RegisterScreen.
 
-Load active tokens
-
-Send multicast notification
-
-Handle invalid tokens
-
-Clean expired tokens
-
-Return delivery results
-
-NotificationService must never contain FCM code.
-
-Keep responsibilities separated.
+The user may register again with a corrected email.
 
 ---
 
-# PUSH PAYLOAD
+# LOGIN FLOW
 
-Notification:
+When a user logs in:
 
-title
+Immediately reload Firebase user.
 
-body
+Check:
 
-Data:
+emailVerified
 
-notificationId
+If verified:
 
-type
+Continue normally.
 
-orderId
+If not verified:
 
-deepLink
+Do NOT allow access to the application.
 
-eventId
+Redirect to VerifyEmailScreen.
 
-Do not include sensitive information.
+Never allow unverified users to place orders.
 
-Never include:
-
-Email
-
-Phone
-
-Location
-
-Authentication data
+Never allow unverified users to access protected features.
 
 ---
 
-# CLICK ACTION
+# FORGOT PASSWORD
 
-When user taps notification:
+Create:
 
-Open application.
+ForgotPasswordScreen
 
-Navigate using:
+Fields:
 
-deepLink
+Student Email
 
-Examples:
+Buttons:
 
-/orders/{orderId}
+Send Reset Email
 
-/notifications
-
-/account
-
-/strike-history
-
-Navigation must reuse the existing deep link implementation.
-
-If the deep linking is not yet configured in the app, configure it cleanly without breaking existing features.
+Back to Login
 
 ---
 
-# DELIVERY FAILURES
+# EMAIL VALIDATION
 
-If Firebase returns:
+Accept only:
 
-UNREGISTERED
+Emails which are in correct email formats.
 
-INVALID_ARGUMENT
-
-NOT_FOUND
-
-Deactivate token.
-
-Do not retry.
-
-Other transient failures may be retried according to Firebase best practices.
-
-Never delete tokens during temporary failures.
+Validate email format before calling Firebase.
 
 ---
 
-# DUPLICATE PROTECTION
+# PASSWORD RESET
 
-NotificationService already uses:
+Use Firebase Authentication only.
 
-eventId
+Call:
 
-Continue using it.
+sendPasswordResetEmail()
 
-Never send duplicate push notifications.
+Do not implement custom reset codes.
 
-One business event must produce:
+Do not store reset tokens.
 
-One Firestore notification
-
-One push notification
-
-per device.
+Do not store temporary passwords.
 
 ---
 
-# FOREGROUND HANDLING
+# PASSWORD RESET RESPONSE
 
-If app is open:
+Always display the same success message.
 
-Display in-app notification banner.
+Example:
 
-Still save notification to Firestore.
+"If an account exists for this email, a password reset email has been sent."
 
-Do not suppress notifications.
+Never reveal whether the account exists.
 
----
-
-# BACKGROUND HANDLING
-
-Support:
-
-Background messages.
-
-Terminated application.
-
-Notification tap navigation.
-
-Do not duplicate notifications.
+Prevent account enumeration attacks.
 
 ---
 
-# FIRESTORE READ OPTIMISATION
+# PASSWORD POLICY
 
-Notification creation:
+Minimum length:
 
-No additional reads.
+8 characters
 
-Push delivery:
+Require:
 
-One indexed query:
+Uppercase
 
-device_tokens
+Lowercase
 
-WHERE
+Number
 
-userId == recipientId
+Special character
 
-AND
+Validate before registration.
 
-active == true
-
-Nothing else.
+Display clear validation messages.
 
 ---
 
-# FIRESTORE WRITE OPTIMISATION
+# FIRESTORE SECURITY
 
-Write notification.
+Never trust Firestore fields for verification status.
 
-Update invalid tokens only when necessary.
+Never create:
 
-Do not rewrite valid tokens.
+verified = true
 
----
+inside Firestore.
 
-# SECURITY
+Always trust:
 
-Students
+Firebase Authentication
 
-Cannot create tokens for other users.
+emailVerified
 
-Cannot modify another user's tokens.
-
-Admins
-
-Same restriction.
-
-Cloud Functions
-
-Read all active tokens.
-
-Flutter clients
-
-Only update their own device token.
+only.
 
 ---
 
-# FIRESTORE RULES
+# SECURITY RULES
 
-Protect:
+Protect application features using:
 
-device_tokens
+request.auth != null
 
-Allow authenticated users to:
+Where email verification is required, rely on the Firebase Authentication verified email state rather than client-side checks.
 
-Create their own token.
-
-Update their own token.
-
-Deactivate their own token.
-
-Deny access to tokens belonging to others.
-
-Cloud Functions retain administrative access.
+Do not rely solely on Flutter UI restrictions.
 
 ---
 
-# PERFORMANCE
+# RATE LIMITING
 
-Target:
+Verification resend:
 
-One notification write.
+One email every 60 seconds.
 
-One token query.
+Password reset:
 
-One multicast send.
+Prevent repeated rapid requests from the client.
 
-No polling.
-
-No unnecessary listeners.
-
-No duplicate Cloud Functions.
+Do not automatically retry failed requests.
 
 ---
 
-# PRIVACY
+# SESSION HANDLING
 
-Tokens are sensitive identifiers.
+When email becomes verified:
 
-Never expose another user's token.
+Reload Firebase user.
 
-Never return tokens to clients.
+Refresh authentication state.
 
-Never include tokens inside notifications.
-
-Never log token values in audit_log or anywhere.
+Do not require the user to restart the application.
 
 ---
 
-# CLEANUP
+# ERROR HANDLING
 
-Create scheduled Cloud Function.
+Handle:
 
-Runs weekly.
+Network unavailable
 
-Removes:
+Too many requests
 
-Inactive tokens older than 90 days.
+Invalid email
 
-Removes invalid tokens.
+User disabled
 
-Keeps Firestore small.
+Expired session
 
----
+Firebase exceptions
 
-# ADMIN APP
+Display user-friendly messages.
 
-Admins receive push notifications for:
-
-NEW_ORDER
-
-Only.
-
-Student notifications must never reach admins.
+Never expose internal Firebase error codes.
 
 ---
 
-# STUDENT APP
+# USER EXPERIENCE
 
-Receive push notifications for:
+Show progress indicators during:
 
-ORDER_ACCEPTED
+Registration
 
-ORDER_PREPARING
+Verification
 
-ORDER_READY
+Password reset
 
-PICKUP_REMINDER
+Verification reload
 
-ORDER_NO_SHOW
+Disable buttons while requests are running.
 
-STRIKE_ISSUED
-
-STRIKE_REMOVED
-
-ACCOUNT_SUSPENDED
-
-ACCOUNT_REACTIVATED
+Prevent duplicate requests.
 
 ---
 
-# OFFLINE SUPPORT
+# ACCESS CONTROL
 
-If device is offline:
+Until email verification completes:
 
-Notification remains in Firestore.
+User cannot:
 
-Push is delivered when Firebase reconnects (subject to FCM behavior).
+Place orders
 
-Users always have the notification history inside the app.
+Modify profile
+
+Use cart synchronization
+
+Receive order notifications
+
+Access account features
+
+Only VerifyEmailScreen is accessible.
+
+---
+
+# CODE STRUCTURE
+
+By following the app UI colour and theme Create:
+
+verify_email_screen.dart
+
+email_verification_service.dart
+
+Reuse:
+
+reset_password.dart
+
+Authentication repository
+
+Do not duplicate authentication logic.
 
 ---
 
 # CODE QUALITY
 
-Create:
+Separate:
 
-push_delivery_service.dart
+UI
 
-fcm_service.dart
+Business logic
 
-device_token_repository.dart
+Firebase service
 
-Keep responsibilities separate.
+Repository
 
-Business logic must never contain FCM implementation.
+Use clean architecture principles.
 
-Avoid duplicate code.
-
-Reuse NotificationService.
+Avoid duplicated code.
 
 ---
 
@@ -716,55 +617,41 @@ Reuse NotificationService.
 
 Verify:
 
-✓ Student token registration
+✓ Registration sends verification email.
 
-✓ Admin token registration
+✓ Verification email link works.
 
-✓ Token refresh
+✓ User cannot enter app before verification.
 
-✓ Multiple devices receive notifications
+✓ Verified user enters app.
 
-✓ Invalid tokens are deactivated
+✓ Firestore profile created only after verification.
 
-✓ Order Accepted push
+✓ Verification resend cooldown works.
 
-✓ Preparing push
+✓ Change email flow works.
 
-✓ Ready push
+✓ Logout works from VerifyEmailScreen.
 
-✓ Pickup Reminder push
+✓ Forgot Password sends reset email.
 
-✓ No Show push
+✓ Password reset works.
 
-✓ Strike Issued push
+✓ Same response shown for existing and non-existing emails.
 
-✓ Strike Removed push
+✓ Network failures handled.
 
-✓ Account Suspended push
+✓ Firebase exceptions handled.
 
-✓ Account Reactivated push
+✓ Existing login unaffected.
 
-✓ Admin New Order push
+✓ Existing registration unaffected.
 
-✓ Foreground notifications
+✓ Existing Firestore security unaffected.
 
-✓ Background notifications
+✓ Existing notifications unaffected.
 
-✓ Terminated app notifications
-
-✓ Notification tap opens correct screen
-
-✓ Firestore notification always exists
-
-✓ Push failures do not affect Firestore notifications
-
-✓ Existing business logic unchanged
-
-✓ Existing notification platform unchanged
-
-✓ Existing strike engine unchanged
-
-✓ Existing admin workflow unchanged
+✓ Existing order system unaffected.
 
 ---
 
@@ -772,41 +659,33 @@ Verify:
 
 Provide:
 
-1. Files created
+1. Files created.
 
-2. Files modified
+2. Files modified.
 
-3. PushDeliveryService implementation
+3. Email Verification implementation.
 
-4. FCM client implementation
+4. Forgot Password implementation.
 
-5. Firestore schema changes (device_tokens)
+5. Updated authentication flow.
 
-6. Firestore Security Rule updates
+6. Testing checklist.
 
-7. Cloud Function updates
+Stop after completing this phase.
 
-8. Testing checklist
+Do NOT implement custom OTP emails.
 
-Stop after completing Phase 8.
+Do NOT implement SMS verification.
 
-Do NOT redesign NotificationService.
+Do NOT implement multi-factor authentication.
 
-Do NOT redesign Firestore notifications.
-
-Do NOT implement notification preferences.
-
-Do NOT implement topic messaging.
-
-Do NOT implement marketing notifications.
-
-Maintain backward compatibility with the existing notification platform.
+Maintain full backward compatibility with the existing authentication system.
 
 ---
 
 # Phase Completion Criteria
 
-Phase 8 is complete when:
+Phase 9 is complete when:
 
 * the new features works well with past features.
 * App runs successfully.

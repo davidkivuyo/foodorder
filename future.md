@@ -5,11 +5,18 @@
 
 4. add a fetch request to see if the already entered cafe is available or not.
 
+6. add and search filter to search easily the long list of menu items in the admin app
+
+5. Add a review screen with review count dashboard, campusbite customers reviews with pre-written templates to avoid review abuse and harsh languages example
+* great deal
+* great value for money
+* not great as expected
+* hot food
+* served well
+
 9. save the users passwords in their google account logged in their device and retrieve it upon attempts to login in both adminview and customerview
 
 11. order screen should clean 24hrs and its history will be saved under /users/{userId}/history according to date, food item title and the total price.
-
-12. add rating field in addproducts for admin
 
 2. add products for off_campus food items. the section field will be changed to off_campus, cafe field to offcampus, and the location field will be added to indicate the location of the offcampus cafes.
 // Row for deals outside campus cafes on home screnn
@@ -18,8 +25,6 @@
 * item.cafe.toLowerCase() == 'offcampus' ? '${item.rating} • offcampus' : '${item.rating} • CAFE(${item.cafe})',
 
 3. create a new branch to add restaurants other than university ones
-
-4. Order History and Reorder: One-tap reorder from previous purchases — high-impact retention feature.
 
 5. Performance Analytics: Daily/weekly revenue, top-selling dishes, peak order hours, average prep time, customer rating trends.
 
