@@ -16,17 +16,18 @@ import 'package:flutter/material.dart';
 
 // ── Validators ──────────────────────────────────────────────────────────────
 
-/// Returns an error string if [value] is not a valid UDSM student email,
+/// Returns an error string if [value] is not a valid email address,
 /// otherwise returns null.
-String? validateUniversityEmail(String? value) {
+String? validateEmail(String? value) {
   if (value == null || value.trim().isEmpty) {
     return 'Email is required.';
   }
-  final trimmed = value.trim().toLowerCase();
-  // Must match *@student.udsm.ac.tz and be a valid email format.
-  final emailRegex = RegExp(r'^[a-zA-Z0-9._%+\-]+@student\.udsm\.ac\.tz$');
+  final trimmed = value.trim();
+  // Accept any valid email format.
+  final emailRegex =
+      RegExp(r'^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$');
   if (!emailRegex.hasMatch(trimmed)) {
-    return 'Use your university email';
+    return 'Enter a valid email address';
   }
   return null;
 }
@@ -126,7 +127,7 @@ class _EmailFieldState extends State<EmailField> {
       controller: widget.controller,
       keyboardType: TextInputType.emailAddress,
       autocorrect: false,
-      validator: validateUniversityEmail,
+      validator: validateEmail,
       decoration: InputDecoration(
         hintText: 'university email',
         hintStyle: const TextStyle(color: Colors.black38),
