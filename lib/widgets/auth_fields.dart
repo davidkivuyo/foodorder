@@ -24,8 +24,9 @@ String? validateEmail(String? value) {
   }
   final trimmed = value.trim();
   // Accept any valid email format.
-  final emailRegex =
-      RegExp(r'^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$');
+  final emailRegex = RegExp(
+    r'^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$',
+  );
   if (!emailRegex.hasMatch(trimmed)) {
     return 'Enter a valid email address';
   }
@@ -129,7 +130,7 @@ class _EmailFieldState extends State<EmailField> {
       autocorrect: false,
       validator: validateEmail,
       decoration: InputDecoration(
-        hintText: 'university email',
+        hintText: 'email',
         hintStyle: const TextStyle(color: Colors.black38),
         prefixIcon: const Icon(
           Icons.alternate_email,
