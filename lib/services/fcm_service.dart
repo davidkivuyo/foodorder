@@ -66,9 +66,8 @@ class FcmService {
   FcmService({
     required this._role,
     DeviceTokenRepository? tokenRepository,
-    String? vapidKey,
-  })  : _vapidKey = vapidKey,
-        _tokenRepository = tokenRepository ?? DeviceTokenRepository();
+    this._vapidKey,
+  })  : _tokenRepository = tokenRepository ?? DeviceTokenRepository();
 
   // ── Initialization ─────────────────────────────────────────────────────────
 

@@ -813,14 +813,17 @@ class _CartBottomSheetState extends State<CartBottomSheet> {
                                             pickupWindowMinutes,
                                       );
 
-                                      // Dismiss the loading dialog regardless of outcome.
-                                      // Using the captured navigator so this works even
-                                      // if the widget became unmounted.
-                                      navigator.pop();
+                                      // Dismiss the loading dialog safely
+                                      if (context.mounted) {
+                                        Navigator.of(context, rootNavigator: true).pop();
+                                      }
 
                                       if (orderId != null) {
-                                        // Dismiss the bottom sheet on success only.
-                                        navigator.pop();
+                                        // Dismiss the bottom sheet ONLY if it was opened as a modal route (mobile)
+                                        // and NOT when embedded in the main desktop screen layout.
+                                        if (context.mounted && ModalRoute.of(context) is! PageRoute) {
+                                          Navigator.of(context).maybePop();
+                                        }
 
                                         if (!context.mounted) return;
                                         ScaffoldMessenger.of(context).showSnackBar(
