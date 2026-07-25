@@ -61,7 +61,7 @@ class _OrdersScreenState extends State<OrdersScreen>
       _plannedOrdersStream = FirebaseFirestore.instance
           .collection('users')
           .doc(_userId)
-          .collection('planned_orders')
+          .collection('plans')
           .orderBy('plannedDate', descending: false)
           .snapshots();
     }
@@ -156,7 +156,7 @@ class _OrdersScreenState extends State<OrdersScreen>
       await FirebaseFirestore.instance
           .collection('users')
           .doc(_userId)
-          .collection('planned_orders')
+          .collection('plans')
           .add({
             'title': title,
             'plannedDate': Timestamp.fromDate(plannedDate),
@@ -204,7 +204,7 @@ class _OrdersScreenState extends State<OrdersScreen>
       await FirebaseFirestore.instance
           .collection('users')
           .doc(_userId)
-          .collection('planned_orders')
+          .collection('plans')
           .doc(docId)
           .delete();
     } catch (e) {
