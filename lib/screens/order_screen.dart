@@ -432,10 +432,8 @@ class _OrdersScreenState extends State<OrdersScreen>
                       ),
                     ],
                   ),
-                  ElevatedButton.icon(
+                  ElevatedButton(
                     onPressed: () => _showAddPlannedOrderDialog(context),
-                    icon: const Icon(Icons.add, size: 18),
-                    label: const Text('Plan Meal'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.orange,
                       foregroundColor: Colors.white,
@@ -443,7 +441,10 @@ class _OrdersScreenState extends State<OrdersScreen>
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
+                      minimumSize: const Size(40, 40),
+                      padding: EdgeInsets.zero,
                     ),
+                    child: const Icon(Icons.add, size: 20),
                   ),
                 ],
               ),
@@ -555,9 +556,7 @@ class _OrdersScreenState extends State<OrdersScreen>
                                         vertical: 4,
                                       ),
                                       decoration: BoxDecoration(
-                                        color: Colors.orange.withValues(
-                                          alpha: 0.12,
-                                        ),
+                                        color: Colors.orange.withOpacity(0.12),
                                         borderRadius: BorderRadius.circular(12),
                                       ),
                                       child: Row(
@@ -746,7 +745,7 @@ class _OrdersScreenState extends State<OrdersScreen>
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: visuals.color.withValues(alpha: 0.12),
+                    color: visuals.color.withOpacity(0.12),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
@@ -999,7 +998,7 @@ class _OrdersScreenState extends State<OrdersScreen>
                         vertical: 4,
                       ),
                       decoration: BoxDecoration(
-                        color: visuals.color.withValues(alpha: 0.12),
+                        color: visuals.color.withOpacity(0.12),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
