@@ -153,7 +153,6 @@ class _SearchBarScreenState extends State<SearchBarScreen> {
                 fontWeight: FontWeight.normal,
                 color: Colors.grey.shade400,
               ),
-              prefixIcon: Icon(Icons.search, color: Colors.black, size: 20),
               suffixIcon: _searchQuery.isNotEmpty
                   ? IconButton(
                       icon: const Icon(
