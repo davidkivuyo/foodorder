@@ -12,11 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 /// Service that wraps Firebase Authentication for email/password auth.
 class AuthService {
@@ -29,6 +27,9 @@ class AuthService {
 
   // ── Registration ────────────────────────────────────────────────────────────
 
+  /// Creates a Firebase Auth account.  Does NOT write to Firestore — that
+  /// happens only after the user verifies their email (see
+  /// [EmailVerificationService]).
   Future<String?> register({
     required String email,
     required String password,
@@ -42,36 +43,8 @@ class AuthService {
           );
       if (credential.user != null) {
         await credential.user!.updateDisplayName(fullName.trim());
-        try {
-          await FirebaseFirestore.instance
-              .collection('users')
-              .doc(credential.user!.uid)
-              .set({
-                'fullName': fullName.trim(),
-                'email': email.trim(),
-                'role': 'student',
-                'createdAt': FieldValue.serverTimestamp(),
-                // Strike management fields
-                'strikePercentage': 0,
-                'strikeCount': 0,
-                'accountStatus': 'ACTIVE',
-                'lastStrikeAt': null,
-                'lastPardonAt': null,
-                'updatedAt': FieldValue.serverTimestamp(),
-              });
-
-          // Set welcome screen flag for the newly registered user
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setBool('show_welcome_${credential.user!.uid}', true);
-        } catch (dbError) {
-          // If Firestore write fails, clean up the authentication user to keep registration atomic
-          try {
-            await credential.user!.delete();
-          } catch (_) {}
-          rethrow;
-        }
       }
-      return null; // success
+      return null; // success — Firestore profile is NOT created yet
     } catch (e, stack) {
       debugPrint('[AuthService] register error: type=${e.runtimeType}');
       debugPrint('[AuthService] stack: $stack');
@@ -94,6 +67,84 @@ class AuthService {
     } catch (e, stack) {
       debugPrint('[AuthService] signIn error: type=${e.runtimeType}');
       debugPrint('[AuthService] stack: $stack');
+      return _extractUserFriendlyError(e);
+    }
+  }
+
+  // ── Email verification ─────────────────────────────────────────────────────
+
+  /// Sends a Firebase email verification link to the current user.
+  Future<String?> sendVerificationEmail() async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) return 'No authenticated user found.';
+      await user.sendEmailVerification();
+      return null; // success
+    } catch (e) {
+      debugPrint('[AuthService] sendVerificationEmail error: type=${e.runtimeType}');
+      return _extractUserFriendlyError(e);
+    }
+  }
+
+  /// Reloads the current Firebase user so [isEmailVerified] reflects the
+  /// latest state from the server.
+  Future<String?> reloadUser() async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) return 'No authenticated user found.';
+      await user.reload();
+      return null; // success
+    } catch (e) {
+      debugPrint('[AuthService] reloadUser error: type=${e.runtimeType}');
+      return _extractUserFriendlyError(e);
+    }
+  }
+
+  bool get isEmailVerified => _auth.currentUser?.emailVerified ?? false;
+
+  // ── Password reset ─────────────────────────────────────────────────────────
+
+  /// Sends a password-reset email via Firebase Authentication.
+  ///
+  /// Always returns the same success message (null) regardless of whether the
+  /// email exists, to prevent account enumeration attacks.
+  Future<String?> sendPasswordReset({required String email}) async {
+    try {
+      await _auth.sendPasswordResetEmail(email: email.trim());
+      return null; // success — same response for all outcomes
+    } catch (e) {
+      // Log internally but return the same non-revealing message
+      debugPrint('[AuthService] sendPasswordReset error: type=${e.runtimeType}');
+      // Don't reveal "user-not-found" vs success — always return null
+      return null;
+    }
+  }
+
+  // ── Account management ─────────────────────────────────────────────────────
+
+  /// Updates the email address of an unverified account.
+  Future<String?> changeEmail({required String newEmail}) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) return 'No authenticated user found.';
+      await user.verifyBeforeUpdateEmail(newEmail.trim());
+      return null; // success — a new verification email is sent automatically
+    } catch (e) {
+      debugPrint('[AuthService] changeEmail error: type=${e.runtimeType}');
+      return _extractUserFriendlyError(e);
+    }
+  }
+
+  /// Deletes the current Firebase Auth account.
+  /// Used when a user cancels registration and the profile was not yet created.
+  Future<String?> deleteAccount() async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) return 'No authenticated user found.';
+      await user.delete();
+      return null; // success
+    } catch (e) {
+      debugPrint('[AuthService] deleteAccount error: type=${e.runtimeType}');
       return _extractUserFriendlyError(e);
     }
   }

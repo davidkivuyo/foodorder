@@ -38,17 +38,28 @@ String? validateEmail(String? value) {
 ///
 /// Requirements:
 /// - At least 8 characters
-/// - Contains at least one special character
+/// - At least one uppercase letter
+/// - At least one lowercase letter
+/// - At least one digit
+/// - At least one special character
 String? validatePassword(String? value) {
   if (value == null || value.isEmpty) {
     return 'Password is required.';
   }
   if (value.length < 8) {
-    return 'Password must be at least 8 characters.';
+    return 'Must be at least 8 characters.';
   }
-  final hasSpecialChar = RegExp(r'[!@#\$%^&*(),.?":{}|<>_\-+=\[\]\\;/]');
-  if (!hasSpecialChar.hasMatch(value)) {
-    return 'Password must contain at least one special character.';
+  if (!RegExp(r'[A-Z]').hasMatch(value)) {
+    return 'Must contain an uppercase letter.';
+  }
+  if (!RegExp(r'[a-z]').hasMatch(value)) {
+    return 'Must contain a lowercase letter.';
+  }
+  if (!RegExp(r'[0-9]').hasMatch(value)) {
+    return 'Must contain a number.';
+  }
+  if (!RegExp(r'[!@#\$%^&*(),.?":{}|<>_\-+=\[\]\\;/]').hasMatch(value)) {
+    return 'Must contain a special character.';
   }
   return null;
 }

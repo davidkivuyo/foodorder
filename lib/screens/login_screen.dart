@@ -62,7 +62,16 @@ class _LoginScreenState extends State<LoginScreen> {
       );
     } else {
       if (!mounted) return;
-      context.go('/main');
+      // Reload user and check email verification
+      await _authService.reloadUser();
+      if (!mounted) return;
+
+      if (_authService.isEmailVerified) {
+        context.go('/main');
+      } else {
+        // Unverified user — redirect to verification screen
+        context.go('/verify-email');
+      }
     }
   }
 
@@ -143,7 +152,25 @@ class _LoginScreenState extends State<LoginScreen> {
 
           PasswordField(controller: _passwordController),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 8),
+
+          // Forgot Password link
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: () => context.push('/forgot-password'),
+              style: TextButton.styleFrom(
+                foregroundColor: const Color(0xFF116522),
+                padding: const EdgeInsets.symmetric(vertical: 4),
+              ),
+              child: const Text(
+                'Forgot Password?',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 16),
 
           // Login Button
           SizedBox(

@@ -13,6 +13,7 @@
 // limitations under the License.
 
 import 'package:campusbite/services/auth_service.dart';
+import 'package:campusbite/services/email_verification_service.dart';
 import 'package:campusbite/widgets/auth_fields.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -83,8 +84,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
         ),
       );
     } else {
+      // Send verification email immediately after registration
+      final verificationService = EmailVerificationService();
+      await verificationService.sendVerificationEmail(
+        sendFn: () => _authService.sendVerificationEmail(),
+      );
       if (!mounted) return;
-      context.go('/main');
+      // Navigate to VerifyEmailScreen (NOT /main — profile not created yet)
+      context.go('/verify-email');
     }
   }
 

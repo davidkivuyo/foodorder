@@ -21,24 +21,52 @@ import 'package:campusbite/screens/terms.dart';
 import 'package:campusbite/screens/register_screen.dart';
 import 'package:campusbite/screens/login_screen.dart';
 import 'package:campusbite/screens/welcome_screen.dart';
+import 'package:campusbite/screens/verify_email_screen.dart';
+import 'package:campusbite/screens/forgot_password_screen.dart';
 
 final AuthNotifier _authNotifier = AuthNotifier();
+
+/// Paths that are allowed for unverified users.
+bool _isVerificationPath(String location) {
+  return location == '/verify-email' ||
+      location == '/' ||
+      location == '/login' ||
+      location == '/register' ||
+      location == '/forgot-password' ||
+      location == '/terms';
+}
 
 final GoRouter router = GoRouter(
   initialLocation: '/',
   refreshListenable: _authNotifier,
   redirect: (context, state) {
-    final loggedIn = FirebaseAuth.instance.currentUser != null;
-    final loggingInFlow =
-        state.matchedLocation == '/' ||
-        state.matchedLocation == '/login' ||
-        state.matchedLocation == '/register';
+    final user = FirebaseAuth.instance.currentUser;
+    final loggedIn = user != null;
+    final location = state.matchedLocation;
 
-    // Logged in but sitting on welcome/login/register → send to main
-    if (loggedIn && loggingInFlow) return '/main';
+    // Allow unauthenticated users on public paths
+    if (!loggedIn) {
+      if (location == '/main') return '/';
+      return null;
+    }
 
-    // Logged out but trying to reach the app → send to welcome
-    if (!loggedIn && state.matchedLocation == '/main') return '/';
+    // ── Logged in — reload user to get fresh emailVerified ─────────
+    // We call reload() here as a best effort; the real check happens
+    // after login/registration where reload is called explicitly.
+    // This redirect is a safety net.
+
+    // Allow access to verification paths regardless of emailVerified
+    if (_isVerificationPath(location)) return null;
+
+    // If the user is on the main app but NOT verified, redirect them
+    // Reload and check emailVerified
+    // Note: reload() is async but redirect is sync. We check
+    // the cached value and rely on the explicit checks in
+    // login_screen and register_screen to redirect to /verify-email.
+    // This guard prevents direct URL access to /main for unverified users.
+    if (!user.emailVerified && location == '/main') {
+      return '/verify-email';
+    }
 
     return null; // no redirect needed
   },
@@ -61,6 +89,17 @@ final GoRouter router = GoRouter(
       path: '/register',
       builder: (context, state) => const RegisterScreen(),
     ),
-    GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
+    GoRoute(
+      path: '/login',
+      builder: (context, state) => const LoginScreen(),
+    ),
+    GoRoute(
+      path: '/verify-email',
+      builder: (context, state) => const VerifyEmailScreen(),
+    ),
+    GoRoute(
+      path: '/forgot-password',
+      builder: (context, state) => const ForgotPasswordScreen(),
+    ),
   ],
 );
