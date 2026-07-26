@@ -50,23 +50,19 @@ final GoRouter router = GoRouter(
       return null;
     }
 
-    // ── Logged in — reload user to get fresh emailVerified ─────────
-    // We call reload() here as a best effort; the real check happens
-    // after login/registration where reload is called explicitly.
-    // This redirect is a safety net.
+    // ── Verified user on an auth/onboarding path → send to main ────
+    // This preserves the original behaviour: logged-in users who land
+    // on /, /login, /register, /verify-email, or /forgot-password are
+    // redirected to the main app.
+    if (user.emailVerified && _isVerificationPath(location)) return '/main';
 
-    // Allow access to verification paths regardless of emailVerified
-    if (_isVerificationPath(location)) return null;
+    // ── Unverified user on a verification path → allow access ──────
+    // These paths (verify-email, forgot-password, login, register,
+    // terms, and /) are the only screens an unverified user can see.
+    if (!user.emailVerified && _isVerificationPath(location)) return null;
 
-    // If the user is on the main app but NOT verified, redirect them
-    // Reload and check emailVerified
-    // Note: reload() is async but redirect is sync. We check
-    // the cached value and rely on the explicit checks in
-    // login_screen and register_screen to redirect to /verify-email.
-    // This guard prevents direct URL access to /main for unverified users.
-    if (!user.emailVerified && location == '/main') {
-      return '/verify-email';
-    }
+    // ── Unverified user on /main → redirect to verification screen ─
+    if (!user.emailVerified && location == '/main') return '/verify-email';
 
     return null; // no redirect needed
   },
