@@ -147,12 +147,13 @@ class _SearchBarScreenState extends State<SearchBarScreen> {
             onSubmitted: _performSearch,
             style: const TextStyle(fontSize: 16, color: Colors.black87),
             decoration: InputDecoration(
-              hintText: '🔍Dishes, tags, category',
+              hintText: '  Dishes, tags, category',
               hintStyle: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.normal,
                 color: Colors.grey.shade400,
               ),
+              prefixIcon: Icon(Icons.search, color: Colors.black, size: 20),
               suffixIcon: _searchQuery.isNotEmpty
                   ? IconButton(
                       icon: const Icon(
@@ -213,7 +214,26 @@ class _SearchBarScreenState extends State<SearchBarScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.fastfood_outlined, size: 80, color: Colors.black),
+              Icon(
+                Icons.fastfood_outlined,
+                size: 80,
+                color: Colors.grey.shade300,
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Search Your Next Meal',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Type food name, category (e.g. Burgers, Drinks), or dietary tags (e.g. Spicy, Vegan).',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
+              ),
             ],
           ),
         ),
