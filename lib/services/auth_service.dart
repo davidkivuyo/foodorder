@@ -113,9 +113,15 @@ class AuthService {
       await _auth.sendPasswordResetEmail(email: email.trim());
       return null; // success — same response for all outcomes
     } catch (e) {
-      // Log internally but return the same non-revealing message
-      debugPrint('[AuthService] sendPasswordReset error: type=${e.runtimeType}');
-      // Don't reveal "user-not-found" vs success — always return null
+      // Log the actual Firebase error code (safe for internal debugging).
+      // The user-facing response stays the same for anti-enumeration.
+      if (e is FirebaseAuthException) {
+        debugPrint('[AuthService] sendPasswordReset error: code="${e.code}"');
+      } else {
+        debugPrint('[AuthService] sendPasswordReset error: type=${e.runtimeType}');
+      }
+      // Always return null so attackers cannot distinguish "user-not-found"
+      // from "invalid-email" or other failures.
       return null;
     }
   }

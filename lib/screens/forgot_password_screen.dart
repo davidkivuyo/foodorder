@@ -59,11 +59,12 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text(
-          'If an account exists for this email, a password reset email '
-          'has been sent.',
+          'If an account exists, a reset email has been sent. '
+          'Check your spam folder if you don\'t see it.',
         ),
         backgroundColor: Colors.green,
         behavior: SnackBarBehavior.floating,
+        duration: Duration(seconds: 5),
       ),
     );
 
@@ -174,6 +175,71 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                               color: Colors.white,
                             ),
                           ),
+                  ),
+                ),
+
+                const SizedBox(height: 20),
+
+                // ── Spam folder notice ────────────────────────────────────────
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: Colors.orange.shade200,
+                    ),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.only(top: 1),
+                        child: Icon(
+                          Icons.mail_outline_rounded,
+                          size: 20,
+                          color: Colors.orange.shade700,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: RichText(
+                          text: TextSpan(
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.orange.shade900,
+                              height: 1.4,
+                            ),
+                            children: const [
+                              TextSpan(
+                                text:
+                                    'If you don\'t see the email in your ',
+                              ),
+                              TextSpan(
+                                text: 'inbox',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              TextSpan(
+                                text:
+                                    ', please check your ',
+                              ),
+                              TextSpan(
+                                text: 'spam',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              TextSpan(
+                                text:
+                                    ' or promotions folder and mark it as "Not Spam".',
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
