@@ -110,7 +110,7 @@ class FaqScreen extends StatelessWidget {
             ],
           ),
           ExpansionTile(
-            title: Text('Why the heck you need my location?'),
+            title: Text('Why do you need my location data?'),
             children: [
               Padding(
                 padding: EdgeInsets.all(16.0),
