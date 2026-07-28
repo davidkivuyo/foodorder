@@ -239,7 +239,7 @@ class AccountScreen extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        'Campus Bite v1.0.0 (alpha)',
+                        'Campus Bite v1.0.1 (alpha)',
                         style: TextStyle(fontSize: 10),
                       ),
                       Text(
