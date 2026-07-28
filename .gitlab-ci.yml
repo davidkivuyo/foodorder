@@ -48,7 +48,6 @@ build_apk:
     - >
       fvm flutter build apk --release
       --build-name=$VERSION --build-number=$CI_PIPELINE_IID
-      --obfuscate --split-debug-info=build/debug-info
 
   after_script:
     - rm -f android/app/release.jks android/key.properties
@@ -57,7 +56,6 @@ build_apk:
     name: "app-release-$CI_COMMIT_TAG"
     paths:
       - build/app/outputs/flutter-apk/app-release.apk
-      - build/debug-info/
     expire_in: 30 days
 
 create_release:
