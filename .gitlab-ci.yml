@@ -31,14 +31,11 @@ build_apk:
     # Decode keystore from a masked/protected CI/CD variable (never commit it)
     - echo "$KEYSTORE_BASE64" | base64 -d > android/app/release.jks
 
-    # Write key.properties dynamically instead of committing it
-    - |
-      cat <<EOF > android/key.properties
-      storePassword=$KEYSTORE_STORE_PASSWORD
-      keyPassword=$KEYSTORE_KEY_PASSWORD
-      keyAlias=$KEYSTORE_KEY_ALIAS
-      storeFile=$CI_PROJECT_DIR/android/app/release.jks
-      EOF
+    # Export the exact env vars build.gradle.kts reads for signingConfigs.release
+    - export KEYSTORE_PATH="$CI_PROJECT_DIR/android/app/release.jks"
+    - export KEYSTORE_PASSWORD="$KEYSTORE_STORE_PASSWORD"
+    - export KEY_ALIAS="$KEYSTORE_KEY_ALIAS"
+    - export KEY_PASSWORD="$KEYSTORE_KEY_PASSWORD"
 
   script:
     - VERSION=$(echo $CI_COMMIT_TAG | sed 's/^v//')
@@ -48,9 +45,10 @@ build_apk:
     - >
       fvm flutter build apk --release
       --build-name=$VERSION --build-number=$CI_PIPELINE_IID
+      --obfuscate --split-debug-info=build/debug-info
 
   after_script:
-    - rm -f android/app/release.jks android/key.properties
+    - rm -f android/app/release.jks
 
   artifacts:
     name: "app-release-$CI_COMMIT_TAG"
