@@ -137,479 +137,176 @@ After completing a feature:
 
 # Current Phase
 
-PHASE 9
+PHASE 10
 
 # TASK
 
-Implement secure Email Verification and Forgot Password functionality for CampusBite.
+Implement the "Your Favourites" feature for CampusBite.
 
-The implementation must be production-ready.
+The feature must automatically determine each student's favourite menu items based on completed order history.
 
-The implementation must prioritize security over convenience.
+Do not ask users to manually mark favourites.
 
-Do NOT redesign the authentication system.
+The implementation must be production-ready, scalable, and cost-efficient.
 
-Do NOT replace Firebase Authentication.
-
-Reuse the existing authentication flow.
-
----
-
-# CURRENT SYSTEM
-
-Already implemented:
-
-✓ Firebase Authentication
-
-✓ Student Registration
-
-✓ Student Login
-
-✓ Firestore Users Collection
-
-Reuse the existing code.
+Reuse existing Home Screen widgets and arrangement logic.
 
 ---
 
 # OBJECTIVE
 
-Implement:
+Display a new "Your Favourites" section at the top of the Home Screen.
 
-1. Email Verification
+The section must:
 
-2. Forgot Password
-
-using Firebase Authentication.
-
-Do NOT implement custom OTP verification.
-
-Do NOT build a custom email service.
-
-Use Firebase's built-in secure email verification and password reset mechanisms.
+- appear only when favourites exist
+- use the existing horizontal carousel component
+- follow the same section arrangement logic already used throughout the Home Screen
+- show a maximum of 5 food items
+- include a forward arrow that opens a dedicated "Your Favourites" screen
+- never duplicate food data in Firestore
 
 ---
 
-# EMAIL VERIFICATION FLOW
+# DATA SOURCE
 
-Registration
+Only use orders with status:
 
-↓
+COLLECTED
 
-Firebase creates account
+Ignore:
 
-↓
-
-Firebase sends verification email
-
-↓
-
-User opens email
-
-↓
-
-User clicks verification link
-
-↓
-
-Returns to app
-
-↓
-
-User taps "I've Verified My Email"
-
-↓
-
-Reload Firebase user
-
-↓
-
-If verified
-
-↓
-
-Create Firestore user profile (if not already created)
-
-↓
-
-Enter application
+Accepted
+Preparing
+Ready
+Cancelled
+Rejected
+No Show
 
 ---
 
-# REGISTRATION
-
-After successful account creation:
-
-Immediately send verification email.
-
-Use:
-
-sendEmailVerification()
-
-Never skip this step.
-
----
-
-# FIRESTORE PROFILE CREATION
-
-Do NOT create the Firestore user profile before email verification.
-
-Only create:
-
-users/{uid}
-
-after
-
-emailVerified == true
-
-This prevents unused and fake accounts from polluting Firestore.
-
----
-
-# VERIFY EMAIL SCREEN
+# FAVORITE ENGINE
 
 Create:
 
-VerifyEmailScreen
+favorite_service.dart
 
-Display:
+Responsibilities:
 
-• Verification instructions
+- calculate favourite rankings
+- update cached favourites after collected orders
+- return favourite food IDs
+- ignore unavailable foods
+- ignore deleted foods
 
-• Registered email address
-
-Buttons:
-
-I've Verified My Email
-
-Resend Verification Email
-
-Change Email
-
-Logout
-
-Do not automatically proceed without user confirmation.
+Do not place this logic inside UI widgets.
 
 ---
 
-# VERIFICATION CHECK
+# CACHE
 
-When the user taps:
+Store only favourite food IDs under:
 
-I've Verified My Email
+users/{uid}/favoriteMenu
 
-Execute:
+Do not store complete food objects.
 
-Reload Firebase user.
+Maximum cached IDs:
 
-Check:
+5
 
-currentUser.emailVerified
-
-If:
-
-false
-
-Show:
-
-"Your email has not been verified yet."
-
-Remain on VerifyEmailScreen.
-
-If:
-
-true
-
-Create Firestore profile (if missing).
-
-Navigate to Home.
+Always load current food details from food_items.
 
 ---
 
-# RESEND EMAIL
+# UPDATE STRATEGY
 
-Allow users to resend verification email.
+Recalculate favourites only when an order changes to:
 
-Implement cooldown.
+COLLECTED
 
-Cooldown:
+Never recalculate during:
 
-60 seconds.
-
-Disable the resend button during cooldown.
-
-Prevent spam.
-
----
-
-# CHANGE EMAIL
-
-Allow the user to cancel registration.
-
-Delete the unverified Firebase account if appropriate.
-
-Return to RegisterScreen.
-
-The user may register again with a corrected email.
+- app startup
+- login
+- Home refresh
+- scrolling
 
 ---
 
-# LOGIN FLOW
+# RANKING
 
-When a user logs in:
+Rank by:
 
-Immediately reload Firebase user.
+1. Number of collected orders
 
-Check:
+2. Most recent collection date
 
-emailVerified
+Higher frequency ranks first.
 
-If verified:
-
-Continue normally.
-
-If not verified:
-
-Do NOT allow access to the application.
-
-Redirect to VerifyEmailScreen.
-
-Never allow unverified users to place orders.
-
-Never allow unverified users to access protected features.
+If tied, newer collection wins.
 
 ---
 
-# FORGOT PASSWORD
+# HOME SCREEN
 
-Create:
+Insert a new section before all other food sections.
 
-ForgotPasswordScreen
+Title:
 
-Fields:
+Your Favourites
 
-Student Email
+Use the existing horizontal carousel widget.
 
-Buttons:
+Maximum displayed items:
 
-Send Reset Email
+5
 
-Back to Login
-
----
-
-# EMAIL VALIDATION
-
-Accept only:
-
-Emails which are in correct email formats.
-
-Validate email format before calling Firebase.
+Hide the section completely if no favourites exist.
 
 ---
 
-# PASSWORD RESET
+# SEE ALL
 
-Use Firebase Authentication only.
+The forward arrow navigates to:
 
-Call:
+YourFavouritesScreen
 
-sendPasswordResetEmail()
+Reuse the existing vertical food list design.
 
-Do not implement custom reset codes.
-
-Do not store reset tokens.
-
-Do not store temporary passwords.
+Display all favourite items with no maximum limit.
 
 ---
 
-# PASSWORD RESET RESPONSE
+# ARRANGEMENT
 
-Always display the same success message.
+Reuse the existing Home Screen section ordering.
 
-Example:
+Within each section, preserve favourite ranking.
 
-"If an account exists for this email, a password reset email has been sent."
-
-Never reveal whether the account exists.
-
-Prevent account enumeration attacks.
+Do not introduce a different sorting system.
 
 ---
 
-# PASSWORD POLICY
+# PERFORMANCE
 
-Minimum length:
+Do not scan all orders during Home loading.
 
-8 characters
+Use cached favourite IDs.
 
-Require:
+Only perform lightweight reads.
 
-Uppercase
-
-Lowercase
-
-Number
-
-Special character
-
-Validate before registration.
-
-Display clear validation messages.
+Avoid unnecessary Firestore writes.
 
 ---
 
-# FIRESTORE SECURITY
+# RESILIENCE
 
-Never trust Firestore fields for verification status.
+If a favourite food has been deleted or marked unavailable:
 
-Never create:
+Skip it gracefully.
 
-verified = true
-
-inside Firestore.
-
-Always trust:
-
-Firebase Authentication
-
-emailVerified
-
-only.
-
----
-
-# SECURITY RULES
-
-Protect application features using:
-
-request.auth != null
-
-Where email verification is required, rely on the Firebase Authentication verified email state rather than client-side checks.
-
-Do not rely solely on Flutter UI restrictions.
-
----
-
-# RATE LIMITING
-
-Verification resend:
-
-One email every 60 seconds.
-
-Password reset:
-
-Prevent repeated rapid requests from the client.
-
-Do not automatically retry failed requests.
-
----
-
-# SESSION HANDLING
-
-When email becomes verified:
-
-Reload Firebase user.
-
-Refresh authentication state.
-
-Do not require the user to restart the application.
-
----
-
-# ERROR HANDLING
-
-Handle:
-
-Network unavailable
-
-Too many requests
-
-Invalid email
-
-User disabled
-
-Expired session
-
-Firebase exceptions
-
-Display user-friendly messages.
-
-Never expose internal Firebase error codes.
-
----
-
-# USER EXPERIENCE
-
-Show progress indicators during:
-
-Registration
-
-Verification
-
-Password reset
-
-Verification reload
-
-Disable buttons while requests are running.
-
-Prevent duplicate requests.
-
----
-
-# ACCESS CONTROL
-
-Until email verification completes:
-
-User cannot:
-
-Place orders
-
-Modify profile
-
-Use cart synchronization
-
-Receive order notifications
-
-Access account features
-
-Only VerifyEmailScreen is accessible.
-
----
-
-# CODE STRUCTURE
-
-By following the app UI colour and theme Create:
-
-verify_email_screen.dart
-
-email_verification_service.dart
-
-Reuse:
-
-reset_password.dart
-
-Authentication repository
-
-Do not duplicate authentication logic.
-
----
-
-# CODE QUALITY
-
-Separate:
-
-UI
-
-Business logic
-
-Firebase service
-
-Repository
-
-Use clean architecture principles.
-
-Avoid duplicated code.
+Do not crash.
 
 ---
 
@@ -617,75 +314,33 @@ Avoid duplicated code.
 
 Verify:
 
-✓ Registration sends verification email.
+✓ favourites appear after collected orders
 
-✓ Verification email link works.
+✓ favourites update after new collections
 
-✓ User cannot enter app before verification.
+✓ section hides when empty
 
-✓ Verified user enters app.
+✓ maximum 5 items on Home
 
-✓ Firestore profile created only after verification.
+✓ unlimited items on Your Favourites screen
 
-✓ Verification resend cooldown works.
+✓ deleted foods disappear automatically
 
-✓ Change email flow works.
+✓ unavailable foods are skipped
 
-✓ Logout works from VerifyEmailScreen.
+✓ existing Home Screen layout remains unchanged
 
-✓ Forgot Password sends reset email.
+✓ no unnecessary Firestore reads
 
-✓ Password reset works.
+✓ no unnecessary Firestore writes
 
-✓ Same response shown for existing and non-existing emails.
-
-✓ Network failures handled.
-
-✓ Firebase exceptions handled.
-
-✓ Existing login unaffected.
-
-✓ Existing registration unaffected.
-
-✓ Existing Firestore security unaffected.
-
-✓ Existing notifications unaffected.
-
-✓ Existing order system unaffected.
-
----
-
-# DELIVERABLES
-
-Provide:
-
-1. Files created.
-
-2. Files modified.
-
-3. Email Verification implementation.
-
-4. Forgot Password implementation.
-
-5. Updated authentication flow.
-
-6. Testing checklist.
-
-Stop after completing this phase.
-
-Do NOT implement custom OTP emails.
-
-Do NOT implement SMS verification.
-
-Do NOT implement multi-factor authentication.
-
-Maintain full backward compatibility with the existing authentication system.
+Deliver the implementation without affecting existing ordering, notifications, strike engine, or recommendation features.
 
 ---
 
 # Phase Completion Criteria
 
-Phase 9 is complete when:
+Phase 10 is complete when:
 
 * the new features works well with past features.
 * App runs successfully.

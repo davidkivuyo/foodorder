@@ -5,7 +5,9 @@
 
 6. add and search filter to search easily the long list of menu items in the admin app
 
-5. Add a review screen with review count dashboard, campusbite customers reviews with pre-written templates to avoid review abuse and harsh languages example
+5. Add a review screen with review count dashboard, campusbite customers reviews with pre-written templates to avoid review abuse and harsh languages 
+Users will be able to delete or edit their reviews.
+example
 * great deal
 * great value for money
 * not great as expected

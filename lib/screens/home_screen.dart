@@ -20,12 +20,14 @@ desired actions based on the index of the clicked banner.
 import 'package:flutter/material.dart';
 import '../data/food_data.dart';
 import '../data/search_bar.dart';
+import '../services/favorite_service.dart';
 import '../widgets/cafe_selection_dialog.dart';
 import '../widgets/cart_fab.dart';
 import '../widgets/hover_card_scale.dart';
 import '../widgets/special_banner_card.dart';
 import '../widgets/stock_badge.dart';
 import 'common_food.dart';
+import 'favorites_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -157,6 +159,11 @@ class HomeScreen extends StatelessWidget {
 
                         const SizedBox(height: 18),
 
+                        // ── Your Favourites section ───────────────────
+                        // Appears only when favourites exist, before all
+                        // other sections.  Uses the existing CardRowItems.
+                        const _YourFavouritesSection(),
+
                         // Dynamic sections from firestore
                         ...validSections.expand((section) {
                           final sectionItems = allItems
@@ -208,6 +215,8 @@ class CardRowItems extends StatelessWidget {
   final List<FoodItem> items;
   final int maxItems;
   final bool flipItems;
+  final VoidCallback? arrowBuilder;
+  final String heroTagPrefix;
 
   const CardRowItems({
     super.key,
@@ -215,6 +224,8 @@ class CardRowItems extends StatelessWidget {
     required this.items,
     this.maxItems = 5,
     this.flipItems = false,
+    this.arrowBuilder,
+    this.heroTagPrefix = 'home_',
   });
 
   @override
@@ -244,18 +255,23 @@ class CardRowItems extends StatelessWidget {
                 ),
               ),
               IconButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => CategoriesTitles(
-                        title: title,
-                        items: flipItems ? items.reversed.toList() : items,
-                      ),
-                    ),
-                  );
-                },
-                icon: const Icon(Icons.arrow_forward, semanticLabel: 'more items'),
+                onPressed:
+                    arrowBuilder ??
+                    () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => CategoriesTitles(
+                            title: title,
+                            items: flipItems ? items.reversed.toList() : items,
+                          ),
+                        ),
+                      );
+                    },
+                icon: const Icon(
+                  Icons.arrow_forward,
+                  semanticLabel: 'more items',
+                ),
                 style: IconButton.styleFrom(
                   padding: EdgeInsets.zero,
                   iconSize: 19,
@@ -297,14 +313,16 @@ class CardRowItems extends StatelessWidget {
                                     Navigator.push(
                                       context,
                                       MaterialPageRoute(
-                                        builder: (_) =>
-                                            ItemDescriptionsHome(item: item),
+                                        builder: (_) => ItemDescriptionsHome(
+                                          item: item,
+                                          heroTagPrefix: heroTagPrefix,
+                                        ),
                                       ),
                                     );
                                   },
                                   child: Hero(
                                     tag:
-                                        'home_${item.displayCafe}_${item.title}_${item.image}',
+                                        '$heroTagPrefix${item.displayCafe}_${item.title}_${item.image}',
                                     child: item.buildImage(
                                       height: 120,
                                       width: double.infinity,
@@ -342,7 +360,10 @@ class CardRowItems extends StatelessWidget {
                                     ),
                                     GestureDetector(
                                       onTap: item.available
-                                          ? () => addToCartWithCafeCheck(context, item)
+                                          ? () => addToCartWithCafeCheck(
+                                              context,
+                                              item,
+                                            )
                                           : null,
                                       child: Container(
                                         padding: const EdgeInsets.all(6),
@@ -428,8 +449,13 @@ class CardRowItems extends StatelessWidget {
 
 class ItemDescriptionsHome extends StatelessWidget {
   final FoodItem item;
+  final String heroTagPrefix;
 
-  const ItemDescriptionsHome({super.key, required this.item});
+  const ItemDescriptionsHome({
+    super.key,
+    required this.item,
+    this.heroTagPrefix = 'home_',
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -448,7 +474,8 @@ class ItemDescriptionsHome extends StatelessWidget {
               Stack(
                 children: [
                   Hero(
-                    tag: 'home_${item.displayCafe}_${item.title}_${item.image}',
+                    tag:
+                        '$heroTagPrefix${item.displayCafe}_${item.title}_${item.image}',
                     child: ClipRRect(
                       child: item.buildImage(
                         width: double.infinity,
@@ -528,8 +555,9 @@ class ItemDescriptionsHome extends StatelessWidget {
                     Center(
                       child: ElevatedButton(
                         style: ElevatedButton.styleFrom(
-                          backgroundColor:
-                              item.available ? Colors.orange : Colors.grey.shade400,
+                          backgroundColor: item.available
+                              ? Colors.orange
+                              : Colors.grey.shade400,
                           foregroundColor: Colors.white,
                           elevation: 1,
                           padding: const EdgeInsets.symmetric(
@@ -552,7 +580,9 @@ class ItemDescriptionsHome extends StatelessWidget {
                                   : Icons.block,
                             ),
                             const SizedBox(width: 8),
-                            Text(item.available ? 'add to cart' : 'unavailable'),
+                            Text(
+                              item.available ? 'add to cart' : 'unavailable',
+                            ),
                           ],
                         ),
                       ),
@@ -564,6 +594,42 @@ class ItemDescriptionsHome extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Renders the "Your Favourites" section on the Home Screen.
+///
+/// Fetches favourite food items via [FavoriteService] and displays
+/// them in the existing [CardRowItems] horizontal carousel.
+/// The section is hidden when no favourites exist (stream is empty).
+class _YourFavouritesSection extends StatelessWidget {
+  const _YourFavouritesSection();
+
+  @override
+  Widget build(BuildContext context) {
+    final favoriteService = FavoriteService();
+
+    return StreamBuilder<List<FoodItem>>(
+      stream: favoriteService.favoriteFoodsStream(),
+      builder: (context, snapshot) {
+        final items = snapshot.data ?? [];
+
+        // Hide the section completely when no favourites exist.
+        if (items.isEmpty) return const SizedBox.shrink();
+
+        return CardRowItems(
+          title: 'Your Favourites',
+          items: items,
+          maxItems: 5,
+          heroTagPrefix: 'fav_',
+          // Override the default arrow to navigate to YourFavouritesScreen.
+          arrowBuilder: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const YourFavouritesScreen()),
+          ),
+        );
+      },
     );
   }
 }
