@@ -36,6 +36,15 @@ bool _isVerificationPath(String location) {
       location == '/terms';
 }
 
+/// Paths that verified users should be redirected from (to go to /main).
+bool _isOnboardingPath(String location) {
+  return location == '/' ||
+      location == '/login' ||
+      location == '/register' ||
+      location == '/verify-email' ||
+      location == '/forgot-password';
+}
+
 final GoRouter router = GoRouter(
   initialLocation: '/',
   refreshListenable: _authNotifier,
@@ -54,7 +63,7 @@ final GoRouter router = GoRouter(
     // This preserves the original behaviour: logged-in users who land
     // on /, /login, /register, /verify-email, or /forgot-password are
     // redirected to the main app.
-    if (user.emailVerified && _isVerificationPath(location)) return '/main';
+    if (user.emailVerified && _isOnboardingPath(location)) return '/main';
 
     // ── Unverified user on a verification path → allow access ──────
     // These paths (verify-email, forgot-password, login, register,
