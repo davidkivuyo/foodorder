@@ -1,9 +1,7 @@
 # future implementation plans
 
 # NOT FULLFILLED
-3. ADD A Verification email step to disallow other peoples emails and stop email misuse
-
-4. add a fetch request to see if the already entered cafe is available or not.
+3. ADD A Verification email step to disallow other peoples emails and stop email misuse-ready
 
 6. add and search filter to search easily the long list of menu items in the admin app
 
@@ -57,13 +55,13 @@ Automatic Strike Engine
 
 ↓
 
-Phase 6
-Notifications  ← CURRENT
+✔Phase 6
+Notifications
 starting to finish with notification, very tired exshausted with freebuff, opencode and antigravity
 
 ↓
 
-Phase 7
+✔Phase 7
 Search & Personalization
 
 ↓
