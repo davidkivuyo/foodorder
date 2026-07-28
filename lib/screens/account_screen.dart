@@ -15,6 +15,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import '../services/auth_service.dart';
 import '../services/strike_service.dart';
 import '../models/strike_model.dart';
@@ -63,8 +64,34 @@ Color _avatarColorFromName(String name) {
 }
 
 //account screen
-class AccountScreen extends StatelessWidget {
+class AccountScreen extends StatefulWidget {
   const AccountScreen({super.key});
+
+  @override
+  State<AccountScreen> createState() => _AccountScreenState();
+}
+
+class _AccountScreenState extends State<AccountScreen> {
+  /// Version string loaded from the app package, e.g. "1.2.3".
+  /// Null while loading; shown as a dash to avoid layout jumps.
+  String? _appVersion;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadVersion();
+  }
+
+  Future<void> _loadVersion() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      if (mounted) {
+        setState(() => _appVersion = info.version);
+      }
+    } catch (_) {
+      // Graceful degradation: leave _appVersion null; UI shows a dash.
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -239,10 +266,12 @@ class AccountScreen extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        'Campus Bite v1.0.1 (alpha)',
-                        style: TextStyle(fontSize: 10),
+                        // Dynamically reflects the git tag used at release
+                        // (injected via --build-name in the CI workflow).
+                        'Campus Bite v${_appVersion ?? '-'}',
+                        style: const TextStyle(fontSize: 10),
                       ),
-                      Text(
+                      const Text(
                         'Made with ❤️ for students',
                         style: TextStyle(fontSize: 10),
                       ),

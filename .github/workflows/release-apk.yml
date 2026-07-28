@@ -39,13 +39,23 @@ jobs:
         run: |
           echo "$KEYSTORE_BASE64" | base64 --decode > android/app/release.jks
 
+      - name: Extract Tag Version
+        id: get_version
+        run: |
+          # Removes the 'v' prefix from the git tag (e.g., v1.2.3 -> 1.2.3)
+          VERSION=${GITHUB_REF_NAME#v}
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+
       - name: Build Signed APK
         env:
           KEYSTORE_PATH: "release.jks"
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: flutter build apk --release
+        run: |
+           flutter build apk --release \
+           --build-name=${{ steps.get_version.outputs.VERSION }} \
+           --build-number=${{ github.run_number }}
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
