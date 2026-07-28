@@ -21,8 +21,8 @@ android {
         applicationId = "com.example.campusbite"
         minSdk = 24
         targetSdk = 36
-        // versionCode and versionName come from pubspec.yaml
-        // (overridden by --build-name/--build-number in CI)
+        versionCode = flutter.versionCode
+        versionName = flutter.versionName
     }
 
     // Define the release signing configuration
