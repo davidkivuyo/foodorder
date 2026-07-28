@@ -1,0 +1,54 @@
+stages:
+  - build
+  - release
+
+# Default Docker image containing Java 17 and Flutter pre-installed
+image: ghcr.io/cirrusci/flutter:3.22.0
+
+variables:
+  # Prevents Gradle from creating daemon instances in CI
+  GRADLE_OPTS: "-Dorg.gradle.daemon=false"
+
+build_apk:
+  stage: build
+  # Trigger only when pushing version tags like v1.0.0
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+/
+  script:
+    # 1. Extract version from tag (e.g., v1.2.3 -> 1.2.3)
+    - VERSION=$(echo $CI_COMMIT_TAG | sed 's/^v//')
+
+    # 2. Decode the keystore from CI/CD variable
+    - echo "$KEYSTORE_BASE64" | base64 -d > android/app/release.jks
+
+    # 3. Fetch dependencies
+    - flutter pub get --enforce-lockfile
+
+    # 4. Build signed APK with version parameters
+    - export KEYSTORE_PATH="release.jks"
+    - flutter build apk --release --build-name=$VERSION --build-number=$CI_PIPELINE_IID
+
+  artifacts:
+    name: "app-release-$CI_COMMIT_TAG"
+    paths:
+      - build/app/outputs/flutter-apk/app-release.apk
+    expire_in: 30 days
+
+create_release:
+  stage: release
+  image: registry.gitlab.com/gitlab-org/release-cli:latest
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+/
+  needs:
+    - job: build_apk
+      artifacts: true
+  script:
+    - echo "Creating GitLab Release for $CI_COMMIT_TAG..."
+  release:
+    name: "Release $CI_COMMIT_TAG"
+    description: "Automated release build for tag $CI_COMMIT_TAG"
+    tag_name: '$CI_COMMIT_TAG'
+    assets:
+      links:
+        - name: 'Download Release APK'
+          url: '${CI_PROJECT_URL}/-/jobs/${GE_JOB_ID}/artifacts/raw/build/app/outputs/flutter-apk/app-release.apk'
