@@ -1,16 +1,15 @@
-name: Build & Publish Release APK
+name: Build & Publish Release APKs
 
 on:
   push:
     tags:
-      - 'v*.*.*' # Triggers on semantic version tags like v1.0.0, v2.1.3, etc.
-  workflow_dispatch: # Allows manual trigger from GitHub Actions UI
+      - 'v*.*.*'
+  workflow_dispatch:
 
 jobs:
   release:
     runs-on: ubuntu-latest
 
-    # Grant write permissions needed to create releases and upload assets
     permissions:
       contents: write
 
@@ -18,16 +17,16 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Java JDK
+      - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
+          distribution: temurin
           java-version: '17'
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          channel: 'stable'
+          channel: stable
           cache: true
 
       - name: Install dependencies
@@ -39,33 +38,43 @@ jobs:
         run: |
           echo "$KEYSTORE_BASE64" | base64 --decode > android/app/release.jks
 
-      - name: Extract Tag Version
-        id: get_version
+      - name: Extract Version
+        id: version
         run: |
-          # Removes the 'v' prefix from the git tag (e.g., v1.2.3 -> 1.2.3)
           VERSION=${GITHUB_REF_NAME#v}
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Build Signed APK
+      - name: Build Optimized Split APKs
         env:
-          KEYSTORE_PATH: "release.jks"
+          KEYSTORE_PATH: release.jks
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-           flutter build apk --release \
-           --split-per-abi \
-           --obfuscate \
-           --split-debug-info=build/debug-info \
-           --build-name=${{ steps.get_version.outputs.VERSION }} \
-           --build-number=${{ github.run_number }}
+          flutter build apk \
+            --release \
+            --split-per-abi \
+            --obfuscate \
+            --split-debug-info=build/debug-info \
+            --build-name=${{ steps.version.outputs.VERSION }} \
+            --build-number=${{ github.run_number }}
+
+      - name: List generated APKs
+        run: ls -lh build/app/outputs/flutter-apk/
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: build/app/outputs/flutter-apk/app-release.apk
           generate_release_notes: true
           draft: false
           prerelease: false
+          files: |
+            build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+            build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
+            build/app/outputs/flutter-apk/app-x86_64-release.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Cleanup Keystore
+        if: always()
+        run: rm -f android/app/release.jks
