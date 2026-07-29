@@ -54,6 +54,8 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
            flutter build apk --release \
+           --split-per-abi \
+           --obfuscate \
            --build-name=${{ steps.get_version.outputs.VERSION }} \
            --build-number=${{ github.run_number }}
 

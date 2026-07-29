@@ -50,6 +50,7 @@ build_apk:
       fvm flutter build apk --release \
         --build-name=$VERSION \
         --build-number=$CI_PIPELINE_IID \
+        --split-per-abi \
         --obfuscate \
         --split-debug-info=build/debug-info
 
