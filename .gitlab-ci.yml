@@ -2,27 +2,35 @@ stages:
   - build
   - release
 
-# Pinned to the exact version you develop with locally (Flutter 3.44.6 / Dart 3.12.2)
-# so `pub get` version-solving in CI matches your dev machine exactly.
-image: ghcr.io/cirruslabs/flutter:3.44.6
+# Use a generic, always-published base image; we pin the exact Flutter
+# version ourselves below via FVM, so we're not dependent on cirruslabs
+# having built an image for this exact patch release.
+image: ghcr.io/cirruslabs/flutter:stable
 
 variables:
   GRADLE_OPTS: "-Dorg.gradle.daemon=false"
+  FLUTTER_VERSION: "3.44.6"   # matches your local dev machine exactly
 
 cache:
   key: "$CI_COMMIT_REF_SLUG"
   paths:
     - .pub-cache/
     - android/.gradle/
+    - .fvm/
 
 build_apk:
   stage: build
   rules:
     - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+/
   before_script:
-    # Fail fast and log the exact SDK actually running, for future debugging
-    - flutter --version
-    - flutter config --no-analytics
+    # Pin the exact Flutter/Dart SDK version regardless of what the base image ships
+    - dart pub global activate fvm
+    - export PATH="$PATH:$HOME/.pub-cache/bin"
+    - fvm install $FLUTTER_VERSION
+    - fvm use $FLUTTER_VERSION --force
+
+    - fvm flutter --version
+    - fvm flutter config --no-analytics
 
     # Decode keystore from a masked/protected CI/CD variable (never commit it)
     - echo "$KEYSTORE_BASE64" | base64 -d > android/app/release.jks
@@ -39,24 +47,22 @@ build_apk:
   script:
     - VERSION=$(echo $CI_COMMIT_TAG | sed 's/^v//')
 
-    - flutter pub get --enforce-lockfile
+    - fvm flutter pub get --enforce-lockfile
 
-    # Signed release APK
     - >
-      flutter build apk --release
+      fvm flutter build apk --release
       --build-name=$VERSION --build-number=$CI_PIPELINE_IID
       --obfuscate --split-debug-info=build/debug-info
       --dart-define-from-file=config/prod.json
 
   after_script:
-    # Always clean up secrets from the runner's workspace, even on failure
     - rm -f android/app/release.jks android/key.properties
 
   artifacts:
     name: "app-release-$CI_COMMIT_TAG"
     paths:
       - build/app/outputs/flutter-apk/app-release.apk
-      - build/debug-info/          # keep privately for crash symbolication, don't publish publicly
+      - build/debug-info/
     expire_in: 30 days
 
 create_release:
