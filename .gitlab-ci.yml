@@ -2,34 +2,61 @@ stages:
   - build
   - release
 
-# Using the stable Flutter channel image
-image: ghcr.io/cirruslabs/flutter:stable
+# Pinned to the exact version you develop with locally (Flutter 3.44.6 / Dart 3.12.2)
+# so `pub get` version-solving in CI matches your dev machine exactly.
+image: ghcr.io/cirruslabs/flutter:3.44.6
 
 variables:
   GRADLE_OPTS: "-Dorg.gradle.daemon=false"
+
+cache:
+  key: "$CI_COMMIT_REF_SLUG"
+  paths:
+    - .pub-cache/
+    - android/.gradle/
 
 build_apk:
   stage: build
   rules:
     - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+/
-  script:
-    # 1. Extract version from git tag (e.g., v1.0.0 -> 1.0.0)
-    - VERSION=$(echo $CI_COMMIT_TAG | sed 's/^v//')
+  before_script:
+    # Fail fast and log the exact SDK actually running, for future debugging
+    - flutter --version
+    - flutter config --no-analytics
 
-    # 2. Decode the release keystore
+    # Decode keystore from a masked/protected CI/CD variable (never commit it)
     - echo "$KEYSTORE_BASE64" | base64 -d > android/app/release.jks
 
-    # 3. Fetch dependencies
+    # Write key.properties dynamically instead of committing it
+    - |
+      cat <<EOF > android/key.properties
+      storePassword=$KEYSTORE_STORE_PASSWORD
+      keyPassword=$KEYSTORE_KEY_PASSWORD
+      keyAlias=$KEYSTORE_KEY_ALIAS
+      storeFile=$CI_PROJECT_DIR/android/app/release.jks
+      EOF
+
+  script:
+    - VERSION=$(echo $CI_COMMIT_TAG | sed 's/^v//')
+
     - flutter pub get --enforce-lockfile
 
-    # 4. Build signed release APK with tag version
-    - export KEYSTORE_PATH="release.jks"
-    - flutter build apk --release --build-name=$VERSION --build-number=$CI_PIPELINE_IID
+    # Signed release APK
+    - >
+      flutter build apk --release
+      --build-name=$VERSION --build-number=$CI_PIPELINE_IID
+      --obfuscate --split-debug-info=build/debug-info
+      --dart-define-from-file=config/prod.json
+
+  after_script:
+    # Always clean up secrets from the runner's workspace, even on failure
+    - rm -f android/app/release.jks android/key.properties
 
   artifacts:
     name: "app-release-$CI_COMMIT_TAG"
     paths:
       - build/app/outputs/flutter-apk/app-release.apk
+      - build/debug-info/          # keep privately for crash symbolication, don't publish publicly
     expire_in: 30 days
 
 create_release:
@@ -41,12 +68,12 @@ create_release:
     - job: build_apk
       artifacts: true
   script:
-    - echo "Publishing release for $CI_COMMIT_TAG..."
+    - echo "Creating GitLab Release for $CI_COMMIT_TAG..."
   release:
     name: "Release $CI_COMMIT_TAG"
     description: "Automated release build for tag $CI_COMMIT_TAG"
     tag_name: '$CI_COMMIT_TAG'
     assets:
       links:
-        - name: 'Download Release APK'
-          url: '${CI_PROJECT_URL}/-/jobs/${GE_JOB_ID}/artifacts/raw/build/app/outputs/flutter-apk/app-release.apk'
+        - name: "Download Release APK"
+          url: "${CI_PROJECT_URL}/-/jobs/${CI_JOB_ID}/artifacts/raw/build/app/outputs/flutter-apk/app-release.apk"
