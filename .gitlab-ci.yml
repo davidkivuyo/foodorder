@@ -1,5 +1,6 @@
 stages:
   - build
+  - package
   - release
 
 image: ghcr.io/cirruslabs/flutter:stable
@@ -17,35 +18,40 @@ cache:
 
 build_apk:
   stage: build
+
   rules:
-    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+/
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/
+
   before_script:
     - dart pub global activate fvm
     - export PATH="$PATH:$HOME/.pub-cache/bin"
+
     - fvm install $FLUTTER_VERSION
     - fvm use $FLUTTER_VERSION --force
 
     - fvm flutter --version
     - fvm flutter config --no-analytics
 
-    # Decode keystore from a masked/protected CI/CD variable (never commit it)
+    # Decode signing keystore
     - echo "$KEYSTORE_BASE64" | base64 -d > android/app/release.jks
 
-    # Export the exact env vars build.gradle.kts reads for signingConfigs.release
+    # Signing variables
     - export KEYSTORE_PATH="$CI_PROJECT_DIR/android/app/release.jks"
     - export KEYSTORE_PASSWORD="$KEYSTORE_STORE_PASSWORD"
     - export KEY_ALIAS="$KEYSTORE_KEY_ALIAS"
     - export KEY_PASSWORD="$KEYSTORE_KEY_PASSWORD"
 
   script:
-    - VERSION=$(echo $CI_COMMIT_TAG | sed 's/^v//')
+    - VERSION=${CI_COMMIT_TAG#v}
 
     - fvm flutter pub get --enforce-lockfile
 
-    - >
-      fvm flutter build apk --release
-      --build-name=$VERSION --build-number=$CI_PIPELINE_IID
-      --obfuscate --split-debug-info=build/debug-info
+    - |
+      fvm flutter build apk --release \
+        --build-name=$VERSION \
+        --build-number=$CI_PIPELINE_IID \
+        --obfuscate \
+        --split-debug-info=build/debug-info
 
   after_script:
     - rm -f android/app/release.jks
@@ -54,23 +60,52 @@ build_apk:
     name: "app-release-$CI_COMMIT_TAG"
     paths:
       - build/app/outputs/flutter-apk/app-release.apk
-    expire_in: 30 days
+
+package_apk:
+  stage: package
+
+  image: curlimages/curl:latest
+
+  needs:
+    - build_apk
+
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/
+
+  script:
+    - |
+      curl --header "JOB-TOKEN: $CI_JOB_TOKEN" \
+        --upload-file build/app/outputs/flutter-apk/app-release.apk \
+        "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/campus-bite/${CI_COMMIT_TAG}/CampusBite-${CI_COMMIT_TAG}.apk"
 
 create_release:
   stage: release
+
   image: registry.gitlab.com/gitlab-org/release-cli:latest
-  rules:
-    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+/
+
   needs:
-    - job: build_apk
-      artifacts: true
+    - package_apk
+
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/
+
   script:
-    - echo "Creating GitLab Release for $CI_COMMIT_TAG..."
+    - echo "Creating release..."
+
   release:
-    name: "Release $CI_COMMIT_TAG"
-    description: "Automated release build for tag $CI_COMMIT_TAG"
-    tag_name: '$CI_COMMIT_TAG'
+    tag_name: "$CI_COMMIT_TAG"
+
+    name: "Campus Bite $CI_COMMIT_TAG"
+
+    description: |
+      ## Campus Bite
+
+      Release version **$CI_COMMIT_TAG**
+
+      Built automatically by GitLab CI/CD.
+
     assets:
       links:
-        - name: "Download Release APK"
-          url: "${CI_PROJECT_URL}/-/jobs/${CI_JOB_ID}/artifacts/raw/build/app/outputs/flutter-apk/app-release.apk"
+        - name: "App release apk"
+          url: "${CI_SERVER_URL}/api/v4/projects/${CI_PROJECT_ID}/packages/generic/campus-bite/${CI_COMMIT_TAG}/CampusBite-${CI_COMMIT_TAG}.apk"
+          link_type: package

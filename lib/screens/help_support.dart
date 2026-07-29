@@ -53,7 +53,6 @@ class SupportScreen extends StatelessWidget {
                 showLicensePage(
                   context: context,
                   applicationName: 'Campus Bite',
-                  applicationVersion: '1.0.0(alpha)',
                   applicationLegalese:
                       '© 2026 Campus Bite Contributors, Larason.',
                 );
