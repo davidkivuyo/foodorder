@@ -2,14 +2,11 @@ stages:
   - build
   - release
 
-# Use a generic, always-published base image; we pin the exact Flutter
-# version ourselves below via FVM, so we're not dependent on cirruslabs
-# having built an image for this exact patch release.
 image: ghcr.io/cirruslabs/flutter:stable
 
 variables:
   GRADLE_OPTS: "-Dorg.gradle.daemon=false"
-  FLUTTER_VERSION: "3.44.6"   # matches your local dev machine exactly
+  FLUTTER_VERSION: "3.44.6"
 
 cache:
   key: "$CI_COMMIT_REF_SLUG"
@@ -23,7 +20,6 @@ build_apk:
   rules:
     - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+/
   before_script:
-    # Pin the exact Flutter/Dart SDK version regardless of what the base image ships
     - dart pub global activate fvm
     - export PATH="$PATH:$HOME/.pub-cache/bin"
     - fvm install $FLUTTER_VERSION
@@ -53,7 +49,6 @@ build_apk:
       fvm flutter build apk --release
       --build-name=$VERSION --build-number=$CI_PIPELINE_IID
       --obfuscate --split-debug-info=build/debug-info
-      --dart-define-from-file=config/prod.json
 
   after_script:
     - rm -f android/app/release.jks android/key.properties
