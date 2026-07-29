@@ -3,7 +3,7 @@ stages:
   - release
 
 # Default Docker image containing Java 17 and Flutter pre-installed
-image: ghcr.io/cirruslabs/flutter:3.22.0
+image: ghcr.io/cirruslabs/flutter:stable
 
 variables:
   # Prevents Gradle from creating daemon instances in CI
