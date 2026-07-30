@@ -146,9 +146,9 @@ class HomeScreen extends StatelessWidget {
                         // Promotional banner carousel
                         SpecialBannerCard(
                           imageUrls: const [
-                            'https://res.cloudinary.com/nrwglbxh/image/upload/v1783345398/banner2_mjqb1u.png',
+                            'https://res.cloudinary.com/nrwglbxh/image/upload/v1785401129/juicebanner_scbixp.png',
                             'https://res.cloudinary.com/nrwglbxh/image/upload/v1784272803/grilledmeat_dwcofz.png',
-                            'https://res.cloudinary.com/nrwglbxh/image/upload/v1784272347/IMG-20260717-WA0000_nd7jo0.jpg',
+                            'https://res.cloudinary.com/nrwglbxh/image/upload/v1783345398/banner2_mjqb1u.png',
                           ],
                           onTap: (index) {
                             debugPrint(
