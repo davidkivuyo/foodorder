@@ -8,6 +8,7 @@ Thank you for downloading Campus Bite.
 - Self customizable cart
 - Creating Meal plans
 - food oriented UI and UX
+- realtime data streams from databases
 - Performance optimizations
 
 ## special thanks
