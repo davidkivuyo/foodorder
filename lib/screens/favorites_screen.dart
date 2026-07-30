@@ -19,7 +19,7 @@ import '../widgets/cafe_selection_dialog.dart';
 import '../widgets/cart_fab.dart';
 import '../widgets/hover_card_scale.dart';
 import '../widgets/stock_badge.dart';
-import 'home_screen.dart'; // for ItemDescriptionsHome
+import 'food_details.dart';
 
 /// Full-screen vertical list of all favourite food items.
 ///
@@ -106,7 +106,7 @@ class YourFavouritesScreen extends StatelessWidget {
                                   Navigator.push(
                                     context,
                                     MaterialPageRoute(
-                                      builder: (_) => ItemDescriptionsHome(
+                                      builder: (_) => FoodDetailsScreen(
                                         item: item,
                                         heroTagPrefix: 'fav_',
                                       ),

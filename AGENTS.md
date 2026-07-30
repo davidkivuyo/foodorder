@@ -139,6 +139,8 @@ After completing a feature:
 
 PHASE 11
 
+migrate all food items details to use one reusable FoodDetailsScreen widget which is already designed and coded in food_details.dart except it contains only hardcoded data. the food details screen displays the food item details from both homescreen and categories screens, implement the migration without breaking the cart, order and hero image navigation logics.
+
 ---
 
 # Phase Completion Criteria

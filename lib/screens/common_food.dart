@@ -19,7 +19,7 @@ import '../widgets/cafe_selection_dialog.dart';
 import '../widgets/cart_fab.dart';
 import '../widgets/hover_card_scale.dart';
 import '../widgets/stock_badge.dart';
-import 'home_screen.dart';
+import 'food_details.dart';
 
 // ---------------------------------------------------------------------------
 // Data model for a common-food category shown in the horizontal scroll list.
@@ -352,7 +352,10 @@ class _CommonFoodCard extends StatelessWidget {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (_) => ItemDescriptionsHome(item: item),
+                        builder: (_) => FoodDetailsScreen(
+                              item: item,
+                              heroTagPrefix: 'common_',
+                            ),
                       ),
                     );
                   },

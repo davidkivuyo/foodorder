@@ -15,9 +15,11 @@
 import 'package:flutter/material.dart';
 import '../data/food_data.dart';
 import '../widgets/cafe_selection_dialog.dart';
-import '../widgets/cart_fab.dart';
 import '../widgets/hover_card_scale.dart';
 import '../widgets/stock_badge.dart';
+import 'food_details.dart';
+
+
 
 class _Category {
   final String display;
@@ -244,7 +246,10 @@ class FoodCard extends StatelessWidget {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (_) => ItemDescriptionsCategories(item: item),
+                        builder: (_) => FoodDetailsScreen(
+                              item: item,
+                              heroTagPrefix: 'category_',
+                            ),
                       ),
                     );
                   },
@@ -429,148 +434,4 @@ class FoodCard extends StatelessWidget {
   }
 }*/
 
-class ItemDescriptionsCategories extends StatelessWidget {
-  final FoodItem item;
 
-  const ItemDescriptionsCategories({super.key, required this.item});
-
-  @override
-  Widget build(BuildContext context) {
-    return PopScope(
-      canPop: true,
-      onPopInvokedWithResult: (didPop, result) {
-        // no-op: prevents any duplicate pop from propagating to system back / app exit
-      },
-      child: Scaffold(
-        floatingActionButton: const CartFab(),
-        floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-        body: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Stack(
-                children: [
-                  Hero(
-                    tag:
-                        'category_${item.displayCafe}_${item.title}_${item.image}',
-                    child: ClipRRect(
-                      child: item.buildImage(
-                        width: double.infinity,
-                        height: 220,
-                        fit: BoxFit.cover,
-                      ),
-                    ),
-                  ),
-
-                  // Stock overlay badge
-                  StockOverlayBadge(inStock: item.available),
-
-                  SafeArea(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: CircleAvatar(
-                        backgroundColor: Colors.black45,
-                        child: IconButton(
-                          icon: const Icon(
-                            Icons.arrow_back,
-                            color: Colors.white,
-                          ),
-                          onPressed: () => Navigator.maybePop(context),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 24),
-
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Text(
-                      item.title,
-                      style: const TextStyle(
-                        fontSize: 30,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-
-                    const SizedBox(height: 8),
-
-                    Text(
-                      item.subtitle,
-                      style: const TextStyle(fontSize: 16, color: Colors.grey),
-                    ),
-
-                    const SizedBox(height: 20),
-
-                    Row(
-                      children: [
-                        const Icon(Icons.star, color: Colors.amber),
-                        const SizedBox(width: 5),
-                        Text("${item.rating}"),
-                        const Spacer(),
-                        Text(
-                          "TZS ${item.price}",
-                          style: const TextStyle(
-                            fontSize: 24,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.orange,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    // Stock status inline
-                    Center(
-                      child: StockBadge(inStock: item.available, fontSize: 12),
-                    ),
-                    const SizedBox(height: 10),
-                    Center(
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: item.available
-                              ? Colors.orange
-                              : Colors.grey.shade400,
-                          foregroundColor: Colors.white,
-                          elevation: 1,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 30,
-                            vertical: 15,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                        ),
-                        onPressed: item.available
-                            ? () => addToCartWithCafeCheck(context, item)
-                            : null,
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              item.available
-                                  ? Icons.shopping_cart
-                                  : Icons.block,
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              item.available ? 'add to cart' : 'unavailable',
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}

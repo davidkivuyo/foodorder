@@ -556,7 +556,9 @@ class _OrdersScreenState extends State<OrdersScreen>
                                         vertical: 4,
                                       ),
                                       decoration: BoxDecoration(
-                                        color: Colors.orange.withOpacity(0.12),
+                                        color: Colors.orange.withValues(
+                                          alpha: 0.12,
+                                        ),
                                         borderRadius: BorderRadius.circular(12),
                                       ),
                                       child: Row(
@@ -745,7 +747,7 @@ class _OrdersScreenState extends State<OrdersScreen>
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: visuals.color.withOpacity(0.12),
+                    color: visuals.color.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
@@ -998,7 +1000,7 @@ class _OrdersScreenState extends State<OrdersScreen>
                         vertical: 4,
                       ),
                       decoration: BoxDecoration(
-                        color: visuals.color.withOpacity(0.12),
+                        color: visuals.color.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(

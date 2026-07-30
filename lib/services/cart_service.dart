@@ -24,9 +24,33 @@ class CartService extends ChangeNotifier {
   // Singleton pattern to share state across screens
   static final CartService _instance = CartService._internal();
   factory CartService() => _instance;
-  CartService._internal() {
+
+  FirebaseFirestore _firestore;
+
+  /// When non-null, overrides [FirebaseAuth.instance.currentUser.uid] for testing.
+  /// Set by the [CartService.testing] constructor.
+  String? _testingUserId;
+
+  CartService._internal()
+      : _firestore = FirebaseFirestore.instance {
     _initAuthListener();
   }
+
+  /// Testing constructor with injectable Firestore.
+  ///
+  /// [firestore] replaces [FirebaseFirestore.instance].
+  /// [userId] replaces [FirebaseAuth.instance.currentUser.uid].
+  /// Does NOT set up auth listeners -- the test manages auth state.
+  CartService.testing({
+    required this._firestore,
+    required String userId,
+  }) : _testingUserId = userId;
+
+  /// Returns the current user ID from the testing override, or from
+  /// FirebaseAuth if no override is active.
+  String? get _currentUserId =>
+      _testingUserId ?? FirebaseAuth.instance.currentUser?.uid;
+
 
   final List<CartItem> _cartItems = [];
   final Map<String, FoodItem> _foodItemsCache = {};
@@ -85,7 +109,7 @@ class CartService extends ChangeNotifier {
   /// Fetch the current user's fullName from Firestore and cache it.
   Future<void> _cacheUserName(User user) async {
     try {
-      final doc = await FirebaseFirestore.instance
+      final doc = await _firestore
           .collection('users')
           .doc(user.uid)
           .get();
@@ -101,7 +125,7 @@ class CartService extends ChangeNotifier {
 
   void _listenToCart(String userId) {
     _cancelCartSubscription();
-    _cartSubscription = FirebaseFirestore.instance
+    _cartSubscription = _firestore
         .collection('users')
         .doc(userId)
         .collection('cart')
@@ -125,7 +149,7 @@ class CartService extends ChangeNotifier {
     bool changed = false;
     for (final item in _cartItems) {
       try {
-        final foodDoc = await FirebaseFirestore.instance
+        final foodDoc = await _firestore
             .collection('food_items')
             .doc(item.foodItem.id)
             .get();
@@ -177,7 +201,7 @@ class CartService extends ChangeNotifier {
       FoodItem? foodItem = _foodItemsCache[foodItemId];
       if (foodItem == null) {
         try {
-          final foodDoc = await FirebaseFirestore.instance
+          final foodDoc = await _firestore
               .collection('food_items')
               .doc(foodItemId)
               .get();
@@ -219,54 +243,103 @@ class CartService extends ChangeNotifier {
 
   // ---------- Cart Operations ----------
 
-  Future<void> addToCart(FoodItem item, {String? selectedCafe}) async {
-    final userId = FirebaseAuth.instance.currentUser?.uid;
-    if (userId == null || item.id.isEmpty) return;
-    
-    // Check if item is available before adding to cart
+  /// Add an item to the cart.
+  ///
+  /// Validates that [quantity] is positive (> 0) before writing to Firestore.
+  /// Returns `true` on success, `false` when the user is not authenticated,
+  /// the item ID is empty, the item is unavailable, [quantity] is invalid,
+  /// or a Firestore write error occurs.
+  Future<bool> addToCart(FoodItem item, {String? selectedCafe, int quantity = 1}) async {
+    // ── Guard: unauthenticated / invalid item ──────────────────────────
+    final userId = _currentUserId;
+    if (userId == null || item.id.isEmpty) return false;
+
+    // ── Guard: unavailable item ────────────────────────────────────────
     if (!item.available) {
       debugPrint('[CartService] Cannot add unavailable item: ${item.title}');
-      return;
+      return false;
     }
 
-    final cartCollection = FirebaseFirestore.instance
+    // ── Guard: invalid quantity ────────────────────────────────────────
+    if (quantity <= 0) {
+      debugPrint(
+        '[CartService] Cannot add item with invalid quantity: $quantity',
+      );
+      return false;
+    }
+
+    final cartCollection = _firestore
         .collection('users')
         .doc(userId)
         .collection('cart');
 
-    final existingIndex = _cartItems.indexWhere(
-      (element) => element.foodItem.id == item.id,
-    );
+    final compositeKey = '${item.id}_${selectedCafe ?? ''}';
+    final compositeDocRef = cartCollection.doc(compositeKey);
 
     try {
-      if (existingIndex >= 0) {
-        final existingItem = _cartItems[existingIndex];
-        await cartCollection.doc(existingItem.id).update({
-          'quantity': existingItem.quantity + 1,
+      // ── Look for a legacy document (auto-generated ID) for this (item, cafe) ──
+      // Any document whose ID differs from compositeKey is a legacy doc.
+      final docs = await cartCollection
+          .where('foodItemId', isEqualTo: item.id)
+          .where('selectedCafe', isEqualTo: selectedCafe)
+          .get();
+
+      final legacyDoc = docs.docs.where((d) => d.id != compositeKey).firstOrNull;
+
+      if (legacyDoc != null) {
+        // Migration path: use a transaction so the legacy-document read is
+        // guarded by optimistic concurrency control — two concurrent calls
+        // cannot both apply the legacy quantity.
+        await _firestore.runTransaction((txn) async {
+          final legacySnapshot = await txn.get(legacyDoc.reference);
+          if (!legacySnapshot.exists) {
+            // Already migrated by another concurrent call — just apply
+            // the incoming quantity to the composite document.
+            txn.set(compositeDocRef, {
+              'foodItemId': item.id,
+              'quantity': FieldValue.increment(quantity),
+              'selectedCafe': selectedCafe,
+            }, SetOptions(merge: true));
+            return;
+          }
+          final legacyQty =
+              (legacySnapshot.data()!['quantity'] as num?)?.toInt() ?? 0;
+          txn.set(compositeDocRef, {
+            'foodItemId': item.id,
+            'quantity': FieldValue.increment(legacyQty + quantity),
+            'selectedCafe': selectedCafe,
+          }, SetOptions(merge: true));
+          txn.delete(legacyDoc.reference);
         });
       } else {
-        await cartCollection.add({
+        // Normal path: write to the canonical composite document.
+        // FieldValue.increment makes the write atomic regardless of write ordering.
+        await compositeDocRef.set({
           'foodItemId': item.id,
-          'quantity': 1,
+          'quantity': FieldValue.increment(quantity),
           'selectedCafe': selectedCafe,
-        });
+        }, SetOptions(merge: true));
       }
+      return true;
     } catch (e) {
       debugPrint('[CartService] Error adding to cart: $e');
+      return false;
     }
   }
 
-  Future<void> removeFromCart(FoodItem item) async {
-    final userId = FirebaseAuth.instance.currentUser?.uid;
+  Future<void> removeFromCart(FoodItem item, {String? selectedCafe}) async {
+    final userId = _currentUserId;
     if (userId == null || item.id.isEmpty) return;
 
-    final cartCollection = FirebaseFirestore.instance
+    final cartCollection = _firestore
         .collection('users')
         .doc(userId)
         .collection('cart');
 
     final existingIndex = _cartItems.indexWhere(
-      (element) => element.foodItem.id == item.id,
+      (element) =>
+          element.foodItem.id == item.id &&
+          element.selectedCafe == selectedCafe,
     );
 
     try {
@@ -285,17 +358,19 @@ class CartService extends ChangeNotifier {
     }
   }
 
-  Future<void> deleteFromCart(FoodItem item) async {
-    final userId = FirebaseAuth.instance.currentUser?.uid;
+  Future<void> deleteFromCart(FoodItem item, {String? selectedCafe}) async {
+    final userId = _currentUserId;
     if (userId == null || item.id.isEmpty) return;
 
-    final cartCollection = FirebaseFirestore.instance
+    final cartCollection = _firestore
         .collection('users')
         .doc(userId)
         .collection('cart');
 
     final existingIndex = _cartItems.indexWhere(
-      (element) => element.foodItem.id == item.id,
+      (element) =>
+          element.foodItem.id == item.id &&
+          element.selectedCafe == selectedCafe,
     );
 
     try {
@@ -309,10 +384,10 @@ class CartService extends ChangeNotifier {
   }
 
   Future<void> clearCart() async {
-    final userId = FirebaseAuth.instance.currentUser?.uid;
+    final userId = _currentUserId;
     if (userId == null) return;
 
-    final cartCollection = FirebaseFirestore.instance
+    final cartCollection = _firestore
         .collection('users')
         .doc(userId)
         .collection('cart');
@@ -320,7 +395,7 @@ class CartService extends ChangeNotifier {
     try {
       final snapshot = await cartCollection.get();
       if (snapshot.docs.isEmpty) return;
-      final batch = FirebaseFirestore.instance.batch();
+      final batch = _firestore.batch();
       for (final doc in snapshot.docs) {
         batch.delete(doc.reference);
       }
@@ -339,11 +414,11 @@ class CartService extends ChangeNotifier {
   ///
   /// Phase 6: Derives percentage from strikeCount * 50.
   Future<bool> isAccountSuspended() async {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
+    final uid = _currentUserId;
     if (uid == null) return false;
 
     try {
-      final doc = await FirebaseFirestore.instance
+      final doc = await _firestore
           .collection('users')
           .doc(uid)
           .get();
@@ -382,7 +457,7 @@ class CartService extends ChangeNotifier {
   }) async {
     if (_cartItems.isEmpty) return null;
 
-    final userId = FirebaseAuth.instance.currentUser?.uid;
+    final userId = _currentUserId;
     if (userId == null) return null;
 
     // Build the serialised order data before the transaction — we need
@@ -394,7 +469,7 @@ class CartService extends ChangeNotifier {
 
     final displayName = _cachedUserName.isNotEmpty
         ? _cachedUserName
-        : (FirebaseAuth.instance.currentUser?.displayName ?? 'Student');
+        : 'Student';
     final hasDistanceData = cafeLocation != null && distanceMeters != null;
     final itemsSnapshot = List<CartItem>.from(_cartItems);
     final itemsTotal = itemsSnapshot.fold<double>(
@@ -417,16 +492,15 @@ class CartService extends ChangeNotifier {
     );
 
     final orderData = newOrder.toFirestore();
-    final firestore = FirebaseFirestore.instance;
 
     try {
-      await firestore.runTransaction((transaction) async {
+      await _firestore.runTransaction((transaction) async {
         // ── 1. Re-read every food item's availability inside the transaction ──
         final unavailableItems = <String>[];
 
         for (final item in itemsSnapshot) {
           final foodRef =
-              firestore.collection('food_items').doc(item.foodItem.id);
+              _firestore.collection('food_items').doc(item.foodItem.id);
           final foodSnapshot = await transaction.get(foodRef);
 
           if (!foodSnapshot.exists) {
@@ -457,7 +531,7 @@ class CartService extends ChangeNotifier {
 
         // ── 2. All items pass — atomically write the order ──
         transaction.set(
-          firestore.collection('orders').doc(newOrderId),
+          _firestore.collection('orders').doc(newOrderId),
           orderData,
         );
       });

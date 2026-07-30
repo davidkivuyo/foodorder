@@ -17,7 +17,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../data/food_data.dart';
 import '../services/search_service.dart';
-import '../screens/home_screen.dart'; // To open ItemDescriptionsHome detail screen
+import '../screens/food_details.dart';
 
 class SearchBarScreen extends StatefulWidget {
   const SearchBarScreen({super.key});
@@ -353,7 +353,7 @@ class _SearchBarScreenState extends State<SearchBarScreen> {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => ItemDescriptionsHome(item: item),
+                    builder: (_) => FoodDetailsScreen(item: item),
                   ),
                 );
               },

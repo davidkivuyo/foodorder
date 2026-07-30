@@ -129,8 +129,10 @@ class _CartBottomSheetState extends State<CartBottomSheet> {
 
   /// Remove all out-of-stock items from the cart in batch.
   Future<void> _removeOutOfStockItems() async {
-    for (final item in _cartService.outOfStockItems) {
-      await _cartService.deleteFromCart(item.foodItem);
+    for (final item in _cartService.outOfStockItems) {                      await _cartService.deleteFromCart(
+                        item.foodItem,
+                        selectedCafe: item.selectedCafe,
+                      );
     }
     if (mounted) {
       setState(() {});
@@ -477,7 +479,10 @@ class _CartBottomSheetState extends State<CartBottomSheet> {
                             children: [
                               GestureDetector(
                                 onTap: () {
-                                  _cartService.removeFromCart(item.foodItem);
+                                  _cartService.removeFromCart(
+                                    item.foodItem,
+                                    selectedCafe: item.selectedCafe,
+                                  );
                                 },
                                 child: Container(
                                   padding: const EdgeInsets.all(4),
@@ -505,8 +510,22 @@ class _CartBottomSheetState extends State<CartBottomSheet> {
                                 ),
                               ),
                               GestureDetector(
-                                onTap: () {
-                                  _cartService.addToCart(item.foodItem);
+                                onTap: () async {
+                                  final success = await _cartService.addToCart(
+                                    item.foodItem,
+                                    selectedCafe: item.selectedCafe,
+                                  );
+                                  if (!success && context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text(
+                                          'Failed to add item. Please try again.',
+                                        ),
+                                        backgroundColor: Colors.red,
+                                        duration: Duration(seconds: 2),
+                                      ),
+                                    );
+                                  }
                                 },
                                 child: Container(
                                   padding: const EdgeInsets.all(4),
@@ -524,7 +543,10 @@ class _CartBottomSheetState extends State<CartBottomSheet> {
                               const SizedBox(width: 8),
                               IconButton(
                                 onPressed: () {
-                                  _cartService.deleteFromCart(item.foodItem);
+                                  _cartService.deleteFromCart(
+                                    item.foodItem,
+                                    selectedCafe: item.selectedCafe,
+                                  );
                                 },
                                 icon: const Icon(
                                   CupertinoIcons.delete_simple,

@@ -88,7 +88,7 @@ Future<String?> showCafeSelectionSheet(
   );
 }
 
-Future<void> addToCartWithCafeCheck(BuildContext context, FoodItem item) async {
+Future<void> addToCartWithCafeCheck(BuildContext context, FoodItem item, {int quantity = 1}) async {
   final cartService = CartService();
 
   // Check if item is available before adding to cart
@@ -106,6 +106,8 @@ Future<void> addToCartWithCafeCheck(BuildContext context, FoodItem item) async {
     return;
   }
 
+  bool success = false;
+
   if (item.availableCafes.length > 1) {
     final selectedCafe = await showCafeSelectionSheet(
       context,
@@ -113,20 +115,32 @@ Future<void> addToCartWithCafeCheck(BuildContext context, FoodItem item) async {
       itemName: item.title,
     );
     if (selectedCafe == null) return;
-    cartService.addToCart(item, selectedCafe: selectedCafe);
+    success = await cartService.addToCart(
+      item,
+      selectedCafe: selectedCafe,
+      quantity: quantity,
+    );
   } else if (item.availableCafes.length == 1) {
-    cartService.addToCart(item, selectedCafe: item.availableCafes.first);
+    success = await cartService.addToCart(
+      item,
+      selectedCafe: item.availableCafes.first,
+      quantity: quantity,
+    );
   } else {
-    cartService.addToCart(item);
+    success = await cartService.addToCart(item, quantity: quantity);
   }
 
   if (context.mounted) {
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('${item.title} added to cart!'),
-        duration: const Duration(seconds: 1),
-        backgroundColor: Colors.orange,
+        content: Text(
+          success
+              ? '${item.title} added to cart!'
+              : 'Failed to add ${item.title} to cart. Please try again.',
+        ),
+        duration: const Duration(seconds: 2),
+        backgroundColor: success ? Colors.orange : Colors.red,
       ),
     );
   }
