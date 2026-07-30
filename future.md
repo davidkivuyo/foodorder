@@ -14,7 +14,8 @@ example
 * hot food
 * served well
 
-9. save the users passwords in their google account logged in their device and retrieve it upon attempts to login in both adminview and customerview
+6. Make the student app and admin app choose which university there in and ensure that the FOOD ITEM and CAFE(add a field to specify which university there in) in university A is not shown or mixed into university B, including their orders.
+* Also add a university collection to list all available universities in which the app serve
 
 11. order screen should clean 24hrs and its history will be saved under /users/{userId}/history according to date, food item title and the total price.-ready
 
