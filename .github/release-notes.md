@@ -1,12 +1,17 @@
-# 🍔 Campus Bite
+# Campus Bite
 
 Thank you for downloading Campus Bite.
 
 ## Features
 
 - Faster ordering
-- Improved UI
+- Self customizable cart
+- Creating Meal plans
+- food oriented UI and UX
 - Performance optimizations
+
+## special thanks
+To all app contributors, the app is open source under Apache 2.0 License.
 
 ## APKs
 
