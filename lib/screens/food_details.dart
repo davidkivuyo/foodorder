@@ -137,7 +137,7 @@ class _FoodDetailsScreenState extends State<FoodDetailsScreen> {
                           style: const TextStyle(
                             fontSize: 24,
                             fontWeight: FontWeight.bold,
-                            color: Color(0xFF1B5E20),
+                            color: Colors.orange,
                           ),
                         ),
                       ],
@@ -381,7 +381,7 @@ class _FoodDetailsScreenState extends State<FoodDetailsScreen> {
                       : null,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: item.available
-                        ? const Color(0xFF1B4D2E)
+                        ? Colors.orange
                         : Colors.grey.shade400,
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 16),
