@@ -1,6 +1,15 @@
 # future implementation plans
 
 # NOT FULLFILLED
+2. prepaire updating code to automatically fetch and update app with ease
+Preserves all of your current signing and build logic.
+Builds both the universal APK and split-per-ABI APKs.
+Renames APKs consistently.
+Uploads APKs to Firebase Storage.
+Generates release.json automatically.
+Publishes only release.json and release notes to GitHub Releases.
+Keeps your existing version/tag workflow intact.
+
 3. ADD A Verification email step to disallow other peoples emails and stop email misuse-ready
 
 6. add and search filter to search easily the long list of menu items in the admin app-ready

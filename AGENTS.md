@@ -137,713 +137,382 @@ After completing a feature:
 
 # Current Phase
 
-PHASE 12
+PHASE 13
 
 # TASK
 
-Implement Phase 12 of CampusBite.
+Implement Phase 13 of CampusBite.
 
-This phase introduces the Reviews & Feedback System.
+This phase focuses exclusively on performance optimization and Firestore efficiency.
 
-The implementation must be production-ready.
+The objective is to reduce Firestore reads and writes, improve perceived application speed, optimize memory usage, and prepare the application for production-scale usage.
 
-The implementation must be secure.
+This phase MUST NOT modify business logic.
 
-The implementation must minimize Firestore reads.
+Do not modify:
 
-The implementation must minimize Firestore writes.
+- Authentication
+- Orders
+- Strike Engine
+- Notifications
+- Reviews
+- Favourite Engine
 
-Reuse existing architecture.
-
-Do not modify existing ordering logic.
-
-Do not modify notifications.
-
-Do not modify strike engine.
-
-Do not modify favourite engine.
+Only optimize the implementation.
 
 ---
 
-# OBJECTIVE
+# OBJECTIVES
 
-Allow students to rate and review food items.
+Improve:
 
-Reviews are only allowed after a successfully collected order.
+• Firestore efficiency
 
-Each review belongs to one collected order.
+• UI responsiveness
 
-Students may edit or delete their own reviews.
+• Startup speed
 
-Food ratings are automatically updated.
+• Image loading
 
-The review screen already exists:
+• Scroll performance
 
-reviews_screen.dart
+• Memory usage
 
-Reuse it.
+• Network usage
 
----
-
-# USER FLOW
-
-Student
-
-↓
-
-Places Order
-
-↓
-
-Order Collected
-
-↓
-
-Food Item becomes reviewable
-
-↓
-
-Student opens Food Details
-
-↓
-
-Tap
-
-Write Review
-
-↓
-
-Submit Review
-
-↓
-
-Food rating updates
-
-↓
-
-Review appears in Reviews Screen
+without changing application behaviour.
 
 ---
 
-# REVIEW ELIGIBILITY
+# GENERAL RULES
 
-A student may review only if:
+Do not rewrite existing features.
 
-Order status == COLLECTED
+Preserve backwards compatibility.
 
-AND
+Every optimization must be measurable.
 
-The order contains that food item.
+Avoid premature optimization.
 
-Do not allow reviews before collection.
-
-Do not allow reviews for:
-
-Cancelled
-
-Rejected
-
-Preparing
-
-Accepted
-
-Ready
-
-No Show
+Prefer simple improvements over architectural rewrites.
 
 ---
 
-# ONE REVIEW PER ORDER
+# PART 1 — FIRESTORE READ OPTIMIZATION
 
-Each collected order may create only one review for each purchased food item.
+Audit every Firestore query.
 
-Example
+Remove duplicate queries.
 
-Order:
+Never read the same document twice during a single screen session.
 
-Burger
-
-Chips
-
-Soda
-
-Student may review:
-
-Burger
-
-Chips
-
-Soda
-
-Each once.
-
-Ordering Burger again in another collected order allows another review linked to the new order.
+Reuse previously loaded data where appropriate.
 
 ---
 
-# FIRESTORE STRUCTURE
-
-Create collection:
-
-reviews
-
-Document ID:
-
-Auto generated.
-
-Fields:
-
-foodId
-
-orderId
-
-userId
-
-displayName
-
-anonymous
-
-rating
-
-templateTags
-
-comment
-
-createdAt
-
-updatedAt
-
-deleted
-
-deletedAt
-
-verifiedPurchase
-
----
-
-# FIELD DEFINITIONS
-
-foodId
-
-Food document ID.
-
-orderId
-
-Collected order ID.
-
-userId
-
-Reviewer UID.
-
-displayName
-
-Displayed reviewer name.
-
-anonymous
-
-Boolean.
-
-Default:
-
-true
-
-rating
-
-Integer
-
-1-5
-
-templateTags
-
-Array<String>
-
-Predefined review tags.
-
-comment
-
-Optional short text.
-
-createdAt
-
-Server timestamp.
-
-updatedAt
-
-Server timestamp.
-
-deleted
-
-Boolean.
-
-deletedAt
-
-Server timestamp.
-
-verifiedPurchase
-
-Always true.
-
----
-
-# REVIEWER NAME
-
-Default display name:
-
-CampusBite Customer
-
-Students may enable:
-
-Display My Name
-
-If enabled:
-
-Use their profile name.
-
-Otherwise:
-
-Always display:
-
-CampusBite Customer
-
-Never display email.
-
-Never display UID.
-
----
-
-# REVIEW TEMPLATES
-
-Do not allow unrestricted review text.
-
-Use predefined review templates.
+Replace one-time polling with realtime listeners only where realtime behaviour is required.
 
 Examples:
 
-Great deal
+Cart
 
-Great value for money
+Order Status
 
-Hot food
+Notifications
 
-Served well
-
-Fresh ingredients
-
-Very delicious
-
-Fast preparation
-
-Large portion
-
-Friendly service
-
-Worth the price
-
-Would order again
-
-Not great as expected
-
-Too salty
-
-Too spicy
-
-Too cold
-
-Small portion
-
-Late preparation
-
-Not good at all
-
-The student may select multiple tags.
-
-Maximum:
-
-5 tags.
+Do NOT use realtime listeners for static menu data.
 
 ---
 
-# OPTIONAL COMMENT
-
-Allow an optional short comment.
-
-Maximum:
-
-120 characters.
-
-Filter profanity before saving.
-
-Reject offensive language.
-
-Do not allow HTML.
-
-Do not allow URLs.
-
-Do not allow scripts.
-
-Trim whitespace.
+Menu data should be loaded once and cached.
 
 ---
 
-# RATING
+Limit every Firestore query.
 
-Allow:
+Never download an entire collection unless required.
 
-1
+Examples:
 
-2
+Reviews
 
-3
+Notifications
 
-4
+Orders
 
-5 stars
-
-No half stars.
+must always paginate.
 
 ---
 
-# FOOD DETAILS SCREEN
-
-If eligible:
-
-Display
-
-Write Review
-
-Otherwise
-
-Hide the review button.
-
-If already reviewed:
-
-Display
-
-Edit Review
+Use projections where supported by future SDK updates.
 
 ---
 
-# REVIEWS SCREEN
+# PART 2 — FIRESTORE WRITE OPTIMIZATION
 
-Reuse:
+Avoid writing unchanged data.
 
-reviews_screen.dart
+Before updating a document:
 
-Implement the Deliveroo-style layout.
+Compare values.
 
-Top dashboard contains:
+If unchanged:
 
-Average rating
-
-Total review count
-
-5-star distribution
-
-4-star distribution
-
-3-star distribution
-
-2-star distribution
-
-1-star distribution
-
-Rating bars
-
-Average stars
-
-Review count
-
-Exactly like Deliveroo.
+Do not write.
 
 ---
 
-# REVIEW SORTING
-
-Allow:
-
-Most Recent
-
-Highest Rated
-
-Lowest Rated
-
-Oldest
-
-Default:
-
-Most Recent
-
----
-
-# REVIEW CARD
-
-Each card displays:
-
-Avatar
-
-Reviewer Name
-
-Rating
-
-Date
-
-Selected review templates
-
-Optional comment
-
-Verified Purchase badge
-
-If current user owns review:
-
-Show:
-
-Edit
-
-Delete
-
----
-
-# VERIFIED PURCHASE
-
-Every review created through collected orders displays:
-
-Verified Purchase
-
-Students cannot manually create verified reviews.
-
----
-
-# FOOD RATING SUMMARY
-
-Each food item stores:
-
-averageRating
-
-reviewCount
-
-ratingDistribution
+Batch related writes.
 
 Example:
 
-ratingDistribution
+Order completed
 
-5
+↓
 
-120
+Update order
 
-4
+↓
 
-40
+Create notification
 
-3
+↓
 
-8
+Update favourite counters
 
-2
+↓
 
-4
-
-1
-
-2
-
-Update automatically after:
-
-Create
-
-Edit
-
-Delete
-
-Never calculate on every page load.
+Commit together when appropriate.
 
 ---
 
-# AGGREGATION
+Avoid repeated server timestamps.
 
-When review changes:
-
-Update:
-
-Food statistics.
-
-Avoid scanning all reviews.
-
-Incrementally maintain:
-
-Average
-
-Count
-
-Distribution
+Only write timestamps when data actually changes.
 
 ---
 
-# DELETE REVIEW
+# PART 3 — LOCAL CACHE
 
-Never hard delete.
+Enable Firestore offline persistence.
 
-Instead:
+Use Firestore local cache.
 
-deleted = true
+Menu
 
-deletedAt = serverTimestamp()
+Food details
 
-Exclude deleted reviews from queries.
+Categories
 
----
+Reviews
 
-# EDIT REVIEW
-
-Students may edit:
-
-Rating
-
-Templates
-
-Comment
-
-Update:
-
-updatedAt
-
-Refresh food statistics.
+should display immediately from cache before refreshing.
 
 ---
 
-# PERFORMANCE
-
-Reviews screen:
-
-Paginate.
-
-Load:
-
-20 reviews
-
-Load more when scrolling.
-
-Never download all reviews.
+Do not manually duplicate cached Firestore data unless required.
 
 ---
 
-# FIRESTORE QUERIES
+# PART 4 — IMAGE OPTIMIZATION
 
-Food Reviews
+Replace Image.network with CachedNetworkImage.
 
-WHERE
+Cache all Cloudinary images.
 
-foodId == selectedFood
+Show lightweight placeholders.
 
-deleted == false
+Display error fallback images.
 
-ORDER BY createdAt DESC
+Precache homepage images.
 
-LIMIT 20
-
----
-
-# SECURITY
-
-Students
-
-Create only their own review.
-
-Edit only their own review.
-
-Delete only their own review.
-
-Cannot edit another user's review.
-
-Cannot modify:
-
-verifiedPurchase
-
-food statistics
-
-Admins
-
-Read all reviews.
-
-Future moderation only.
-
-No moderation implementation in this phase.
+Lazy-load images outside the viewport.
 
 ---
 
-# FIRESTORE RULES
-
-Protect:
-
-reviews
-
-Allow:
-
-Authenticated student
-
-Create
-
-Update own review
-
-Soft delete own review
-
-Read public reviews
-
-Reject all other writes.
-
-Food statistics updated only by backend.
+Do not reload identical image URLs.
 
 ---
 
-# REVIEW SERVICE
+# PART 5 — HOME SCREEN PERFORMANCE
 
-Create:
+Avoid rebuilding the entire Home Screen.
 
-review_service.dart
+Split widgets into smaller reusable components.
 
-Responsibilities:
+Use const constructors wherever possible.
 
-Create review
-
-Update review
-
-Delete review
-
-Load reviews
-
-Update food statistics
-
-Check eligibility
-
-Widgets must never manipulate Firestore directly.
+Use selectors or equivalent state filtering to rebuild only affected widgets.
 
 ---
 
-# REPOSITORY
-
-Create:
-
-review_repository.dart
-
-Use repository pattern.
-
-Avoid duplicated code.
+Horizontal food sections must not rebuild when unrelated state changes.
 
 ---
 
-# REVIEW ANALYTICS
+# PART 6 — LIST PERFORMANCE
 
-Prepare architecture for future:
+Use ListView.builder.
 
-Most reviewed food
+Use GridView.builder.
 
-Highest rated food
+Avoid List.generate for long lists.
 
-Lowest rated food
+Provide stable Keys.
 
-Most improved food
+Avoid rebuilding list items unnecessarily.
 
-Do not implement analytics.
+---
+
+# PART 7 — STATE MANAGEMENT
+
+Review ChangeNotifier usage.
+
+Avoid notifyListeners() when nothing changed.
+
+Notify only affected consumers.
+
+Avoid nested listeners.
+
+Dispose controllers correctly.
+
+Cancel StreamSubscriptions.
+
+Dispose AnimationControllers.
+
+Dispose ScrollControllers.
+
+Dispose Timers.
+
+Dispose TextEditingControllers.
+
+---
+
+# PART 8 — STARTUP PERFORMANCE
+
+Initialize services lazily.
+
+Only initialize:
+
+Authentication
+
+Firestore
+
+Messaging
+
+Cloudinary helpers
+
+when required.
+
+Avoid heavy work inside main().
+
+Avoid synchronous initialization.
+
+---
+
+# PART 9 — SEARCH PERFORMANCE
+
+Search locally whenever possible.
+
+Avoid querying Firestore for every keystroke.
+
+Debounce user input.
+
+Delay search requests by approximately 300 milliseconds.
+
+Cancel previous searches.
+
+---
+
+# PART 10 — NETWORK OPTIMIZATION
+
+Reduce unnecessary HTTP requests.
+
+Avoid duplicate Cloudinary downloads.
+
+Reuse existing network responses.
+
+Cache release metadata.
+
+Cache configuration.
+
+Cache static application settings.
+
+---
+
+# PART 11 — MEMORY OPTIMIZATION
+
+Avoid retaining large image objects.
+
+Release unused controllers.
+
+Avoid memory leaks.
+
+Profile allocations.
+
+Ensure scrolling remains smooth.
+
+---
+
+# PART 12 — LOGGING
+
+Replace debugPrint spam.
+
+Create a centralized logging service.
+
+Debug logs enabled only in debug mode.
+
+Production builds should emit only warnings and errors.
+
+Never log:
+
+Email addresses
+
+Authentication tokens
+
+UIDs
+
+Precise locations
+
+Personal information
+
+---
+
+# PART 13 — CODE QUALITY
+
+Remove dead code.
+
+Remove duplicate services.
+
+Remove unused imports.
+
+Standardize formatting.
+
+Follow repository architecture.
+
+Improve documentation.
+
+---
+
+# PART 14 — PERFORMANCE METRICS
+
+Measure:
+
+App startup
+
+Home loading
+
+Menu loading
+
+Cart loading
+
+Order loading
+
+Review loading
+
+Notification loading
+
+Document improvements.
 
 ---
 
@@ -851,43 +520,31 @@ Do not implement analytics.
 
 Verify:
 
-✓ Only collected orders may review
+✓ No feature regressions
 
-✓ One review per collected order
+✓ Firestore reads reduced
 
-✓ Anonymous name works
+✓ Firestore writes reduced
 
-✓ Display real name works
+✓ Home screen loads faster
 
-✓ Templates save correctly
+✓ Scrolling remains smooth
 
-✓ Rating saves correctly
+✓ Images cache correctly
 
-✓ Edit works
+✓ Notifications unchanged
 
-✓ Delete works
+✓ Orders unchanged
 
-✓ Dashboard updates
+✓ Strike Engine unchanged
 
-✓ Average rating updates
+✓ Reviews unchanged
 
-✓ Rating bars update
+✓ Favourite Engine unchanged
 
-✓ Review count updates
+✓ Offline cache works
 
-✓ Verified Purchase badge appears
-
-✓ Deleted reviews disappear
-
-✓ Pagination works
-
-✓ Existing order flow unchanged
-
-✓ Existing favourite engine unchanged
-
-✓ Existing notifications unchanged
-
-✓ Existing strike engine unchanged
+✓ Memory leaks eliminated
 
 ---
 
@@ -895,39 +552,31 @@ Verify:
 
 Provide:
 
-1. Files created
+1. Files modified
 
-2. Files modified
+2. Performance improvements implemented
 
-3. Firestore schema
+3. Firestore read reductions
 
-4. ReviewService
+4. Firestore write reductions
 
-5. Repository
+5. Widget rebuild optimizations
 
-6. Firestore Security Rule updates
+6. Caching improvements
 
-7. Dashboard implementation
+7. Image optimization summary
 
-8. Testing checklist
+8. Startup optimization summary
 
-Stop after completing Phase 8.
+9. Testing checklist
 
-Do NOT implement AI sentiment analysis.
-
-Do NOT implement review replies.
-
-Do NOT implement image reviews.
-
-Do NOT implement video reviews.
-
-Maintain backward compatibility.
+Stop after Phase 13.
 
 ---
 
 # Phase Completion Criteria
 
-Phase 12 is complete when:
+Phase 13 is complete when:
 
 * the new features works well with past features.
 * App runs successfully.

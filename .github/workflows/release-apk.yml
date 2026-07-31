@@ -6,31 +6,36 @@ on:
       - 'v*.*.*'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   release:
     runs-on: ubuntu-latest
 
-    permissions:
-      contents: write
+    env:
+      BUILD_NUMBER: ${{ github.run_number }}
 
     steps:
-      - name: Checkout repository
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Set up Java 17
+      - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Flutter
+      - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
 
-      - name: Install dependencies
+      - name: Install Dependencies
         run: flutter pub get --enforce-lockfile
+
+      # Decode Android Keystore
 
       - name: Decode Android Keystore
         env:
@@ -38,15 +43,39 @@ jobs:
         run: |
           echo "$KEYSTORE_BASE64" | base64 --decode > android/app/release.jks
 
+      # Extract Version
+
       - name: Extract Version
         id: version
         run: |
           VERSION=${GITHUB_REF_NAME#v}
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Build Optimized Split APKs
+
+      # Build Universal APK
+
+
+      - name: Build Universal APK
         env:
-          KEYSTORE_PATH: release.jks
+          KEYSTORE_PATH: android/app/release.jks
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          flutter build apk \
+            --release \
+            --obfuscate \
+            --split-debug-info=build/debug-info \
+            --build-name=${{ steps.version.outputs.VERSION }} \
+            --build-number=${{ env.BUILD_NUMBER }}
+
+
+      # Build Split APKs
+
+
+      - name: Build Split APKs
+        env:
+          KEYSTORE_PATH: android/app/release.jks
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
@@ -57,24 +86,100 @@ jobs:
             --obfuscate \
             --split-debug-info=build/debug-info \
             --build-name=${{ steps.version.outputs.VERSION }} \
-            --build-number=${{ github.run_number }}
+            --build-number=${{ env.BUILD_NUMBER }}
 
-      - name: List generated APKs
-        run: ls -lh build/app/outputs/flutter-apk/
 
-      - name: Create GitHub Release
+      # Organize Release Files
+
+
+      - name: Organize Release Files
+        run: |
+          mkdir -p release
+
+          cp build/app/outputs/flutter-apk/app-release.apk \
+            release/CampusBite-universal.apk
+
+          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk \
+            release/CampusBite-arm64-v8a.apk
+
+          cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk \
+            release/CampusBite-armeabi-v7a.apk
+
+          cp build/app/outputs/flutter-apk/app-x86_64-release.apk \
+            release/CampusBite-x86_64.apk
+
+
+      # Generate SHA256 Checksums
+
+
+      - name: Generate SHA256 Checksums
+        run: |
+          cd release
+
+          sha256sum CampusBite-universal.apk > CampusBite-universal.apk.sha256
+          sha256sum CampusBite-arm64-v8a.apk > CampusBite-arm64-v8a.apk.sha256
+          sha256sum CampusBite-armeabi-v7a.apk > CampusBite-armeabi-v7a.apk.sha256
+          sha256sum CampusBite-x86_64.apk > CampusBite-x86_64.apk.sha256
+
+
+     # Generate release.json from template
+
+
+      - name: Generate release.json from template
+        env:
+          VERSION: ${{ steps.version.outputs.VERSION }}
+          REPOSITORY: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          # envsubst ships in gettext-base; ubuntu-latest has it, but
+          # this guards against runner image changes
+          command -v envsubst >/dev/null || sudo apt-get update && sudo apt-get install -y gettext-base
+
+          envsubst '${VERSION} ${REPOSITORY} ${TAG}' \
+            < .github/release-template.json \
+            > release/release.json
+
+          # sanity check the output is valid JSON before publishing
+          python3 -m json.tool release/release.json > /dev/null
+
+
+      # Verify Release Files
+
+
+      - name: Verify Release Files
+        run: |
+          ls -lh release
+
+
+      # Create GitHub Release
+
+
+      - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          body_path: .github/release-notes.md
           draft: false
           prerelease: false
+          body_path: .github/release-notes.md
+
           files: |
-            build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
-            build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
-            build/app/outputs/flutter-apk/app-x86_64-release.apk
+            release/CampusBite-universal.apk
+            release/CampusBite-arm64-v8a.apk
+            release/CampusBite-armeabi-v7a.apk
+            release/CampusBite-x86_64.apk
+            release/CampusBite-universal.apk.sha256
+            release/CampusBite-arm64-v8a.apk.sha256
+            release/CampusBite-armeabi-v7a.apk.sha256
+            release/CampusBite-x86_64.apk.sha256
+            release/release.json
+
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Cleanup Keystore
+
+      # Cleanup
+
+
+      - name: Cleanup
         if: always()
-        run: rm -f android/app/release.jks
+        run: |
+          rm -f android/app/release.jks
