@@ -4,6 +4,12 @@
   "forceUpdate": false,
   "releaseNotes": "See GitHub Release notes.",
   "downloads": {
+    "universal": "https://dl.larason.space/${TAG}/CampusBite-universal.apk",
+    "arm64-v8a": "https://dl.larason.space/${TAG}/CampusBite-arm64-v8a.apk",
+    "armeabi-v7a": "https://dl.larason.space/${TAG}/CampusBite-armeabi-v7a.apk",
+    "x86_64": "https://dl.larason.space/${TAG}/CampusBite-x86_64.apk"
+  },
+  "fallback_downloads": {
     "universal": "https://github.com/${REPOSITORY}/releases/download/${TAG}/CampusBite-universal.apk",
     "arm64-v8a": "https://github.com/${REPOSITORY}/releases/download/${TAG}/CampusBite-arm64-v8a.apk",
     "armeabi-v7a": "https://github.com/${REPOSITORY}/releases/download/${TAG}/CampusBite-armeabi-v7a.apk",

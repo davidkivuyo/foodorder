@@ -1,0 +1,7 @@
+name = "campusbite-release-proxy"
+main = "src/index.js"
+compatibility_date = "2026-01-01"
+
+routes = [
+  { pattern = "dl.larason.space/*", zone_name = "larason.space" }
+]

@@ -134,7 +134,6 @@ jobs:
           # envsubst ships in gettext-base; ubuntu-latest has it, but
           # this guards against runner image changes
           command -v envsubst >/dev/null || sudo apt-get update && sudo apt-get install -y gettext-base
-
           envsubst '${VERSION} ${REPOSITORY} ${TAG}' \
             < .github/release-template.json \
             > release/release.json
@@ -175,6 +174,16 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+
+    # Deploy Cloudflare Worker Proxy
+
+      - name: Deploy Cloudflare Worker
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: cloudflare-worker
+          command: deploy
 
       # Cleanup
 
