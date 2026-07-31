@@ -33,6 +33,7 @@ import 'food_details.dart';
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
+  // THE SECTIONS ARE STILL HARDCODED
   static const Map<String, String> _sectionTitles = {
     'campus_favourite': 'Favourite on campus',
     'todays_deals': "Today's Deals",
@@ -526,8 +527,7 @@ class CategoriesTitles extends StatelessWidget {
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (_) =>
-                                      FoodDetailsScreen(item: item),
+                                  builder: (_) => FoodDetailsScreen(item: item),
                                 ),
                               );
                             },
