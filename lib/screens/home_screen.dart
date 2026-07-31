@@ -33,7 +33,7 @@ import 'food_details.dart';
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
-  // THE SECTIONS ARE STILL HARDCODED
+  // THE SECTIONS COMES FROM FIRESTORE "section" COLLECTION
   static const Map<String, String> _sectionTitles = {
     'campus_favourite': 'Favourite on campus',
     'todays_deals': "Today's Deals",
