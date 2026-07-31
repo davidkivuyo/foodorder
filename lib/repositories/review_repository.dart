@@ -143,10 +143,13 @@ class ReviewRepository {
 
   /// Find all collected order IDs that contain a specific food item.
   ///
-  /// Returns all matching orders without a fixed limit so the result is
-  /// never silently truncated.  Throws on Firestore failure so callers
-  /// can surface retryable errors rather than receiving an empty list
-  /// that looks like a legitimate "no matches" result.
+  /// Matches both status casings the system has historically stored
+  /// ('collected' and 'COLLECTED') so eligibility works regardless of
+  /// which casing a collected order was written with.  Returns all
+  /// matching orders without a fixed limit so the result is never
+  /// silently truncated.  Throws on Firestore failure so callers can
+  /// surface retryable errors rather than receiving an empty list that
+  /// looks like a legitimate "no matches" result.
   Future<List<String>> findOrderIdsWithFoodItem({
     required String userId,
     required String foodId,
@@ -156,7 +159,7 @@ class ReviewRepository {
     final snapshot = await _firestore
         .collection('orders')
         .where('studentId', isEqualTo: userId)
-        .where('status', isEqualTo: 'collected')
+        .where('status', whereIn: ['collected', 'COLLECTED'])
         .get();
 
     for (final doc in snapshot.docs) {
@@ -203,20 +206,25 @@ class ReviewRepository {
     return Review.fromFirestore(doc.id, doc.data()!);
   }
 
-  /// Build a collision-safe, deterministic document ID from the
-  /// (userId, orderId, foodId) composite key.
+  /// Build a deterministic document ID from the (userId, orderId, foodId)
+  /// composite key.
   ///
-  /// Length-prefixes each part so that different tuples can never produce
-  /// the same ID — e.g. `("a_b", "c", "d")` and `("a", "b_c", "d")` map
-  /// to distinct documents.  Reads ([findByCompositeKey]) and writes
-  /// ([create]) must use the exact same encoding so each tuple maps to
-  /// exactly one document.
+  /// Uses a plain `:`-separated encoding that the Firestore security rules
+  /// can reproduce (`userId + ':' + orderId + ':' + foodId`) so the create
+  /// rule can enforce "one review per (user, order, food)" structurally.
+  /// The rules language cannot convert int to string (no `toString()`), so
+  /// no length-prefix scheme is used here.  Firebase UIDs, order IDs
+  /// (`CB-xxxx`) and food doc IDs never contain `:`, so the encoding is
+  /// collision-free in practice.
+  ///
+  /// Reads ([findByCompositeKey]) and writes ([create]) must use the exact
+  /// same encoding so each tuple maps to exactly one document.
   static String _compositeReviewId({
     required String userId,
     required String orderId,
     required String foodId,
   }) {
-    return '${userId.length}:$userId${orderId.length}:$orderId${foodId.length}:$foodId';
+    return '$userId:$orderId:$foodId';
   }
 
   /// Fetch a review by its deterministic composite key, regardless of

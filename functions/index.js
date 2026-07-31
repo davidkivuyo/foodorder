@@ -13,6 +13,9 @@
  * 7) cleanupInactiveTokens — Scheduled (weekly) cleanup of stale device tokens.
  * 8) onReviewChanged — Firestore trigger on reviews/{reviewId} — recalculates
  *    food item rating statistics when a review is created, updated, or deleted.
+ * 9) migrateLegacyOrderFoodIds — Scheduled (every 5 min) one-time backfill of
+ *    the denormalised `foodIds` array on legacy COLLECTED orders so they become
+ *    reviewable; bounded batch, resumable via a persisted cursor, self-completing.
  */
 
 // ── Imports ────────────────────────────────────────────────────────────────
@@ -1182,6 +1185,71 @@ exports.processExpiredPickups = functions
       return null;
     });
 
+// ── Order foodIds backfill ────────────────────────────────────────────────────
+//
+// The review-eligibility security rule (validReviewOrderEligibility) verifies
+// that a reviewed food was actually in a COLLECTED order by checking the
+// denormalised `foodIds` array.  Orders created before that field existed
+// (legacy orders) or by legacy app builds lack it and would be permanently
+// non-reviewable, because the rules language cannot iterate the nested
+// `items` maps to derive the IDs at write time — and students are not
+// allowed to update order documents.
+//
+// These helpers backfill `foodIds` server-side (admin SDK bypasses the
+// student-write restriction on orders) by deriving the IDs from the nested
+// `items` data — the authoritative purchase record.  Orders that already
+// have a populated `foodIds` list are left unchanged.
+
+/**
+ * Derive the deduplicated `foodIds` list from an order's nested `items` array.
+ * @param {*} items — the order's `items` field
+ * @return {string[]|null} — derived food IDs, or null when none can be derived
+ */
+function deriveOrderFoodIds(items) {
+  if (!Array.isArray(items)) return null;
+  const foodIds = [];
+  for (const item of items) {
+    if (!item || typeof item !== "object") continue;
+    const id = item.foodItemId || item.id;
+    if (typeof id === "string" && id.length > 0 && !foodIds.includes(id)) {
+      foodIds.push(id);
+    }
+  }
+  return foodIds.length > 0 ? foodIds : null;
+}
+
+/**
+ * Backfill `foodIds` on an order document when the field is absent.
+ *
+ * No-op when the order already has a populated `foodIds` list, so already
+ * migrated orders are never rewritten.  Never clears or overwrites an
+ * existing list.
+ *
+ * @param {admin.firestore.DocumentReference} orderRef
+ * @param {Object} orderData
+ * @return {Promise<boolean>} true when a backfill write was performed
+ */
+async function backfillOrderFoodIds(orderRef, orderData) {
+  if (!orderData) return false;
+  // Only a NON-EMPTY foodIds list counts as already populated.  An empty
+  // array (or missing / non-array values) falls through to derivation from
+  // the authoritative `items` data so the order becomes reviewable.
+  if (Array.isArray(orderData.foodIds) && orderData.foodIds.length > 0) {
+    return false; // Already populated.
+  }
+  const foodIds = deriveOrderFoodIds(orderData.items);
+  if (!foodIds) return false; // Nothing derivable — leave unchanged.
+  await orderRef.update({
+    foodIds,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+  console.log(
+    `[backfillFoodIds] Backfilled foodIds for order ${orderRef.id}: ` +
+    `${JSON.stringify(foodIds)}`
+  );
+  return true;
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 // FUNCTION 2: onOrderStatusChanged  (Firestore trigger)
 // ════════════════════════════════════════════════════════════════════════════
@@ -1190,12 +1258,54 @@ exports.onOrderStatusChanged = onDocumentUpdated(
   {
     document: "orders/{orderId}",
     region: "us-central1",
+    // Retry the whole event when the backfill rethrows a transient error,
+    // so a failed backfill is not acknowledged as a successful event.
+    retry: true,
   },
   async (event) => {
     const beforeData = event.data.before.data();
     const afterData = event.data.after.data();
 
     if (!beforeData || !afterData) return;
+
+    // Backfill `foodIds` on legacy orders (see helpers above) before any
+    // review eligibility can be evaluated.  Runs on every order update —
+    // including the admin's transition to COLLECTED — so legacy orders
+    // become reviewable as soon as they are touched.
+    //
+    // A failed backfill must NOT be acknowledged as a successful event:
+    // transient write failures are retried in-invocation (withRetry), and
+    // if the backfill still fails the error is rethrown after logging so
+    // Cloud Functions retries the whole event.  Retries are safe because
+    // backfillOrderFoodIds is idempotent (no-op when foodIds is already
+    // populated) and the ORDER_READY notification is deduplicated by
+    // eventId in createNotification — no side effects are duplicated.
+    try {
+      await withRetry(
+        () => backfillOrderFoodIds(event.data.after.ref, afterData),
+        {
+          maxRetries: 3,
+          baseDelayMs: 200,
+          maxDelayMs: 2000,
+          isPermanent: (err) => err.code === "NOT_FOUND", // order deleted mid-run
+        },
+      );
+    } catch (err) {
+      console.error(
+        `[onOrderStatusChanged] foodIds backfill failed for order ` +
+        `${event.params.orderId}: ${err.message}`
+      );
+      // NOT_FOUND means the order no longer exists — nothing left to
+      // backfill and no status/notification work is meaningful for a
+      // deleted order, so return early instead of retrying a permanent
+      // failure.  Any other failure is rethrown so the event is not
+      // acknowledged as successful.
+      if (err.code === "NOT_FOUND") {
+        return;
+      }
+      throw err;
+    }
+
     if (beforeData.status === afterData.status) return;
     if (afterData.status !== "ready") return;
 
@@ -1252,12 +1362,52 @@ exports.onNewOrder = onDocumentCreated(
   {
     document: "orders/{orderId}",
     region: "us-central1",
+    // Retry the whole event when the backfill rethrows a transient error,
+    // so a failed backfill is not acknowledged as a successful event.
+    retry: true,
   },
   async (event) => {
     const orderData = event.data.data();
     if (!orderData) {
       console.log(`[onNewOrder] No data for order ${event.params.orderId} — skipping`);
       return;
+    }
+
+    // Backfill `foodIds` when an order was created without it (e.g. by a
+    // legacy app build whose create payload predates the field).  Orders
+    // from the current app already include the field, so this is a no-op.
+    //
+    // A failed backfill must NOT be acknowledged as a successful event:
+    // transient write failures are retried in-invocation (withRetry), and
+    // if the backfill still fails the error is rethrown after logging so
+    // Cloud Functions retries the whole event.  Retries are safe because
+    // backfillOrderFoodIds is idempotent and NEW_ORDER notifications are
+    // deduplicated by eventId in createNotification — no side effects are
+    // duplicated.
+    try {
+      await withRetry(
+        () => backfillOrderFoodIds(event.data.ref, orderData),
+        {
+          maxRetries: 3,
+          baseDelayMs: 200,
+          maxDelayMs: 2000,
+          isPermanent: (err) => err.code === "NOT_FOUND", // order deleted mid-run
+        },
+      );
+    } catch (err) {
+      console.error(
+        `[onNewOrder] foodIds backfill failed for order ` +
+        `${event.params.orderId}: ${err.message}`
+      );
+      // NOT_FOUND means the order no longer exists — nothing left to
+      // backfill and no admin notification is meaningful for a deleted
+      // order, so return early instead of retrying a permanent failure.
+      // Any other failure is rethrown so the event is not acknowledged
+      // as successful.
+      if (err.code === "NOT_FOUND") {
+        return;
+      }
+      throw err;
     }
 
     const studentId = orderData.studentId || orderData.userId;
@@ -1960,3 +2110,167 @@ exports.onReviewChanged = onDocumentWritten(
     }
   },
 );
+
+// ════════════════════════════════════════════════════════════════════════════
+// FUNCTION 9: migrateLegacyOrderFoodIds  (Scheduled — one-time backfill)
+// ════════════════════════════════════════════════════════════════════════════
+//
+// Backfills the denormalised `foodIds` array on legacy orders that are ALREADY
+// in COLLECTED status.  The review-eligibility rule (validReviewOrderEligibility)
+// requires `order.data.foodIds.hasAny([foodId])` for a review to be created,
+// but orders created before that field existed — and never updated since — are
+// never touched by onOrderStatusChanged / onNewOrder, so they would remain
+// permanently non-reviewable.  This migration closes that gap.
+//
+// Design:
+//   • Bounded     — processes at most MIGRATION_BATCH_SIZE orders per run
+//                   (well inside the 120s timeout); the Cloud Scheduler job
+//                   invokes it every 5 minutes.
+//   • Resumable   — progress is persisted in a state document
+//                   (migrations/food_ids_backfill) holding the phase
+//                   ('collected' → 'COLLECTED' → 'completed') and the cursor
+//                   (last processed order document ID), so a rerun resumes
+//                   exactly where the previous run stopped — even after a
+//                   timeout or crash.
+//   • Idempotent  — reuses backfillOrderFoodIds(), which no-ops when the
+//                   order already has a populated `foodIds` list, so a rerun
+//                   never rewrites migrated orders.
+//   • Self-terminating — once both status spellings are exhausted the state
+//                   is marked 'completed' and subsequent runs exit immediately.
+//
+// Both status spellings are covered because the app writes lowercase
+// 'collected' (OrderStatus.toShortString) while legacy writes and the rules
+// also accept uppercase 'COLLECTED'.  Each phase uses a separate `==` query
+// ordered by document ID (automatic single-field index — no composite index
+// required) with its own cursor.
+
+/** Max orders processed per scheduled run. */
+const MIGRATION_BATCH_SIZE = 100;
+
+/** Firestore state document for the legacy foodIds backfill migration. */
+const MIGRATION_STATE_REF = db.collection("migrations").doc("food_ids_backfill");
+
+exports.migrateLegacyOrderFoodIds = functions
+    .runWith({
+      memory: "256MB",
+      timeoutSeconds: 120,
+    })
+    .pubsub
+    .schedule("every 5 minutes")
+    .onRun(async (context) => {
+      console.log("[migrateFoodIds] Scheduled run started...");
+
+      // ── Read persisted progress ───────────────────────────────────
+      const stateSnap = await MIGRATION_STATE_REF.get();
+      const state = stateSnap.exists ? stateSnap.data() : {};
+
+      if (state.status === "completed") {
+        console.log(
+          "[migrateFoodIds] Migration already completed — skipping"
+        );
+        return null;
+      }
+
+      // phase: 'collected' | 'COLLECTED' | 'completed'
+      const phase = state.phase || "collected";
+      const cursor = state.cursor || null;
+
+      // ── Fetch one bounded page of COLLECTED orders ───────────────
+      let query = db
+          .collection("orders")
+          .where("status", "==", phase)
+          .orderBy(admin.firestore.FieldPath.documentId())
+          .limit(MIGRATION_BATCH_SIZE);
+      if (cursor) {
+        query = query.startAfter(cursor);
+      }
+
+      const snapshot = await query.get();
+      console.log(
+        `[migrateFoodIds] Phase '${phase}', cursor=${cursor || "(start)"}, ` +
+        `found ${snapshot.size} order(s)`
+      );
+
+      // ── Backfill each order (idempotent; failures never stall the run) ──
+      // Transient Firestore write failures are retried with bounded backoff
+      // (withRetry) so a single blip never permanently skips an order — the
+      // cursor only advances after the page has been processed.  Order IDs
+      // that fail permanently are persisted in the migration state so
+      // operators can requeue them after completion.
+      let backfilledCount = 0;
+      const failedOrderIds = [];
+      for (const doc of snapshot.docs) {
+        try {
+          const didBackfill = await withRetry(
+            () => backfillOrderFoodIds(doc.ref, doc.data()),
+            {
+              maxRetries: 3,
+              baseDelayMs: 200,
+              maxDelayMs: 2000,
+              isPermanent: (err) => err.code === "NOT_FOUND", // order deleted mid-run
+            },
+          );
+          if (didBackfill) {
+            backfilledCount++;
+          }
+        } catch (err) {
+          // Final failure after retries — persist the order ID for later
+          // requeue and log loudly.  NOT_FOUND (order deleted mid-run) is
+          // excluded: there is nothing to requeue for a deleted order.
+          // The cursor still advances so the migration keeps moving.
+          if (err.code !== "NOT_FOUND") {
+            failedOrderIds.push(doc.id);
+          }
+          console.error(
+            `[migrateFoodIds] Backfill failed for order ${doc.id} ` +
+            `after retries: ${err.message}`
+          );
+        }
+      }
+
+      // ── Advance phase / cursor ────────────────────────────────────
+      // Fewer results than the batch size means the phase is exhausted.
+      const isLastPage = snapshot.size < MIGRATION_BATCH_SIZE;
+      let nextPhase = phase;
+      let nextCursor = isLastPage
+        ? null
+        : snapshot.docs[snapshot.docs.length - 1].id;
+
+      if (isLastPage) {
+        nextPhase = phase === "collected" ? "COLLECTED" : "completed";
+      }
+
+      // Accumulated permanently-failed order IDs across ALL runs so far,
+      // preserved across merged state writes (merge: true) — operators can
+      // read them from the state document and requeue after completion.
+      // To requeue, reset the state doc status back to 'collected' (and
+      // cursor to null) so a scheduled run picks the list up again.
+      const priorFailedIds = Array.isArray(state.failedOrderIds)
+        ? state.failedOrderIds
+        : [];
+      const accumulatedFailedIds = [
+        ...new Set([...priorFailedIds, ...failedOrderIds]),
+      ];
+
+      const stateUpdate = {
+        phase: nextPhase,
+        cursor: nextCursor,
+        processedCount: (state.processedCount || 0) + backfilledCount,
+        failedOrderIds: accumulatedFailedIds,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      };
+      if (nextPhase === "completed") {
+        stateUpdate.status = "completed";
+        stateUpdate.completedAt = admin.firestore.FieldValue.serverTimestamp();
+      }
+      await MIGRATION_STATE_REF.set(stateUpdate, { merge: true });
+
+      console.log(
+        `[migrateFoodIds] Run complete: ${backfilledCount} backfilled this run, ` +
+        `total=${stateUpdate.processedCount}, ` +
+        `failedTotal=${accumulatedFailedIds.length}, ` +
+        `nextPhase='${nextPhase}'`
+      );
+
+      return null;
+    });

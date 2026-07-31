@@ -252,6 +252,11 @@ class FoodOrder {
             },
           )
           .toList(),
+      // Denormalised list of purchased food IDs so the review-eligibility
+      // security rule can verify (via list.hasAny) that the reviewed food
+      // was actually in the collected order. Firestore rules cannot
+      // iterate over the nested `items` maps.
+      'foodIds': items.map((item) => item.foodItem.id).toList(),
       'price': totalAmount,
       'cafeId': cafeId,
       'status': status.toShortString(),

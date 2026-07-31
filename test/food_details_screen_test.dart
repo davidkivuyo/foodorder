@@ -17,6 +17,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:campusbite/screens/food_details.dart';
 import 'package:campusbite/data/food_data.dart';
+import 'firebase_test_helper.dart';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -56,6 +57,9 @@ FoodItem _foodItem({
     description: description,
     price: price,
     rating: rating,
+    // FoodDetailsScreen displays averageRating (Phase 12) — mirror the
+    // helper's rating override so rating text assertions match the UI.
+    averageRating: rating,
     category: category,
     availableCafes: availableCafes ?? ['Main Cafeteria'],
     time: time,
@@ -98,6 +102,13 @@ void _removeImageErrorSuppressor() {
 // ---------------------------------------------------------------------------
 
 void main() {
+  // FoodDetailsScreen constructs a ReviewService (and thus accesses
+  // FirebaseFirestore.instance) during initState, so Firebase must be
+  // initialized before any test pumps the widget.
+  setUpAll(() async {
+    await setupFirebaseForTest();
+  });
+
   setUp(_installImageErrorSuppressor);
   tearDown(_removeImageErrorSuppressor);
 
