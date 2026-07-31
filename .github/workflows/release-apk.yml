@@ -51,20 +51,6 @@ jobs:
           VERSION=${GITHUB_REF_NAME#v}
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
 
-      # Step 4: Build Flutter Web
-      - name: Build Web
-        run: |
-          flutter pub get
-          flutter build web --release --base-href "/"
-
-      # Step 5: Deploy build/web folder to Cloudflare Pages (Pinned to a fully verified 40-character release SHA)
-      - name: Lets Deploy
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy build/web --project-name="foodorder"
-
 
       # Build Universal APK
 
