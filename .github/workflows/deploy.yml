@@ -3,7 +3,7 @@ name: Deploy Flutter Web to Cloudflare Pages
 on:
   push:
     branches:
-      - main  # Trigger build on pushes to the main branch
+      - buildweb  # Trigger build on pushes to the buildweb branch
 
 jobs:
   deploy:
