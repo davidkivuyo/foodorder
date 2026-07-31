@@ -38,6 +38,11 @@ class FoodItem {
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
+  // Phase 12: Review aggregation fields
+  final double averageRating;
+  final int reviewCount;
+  final Map<String, dynamic>? ratingDistribution;
+
   FoodItem({
     this.id = '',
     this.image = '',
@@ -59,6 +64,9 @@ class FoodItem {
     this.searchPrefixes = const [],
     this.createdAt,
     this.updatedAt,
+    this.averageRating = 0.0,
+    this.reviewCount = 0,
+    this.ratingDistribution,
   });
 
   factory FoodItem.fromMap(Map<String, dynamic> map, {String? id}) {
@@ -89,6 +97,15 @@ class FoodItem {
       return [];
     }
 
+    // Parse rating distribution map
+    Map<String, dynamic>? parseRatingDistribution(dynamic value) {
+      if (value == null) return null;
+      if (value is Map) {
+        return value.map((k, v) => MapEntry(k.toString(), v));
+      }
+      return null;
+    }
+
     return FoodItem(
       id: id ?? map['id'] ?? '',
       image: map['image'] ?? '',
@@ -113,6 +130,9 @@ class FoodItem {
       searchPrefixes: parseStringList(map['searchPrefixes']),
       createdAt: parseTimestamp(map['createdAt']),
       updatedAt: parseTimestamp(map['updatedAt']),
+      averageRating: (map['averageRating'] as num?)?.toDouble() ?? 0.0,
+      reviewCount: (map['reviewCount'] as num?)?.toInt() ?? 0,
+      ratingDistribution: parseRatingDistribution(map['ratingDistribution']),
     );
   }
 

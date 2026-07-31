@@ -141,7 +141,7 @@ PHASE 12
 
 # TASK
 
-Implement Phase 8 of CampusBite.
+Implement Phase 12 of CampusBite.
 
 This phase introduces the Reviews & Feedback System.
 

@@ -11,6 +11,8 @@
  * 5) deleteCloudinaryImage — Callable function (admin only, secrets-protected).
  * 6) cleanupDeletedNotifications — Scheduled (every 24h) cleanup.
  * 7) cleanupInactiveTokens — Scheduled (weekly) cleanup of stale device tokens.
+ * 8) onReviewChanged — Firestore trigger on reviews/{reviewId} — recalculates
+ *    food item rating statistics when a review is created, updated, or deleted.
  */
 
 // ── Imports ────────────────────────────────────────────────────────────────
@@ -18,7 +20,7 @@
 const crypto = require("crypto");
 const functions = require("firebase-functions");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
-const { onDocumentUpdated, onDocumentCreated } = require("firebase-functions/v2/firestore");
+const { onDocumentUpdated, onDocumentCreated, onDocumentWritten } = require("firebase-functions/v2/firestore");
 const { defineSecret } = require("firebase-functions/params");
 const admin = require("firebase-admin");
 const fetch = require("node-fetch");
@@ -1674,3 +1676,287 @@ exports.cleanupInactiveTokens = functions
 
       return null;
     });
+
+// ════════════════════════════════════════════════════════════════════════════
+// FUNCTION 8: onReviewChanged — Food Rating Aggregation  (Firestore trigger)
+// ════════════════════════════════════════════════════════════════════════════
+
+class PermanentValidationError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "PermanentValidationError";
+  }
+}
+
+/**
+ * When a review document is created, updated, or soft-deleted, recalculate
+ * the food item's rating statistics incrementally and write them back.
+ *
+ * This runs server-side with admin privileges, eliminating the need for
+ * client-side aggregation and the permissive `validFoodRatingStatsUpdate()`
+ * Firestore rule.
+ *
+ * The aggregation is O(1): it reads the current food-item stats, adjusts
+ * by ±1 for the changed rating, and writes back.  No full scan of reviews.
+ *
+ * @param {string} foodId — the food item whose stats to update
+ * @param {Object} changes
+ * @param {number|null} changes.removeRating — rating being removed (null if no remove)
+ * @param {number|null} changes.addRating — rating being added (null if no add)
+ */
+async function updateFoodRatingStats(foodId, { removeRating, addRating }, eventId) {
+  try {
+    const foodRef = db.collection("food_items").doc(foodId);
+
+    await db.runTransaction(async (transaction) => {
+      const foodDoc = await transaction.get(foodRef);
+
+      if (!foodDoc.exists) {
+        console.warn(`[onReviewChanged] Food item ${foodId} not found — skipping stats update`);
+        return;
+      }
+
+      const data = foodDoc.data() || {};
+      const processedEventIds = data.processedEventIds || [];
+
+      if (eventId && processedEventIds.includes(eventId)) {
+        console.log(`[onReviewChanged] Event ${eventId} was already processed for food ${foodId} — skipping to prevent double application`);
+        return;
+      }
+
+      // ratingDistribution is authoritative.  The stored averageRating and
+      // reviewCount are derived values (and may be rounded), so they are
+      // recomputed from the bucket counts on every write.  This prevents
+      // rounded stored averages from accumulating error across updates.
+      const storedDistribution = data.ratingDistribution || {};
+      const distribution = { "1": 0, "2": 0, "3": 0, "4": 0, "5": 0 };
+      for (let i = 1; i <= 5; i++) {
+        // Firestore map keys are always strings — must use String(i), not the
+        // numeric i, otherwise storedDistribution[1] is always undefined and
+        // every existing bucket is silently wiped, causing reviewCount → 0.
+        const bucket = Number(storedDistribution[String(i)]);
+        if (Number.isFinite(bucket) && bucket > 0) {
+          distribution[String(i)] = bucket;
+        }
+      }
+
+      // ── Validate ratings (reject outside 1–5 instead of clamping) ──
+      const validateRating = (value, label) => {
+        if (!Number.isInteger(value) || value < 1 || value > 5) {
+          throw new PermanentValidationError(
+            `[onReviewChanged] Invalid ${label} rating ${value} for food ${foodId} — expected integer 1-5`,
+          );
+        }
+        return value;
+      };
+
+      // ── Derive stats from the distribution buckets ──────────────────
+      const statsFromDistribution = (dist) => {
+        let count = 0;
+        let sum = 0;
+        for (let i = 1; i <= 5; i++) {
+          // Keys are strings — use String(i) for consistent access.
+          const bucket = Number(dist[String(i)]) || 0;
+          count += bucket;
+          sum += i * bucket;
+        }
+        return { count, average: count > 0 ? sum / count : 0 };
+      };
+
+      // ── Apply the rating change to the distribution buckets ─────────
+      if (removeRating != null) {
+        const r = validateRating(removeRating, "remove");
+        // Use String(r) — the distribution object has string keys.
+        distribution[String(r)] = Math.max(0, (distribution[String(r)] || 0) - 1);
+      }
+
+      if (addRating != null) {
+        const r = validateRating(addRating, "add");
+        distribution[String(r)] = (distribution[String(r)] || 0) + 1;
+      }
+
+      // ── Recompute reviewCount and averageRating from the updated
+      //    distribution — never from previously rounded averages ───────
+      const updatedStats = statsFromDistribution(distribution);
+      const reviewCount = updatedStats.count;
+      let averageRating = updatedStats.average;
+
+      // ── Round to 1 decimal place for storage ────────────────────────
+      averageRating = Math.round(averageRating * 10) / 10;
+
+      // Track processed event IDs, capping at 20 to prevent unbounded array size growth
+      const newProcessedEventIds = [...processedEventIds];
+      if (eventId) {
+        newProcessedEventIds.push(eventId);
+        if (newProcessedEventIds.length > 20) {
+          newProcessedEventIds.shift();
+        }
+      }
+
+      transaction.update(foodRef, {
+        averageRating: averageRating,
+        reviewCount: reviewCount,
+        ratingDistribution: distribution,
+        processedEventIds: newProcessedEventIds,
+      });
+
+      console.log(
+        `[onReviewChanged] Updated stats for food ${foodId}: ` +
+        `avg=${averageRating}, count=${reviewCount}, ` +
+        `remove=${removeRating ?? "-"}, add=${addRating ?? "-"}, eventId=${eventId ?? "-"}`
+      );
+    });
+  } catch (err) {
+    if (err instanceof PermanentValidationError) {
+      console.error(`[onReviewChanged] Permanent validation error for food ${foodId} — skipping permanently:`, err.message);
+      return; // Do not rethrow for permanent errors
+    }
+    console.error(`[onReviewChanged] Error updating stats for food ${foodId}:`, err);
+    // Rethrow so transient transaction failures (e.g. contention) reject
+    // the onReviewChanged handler and Cloud Functions retries the event.
+    throw err;
+  }
+}
+
+/**
+ * Firestore trigger on reviews/{reviewId} for all write operations.
+ *
+ * Handles:
+ * - **Create**: Adds the new rating to the food item's stats.
+ * - **Update**: Removes the old rating and adds the new rating.
+ * - **Delete / Soft-delete**: Removes the rating (handles both hard
+ *   deletes and `deleted: true` soft-deletes).
+ *
+ * Uses [onDocumentWritten] to receive both before and after snapshots,
+ * which allows computing the exact rating change regardless of operation.
+ */
+exports.onReviewChanged = onDocumentWritten(
+  {
+    document: "reviews/{reviewId}",
+    region: "us-central1",
+    retry: true,
+  },
+  async (event) => {
+    if (!event.data) {
+      console.log(
+        `[onReviewChanged] Review ${event.params.reviewId} has no event data — skipping`
+      );
+      return;
+    }
+
+    const beforeData = event.data.before.data();
+    const afterData = event.data.after.data();
+
+    // ── Determine the operation and extract rating changes ───────────
+    const before = beforeData || null;
+    const after = afterData || null;
+
+    const beforeFoodId = before ? (before.foodId || null) : null;
+    const afterFoodId = after ? (after.foodId || null) : null;
+    const foodId = afterFoodId || beforeFoodId;
+
+    if (!foodId) {
+      console.log(
+        `[onReviewChanged] Review ${event.params.reviewId} has no foodId — skipping`
+      );
+      return;
+    }
+
+    const beforeRating = before ? (before.rating || null) : null;
+    const afterRating = after ? (after.rating || null) : null;
+    const beforeDeleted = before ? (before.deleted || false) : false;
+    const afterDeleted = after ? (after.deleted || false) : false;
+
+    // ── Case 1: Document created (no before) ─────────────────────────
+    if (!before && after) {
+      if (after.deleted) {
+        console.log(
+          `[onReviewChanged] Review ${event.params.reviewId} created as deleted — skipping`
+        );
+        return;
+      }
+      console.log(
+        `[onReviewChanged] Review ${event.params.reviewId} CREATED for food ${foodId}, rating=${afterRating}`
+      );
+      await updateFoodRatingStats(foodId, {
+        removeRating: null,
+        addRating: afterRating,
+      }, event.id);
+      return;
+    }
+
+    // ── Case 2: Document deleted (no after) ──────────────────────────
+    if (before && !after) {
+      if (before.deleted || beforeRating == null) {
+        console.log(
+          `[onReviewChanged] Review ${event.params.reviewId} hard-deleted, already soft-deleted or no rating — skipping`
+        );
+        return;
+      }
+      console.log(
+        `[onReviewChanged] Review ${event.params.reviewId} DELETED for food ${foodId}, rating=${beforeRating}`
+      );
+      await updateFoodRatingStats(foodId, {
+        removeRating: beforeRating,
+        addRating: null,
+      }, event.id);
+      return;
+    }
+
+    // ── Case 3: Document updated (both before and after) ─────────────
+    if (before && after) {
+      // Both already deleted — no rating change to process.  The rating
+      // was already removed when the review was soft-deleted (Case 3a).
+      // Any subsequent update to a deleted document (e.g. updatedAt)
+      // must not modify stats again.
+      if (before.deleted && after.deleted) {
+        console.log(
+          `[onReviewChanged] Review ${event.params.reviewId} already deleted — skipping`
+        );
+        return;
+      }
+
+      // ── Sub-case 3a: Soft-delete toggle ────────────────────────────
+      if (!before.deleted && after.deleted) {
+        console.log(
+          `[onReviewChanged] Review ${event.params.reviewId} SOFT-DELETED for food ${foodId}, rating=${beforeRating}`
+        );
+        await updateFoodRatingStats(foodId, {
+          removeRating: beforeRating,
+          addRating: null,
+        }, event.id);
+        return;
+      }
+
+      // ── Sub-case 3b: Restore from soft-delete ──────────────────────
+      if (before.deleted && !after.deleted) {
+        console.log(
+          `[onReviewChanged] Review ${event.params.reviewId} RESTORED for food ${foodId}, rating=${afterRating}`
+        );
+        await updateFoodRatingStats(foodId, {
+          removeRating: null,
+          addRating: afterRating,
+        }, event.id);
+        return;
+      }
+
+      // ── Sub-case 3c: Rating change (edit) ─────────────────────────
+      if (beforeRating !== afterRating) {
+        console.log(
+          `[onReviewChanged] Review ${event.params.reviewId} UPDATED for food ${foodId}, ` +
+          `rating ${beforeRating} → ${afterRating}`
+        );
+        await updateFoodRatingStats(foodId, {
+          removeRating: beforeRating,
+          addRating: afterRating,
+        }, event.id);
+        return;
+      }
+
+      // ── Sub-case 3d: Non-rating update (comment, tags, etc.) ───────
+      console.log(
+        `[onReviewChanged] Review ${event.params.reviewId} updated metadata — no rating change`
+      );
+    }
+  },
+);

@@ -12,11 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/services.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../data/food_data.dart';
+import '../models/review.dart';
+import '../services/review_service.dart';
 import '../widgets/cafe_selection_dialog.dart';
 import '../widgets/stock_badge.dart';
+import '../widgets/add_review_dialog.dart';
+import 'reviews_screen.dart';
 
 /// A reusable food item detail screen used from the home screen,
 /// category screen, common food list, search results, and favourites.
@@ -39,6 +46,193 @@ class FoodDetailsScreen extends StatefulWidget {
 
 class _FoodDetailsScreenState extends State<FoodDetailsScreen> {
   int quantity = 1;
+  final ReviewService _reviewService = ReviewService();
+
+  // Review eligibility state
+  bool _checkingEligibility = true;
+  bool _isReviewable = false;
+  bool _hasExistingReview = false;
+  Review? _existingReview;
+  String? _matchingOrderId; // For new reviews (no existing review yet)
+
+  // Real-time ratings state
+  double? _liveAverageRating;
+  int? _liveReviewCount;
+  StreamSubscription<DocumentSnapshot>? _foodStatsSub;
+
+  double get _displayRating => _liveAverageRating ?? widget.item.averageRating;
+  int get _displayReviewCount => _liveReviewCount ?? widget.item.reviewCount;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkReviewEligibility();
+    _listenToFoodStats();
+  }
+
+  @override
+  void dispose() {
+    _foodStatsSub?.cancel();
+    super.dispose();
+  }
+
+  void _listenToFoodStats() {
+    _foodStatsSub = _reviewService
+        .watchFoodStats(widget.item.id)
+        .listen(
+          (snapshot) {
+            if (snapshot.exists && mounted) {
+              final data = snapshot.data() as Map<String, dynamic>?;
+              if (data == null) return;
+              setState(() {
+                _liveAverageRating =
+                    (data['averageRating'] as num?)?.toDouble() ?? 0.0;
+                _liveReviewCount = (data['reviewCount'] as num?)?.toInt() ?? 0;
+              });
+            }
+          },
+          onError: (Object error, StackTrace stack) {
+            debugPrint('[FoodDetailsScreen] foodStats stream error: $error');
+          },
+        );
+  }
+
+  Future<void> _checkReviewEligibility() async {
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) {
+      if (mounted) setState(() => _checkingEligibility = false);
+      return;
+    }
+
+    try {
+      final eligibility = await _reviewService.checkEligibility(widget.item.id);
+      if (mounted) {
+        setState(() {
+          _checkingEligibility = false;
+          _isReviewable = eligibility.eligible;
+          _hasExistingReview = eligibility.hasExistingReview;
+          _existingReview = eligibility.existingReview;
+          _matchingOrderId = eligibility.matchingOrderId;
+        });
+      }
+    } catch (e) {
+      debugPrint('[FoodDetailsScreen] checkEligibility error: $e');
+      if (mounted) {
+        setState(() {
+          _checkingEligibility = false;
+          _isReviewable = false;
+          _hasExistingReview = false;
+          _existingReview = null;
+          _matchingOrderId = null;
+        });
+      }
+    }
+  }
+
+  /// Open the review dialog and handle submit.
+  Future<void> _openReviewDialog() async {
+    final result = await showModalBottomSheet<ReviewResult>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => AddReviewDialog(
+        existingReview: _hasExistingReview ? _existingReview : null,
+        foodTitle: widget.item.title,
+      ),
+    );
+
+    if (result == null) return;
+
+    if (_hasExistingReview && _existingReview != null) {
+      // ── Edit existing review ────────────────────────────────────────
+      try {
+        final success = await _reviewService.updateReview(
+          reviewId: _existingReview!.id,
+          foodId: widget.item.id,
+          rating: result.rating,
+          templateTags: result.templateTags,
+          comment: result.comment,
+          anonymous: result.anonymous,
+        );
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                success ? 'Review updated!' : 'Failed to update review.',
+              ),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+
+        // Re-check eligibility only after a completed operation
+        if (success) _checkReviewEligibility();
+      } catch (e) {
+        debugPrint('[FoodDetailsScreen] updateReview error: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Failed to update review.'),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      }
+    } else {
+      // ── Create a new review ─────────────────────────────────────────
+      if (_matchingOrderId == null || _matchingOrderId!.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Failed to submit review.'),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+        return;
+      }
+
+      try {
+        final docId = await _reviewService.createReview(
+          foodId: widget.item.id,
+          orderId: _matchingOrderId!,
+          rating: result.rating,
+          templateTags: result.templateTags,
+          comment: result.comment,
+          anonymous: result.anonymous,
+        );
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                docId != null
+                    ? 'Review submitted!'
+                    : 'Failed to submit review.',
+              ),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+
+        // Re-check eligibility only after a completed operation
+        if (docId != null) _checkReviewEligibility();
+      } catch (e) {
+        debugPrint('[FoodDetailsScreen] createReview error: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Failed to submit review.'),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -166,7 +360,7 @@ class _FoodDetailsScreenState extends State<FoodDetailsScreen> {
                         ),
                         const SizedBox(width: 4),
                         Text(
-                          '${item.rating}',
+                          _displayRating.toStringAsFixed(1),
                           style: const TextStyle(
                             fontWeight: FontWeight.bold,
                             color: Colors.black87,
@@ -307,6 +501,18 @@ class _FoodDetailsScreenState extends State<FoodDetailsScreen> {
                       const SizedBox(height: 24),
                     ],
 
+                    // ── Review Section ───────────────────────────────────
+                    if (_displayReviewCount > 0) ...[
+                      _buildReviewSummaryRow(),
+                      const SizedBox(height: 12),
+                    ],
+
+                    // Review button — shows if eligible
+                    if (!_checkingEligibility && _isReviewable) ...[
+                      _buildReviewButton(),
+                      const SizedBox(height: 24),
+                    ],
+
                     const SizedBox(height: 100), // Padding for bottom navbar
                   ],
                 ),
@@ -349,7 +555,7 @@ class _FoodDetailsScreenState extends State<FoodDetailsScreen> {
                       },
                     ),
                     Text(
-                      '$quantity',
+                      quantity.toString(),
                       style: const TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 16,
@@ -406,6 +612,101 @@ class _FoodDetailsScreenState extends State<FoodDetailsScreen> {
                 ),
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── Review Helpers ─────────────────────────────────────────────────────────
+
+  Widget _buildReviewSummaryRow() {
+    final item = widget.item;
+    return InkWell(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ReviewsScreen(foodItem: item),
+          ),
+        );
+      },
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF9FBE7),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFFE6EE9C)),
+        ),
+        child: Row(
+          children: [
+            // Rating stars
+            Row(
+              children: List.generate(5, (index) {
+                final star = index + 1;
+                final avg = _displayRating;
+                return Icon(
+                  star <= avg.round()
+                      ? Icons.star_rounded
+                      : Icons.star_border_rounded,
+                  color: Colors.amber,
+                  size: 18,
+                );
+              }),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              _displayRating.toStringAsFixed(1),
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 15,
+                color: Colors.black87,
+              ),
+            ),
+            const SizedBox(width: 4),
+            Text(
+              '($_displayReviewCount ${_displayReviewCount == 1 ? 'review' : 'reviews'})',
+              style: TextStyle(
+                color: Colors.grey.shade600,
+                fontSize: 14,
+              ),
+            ),
+            const Spacer(),
+            const Icon(
+              Icons.arrow_forward_ios,
+              size: 14,
+              color: Color(0xFF2E7D32),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildReviewButton() {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        onPressed: _openReviewDialog,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: const Color(0xFF2E7D32),
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          elevation: 0,
+        ),
+        icon: Icon(
+          _hasExistingReview ? Icons.edit_outlined : Icons.rate_review_outlined,
+          size: 20,
+        ),
+        label: Text(
+          _hasExistingReview ? 'Edit Review' : 'Write a Review',
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
           ),
         ),
       ),
