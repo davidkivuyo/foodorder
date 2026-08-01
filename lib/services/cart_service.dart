@@ -19,6 +19,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/cart_item.dart';
 import '../models/order.dart';
 import '../data/food_data.dart';
+import 'app_log.dart';
 
 class CartService extends ChangeNotifier {
   // Singleton pattern to share state across screens
@@ -166,9 +167,7 @@ class CartService extends ChangeNotifier {
           item.foodItem.available = freshItem.available;
         }
       } catch (e) {
-        debugPrint(
-          '[CartService] Error refreshing food item ${item.foodItem.id}: $e',
-        );
+        AppLog.e('[CartService] Error refreshing food item ${item.foodItem.id}', e);
       }
     }
 
@@ -210,9 +209,7 @@ class CartService extends ChangeNotifier {
             _foodItemsCache[foodItemId] = foodItem;
           }
         } catch (e) {
-          debugPrint(
-            '[CartService] Error fetching food item $foodItemId: $e',
-          );
+          AppLog.e('[CartService] Error fetching food item $foodItemId', e);
         }
       }
 
@@ -256,15 +253,13 @@ class CartService extends ChangeNotifier {
 
     // ── Guard: unavailable item ────────────────────────────────────────
     if (!item.available) {
-      debugPrint('[CartService] Cannot add unavailable item: ${item.title}');
+      AppLog.d('[CartService] Cannot add unavailable item: ${item.title}');
       return false;
     }
 
     // ── Guard: invalid quantity ────────────────────────────────────────
     if (quantity <= 0) {
-      debugPrint(
-        '[CartService] Cannot add item with invalid quantity: $quantity',
-      );
+      AppLog.d('[CartService] Cannot add item with invalid quantity: $quantity');
       return false;
     }
 
@@ -322,7 +317,7 @@ class CartService extends ChangeNotifier {
       }
       return true;
     } catch (e) {
-      debugPrint('[CartService] Error adding to cart: $e');
+      AppLog.e('[CartService] Error adding to cart', e);
       return false;
     }
   }
@@ -354,7 +349,7 @@ class CartService extends ChangeNotifier {
         }
       }
     } catch (e) {
-      debugPrint('[CartService] Error removing from cart: $e');
+      AppLog.e('[CartService] Error removing from cart', e);
     }
   }
 
@@ -379,7 +374,7 @@ class CartService extends ChangeNotifier {
         await cartCollection.doc(existingItem.id).delete();
       }
     } catch (e) {
-      debugPrint('[CartService] Error deleting from cart: $e');
+      AppLog.e('[CartService] Error deleting from cart', e);
     }
   }
 
@@ -401,7 +396,7 @@ class CartService extends ChangeNotifier {
       }
       await batch.commit();
     } catch (e) {
-      debugPrint('[CartService] Error clearing cart: $e');
+      AppLog.e('[CartService] Error clearing cart', e);
     }
   }
 
@@ -541,19 +536,19 @@ class CartService extends ChangeNotifier {
       // of a document we didn't read within the transaction).
       await clearCart();
 
-      debugPrint('[CartService] Order placed successfully: $newOrderId');
+      AppLog.d('[CartService] Order placed successfully: $newOrderId');
       return newOrderId;
     } on FirebaseException catch (e) {
       if (e.code == 'failed-precondition') {
-        debugPrint('[CartService] Order rejected — unavailable items: $e');
+        AppLog.e('[CartService] Order rejected — unavailable items', e);
       } else if (e.code == 'aborted') {
-        debugPrint('[CartService] Transaction conflict; order not placed');
+        AppLog.w('[CartService] Transaction conflict; order not placed');
       } else {
-        debugPrint('[CartService] Error placing order: $e');
+        AppLog.e('[CartService] Error placing order', e);
       }
       return null;
     } catch (e) {
-      debugPrint('[CartService] Error placing order: $e');
+      AppLog.e('[CartService] Error placing order', e);
       return null;
     }
   }

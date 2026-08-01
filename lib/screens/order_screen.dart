@@ -18,6 +18,7 @@ import 'package:flutter/material.dart';
 import '../models/order.dart';
 import '../models/cart_item.dart';
 import '../data/food_data.dart';
+import '../services/app_log.dart';
 import '../services/cart_service.dart';
 import '../services/pickup_deadline_service.dart';
 import '../widgets/pickup_countdown.dart';
@@ -208,7 +209,7 @@ class _OrdersScreenState extends State<OrdersScreen>
           .doc(docId)
           .delete();
     } catch (e) {
-      debugPrint('[OrdersScreen] Delete planned order error: $e');
+      AppLog.e('[OrdersScreen] Delete planned order error', e);
     }
   }
 
@@ -1396,7 +1397,11 @@ class _OrdersScreenState extends State<OrdersScreen>
           },
         );
       },
-    );
+    ).whenComplete(() {
+      // Phase 13: dispose the dialog controllers to prevent memory leaks.
+      titleController.dispose();
+      noteController.dispose();
+    });
   }
 
   // ── HELPER FORMATTERS ──────────────────────────────────────────────────────

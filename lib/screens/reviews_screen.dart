@@ -18,6 +18,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../data/food_data.dart';
 import '../models/review.dart';
+import '../services/app_log.dart';
 import '../services/review_service.dart';
 import '../widgets/review_card.dart';
 import '../widgets/add_review_dialog.dart';
@@ -110,7 +111,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
             }
           },
           onError: (Object error, StackTrace stack) {
-            debugPrint('[ReviewsScreen] foodStats stream error: $error');
+            AppLog.e('[ReviewsScreen] foodStats stream error', error);
             // Keep the existing default values (0.0, 0, null) so the UI
             // degrades gracefully instead of crashing.
           },
@@ -169,7 +170,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
         _isLoading = false;
       });
     } catch (e) {
-      debugPrint('[ReviewsScreen] load error: $e');
+      AppLog.e('[ReviewsScreen] load error', e);
       if (mounted && generation == _requestGeneration) {
         setState(() {
           _isLoading = false;
@@ -205,7 +206,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
         _isLoading = false;
       });
     } catch (e) {
-      debugPrint('[ReviewsScreen] loadMore error: $e');
+      AppLog.e('[ReviewsScreen] loadMore error', e);
       if (mounted && generation == _requestGeneration) {
         setState(() {
           _isLoading = false;
@@ -242,7 +243,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
           foodId: review.foodId,
         );
       } catch (e) {
-        debugPrint('[ReviewsScreen] deleteReview error: $e');
+        AppLog.e('[ReviewsScreen] deleteReview error', e);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -286,7 +287,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
           anonymous: result.anonymous,
         );
       } catch (e) {
-        debugPrint('[ReviewsScreen] updateReview error: $e');
+        AppLog.e('[ReviewsScreen] updateReview error', e);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(

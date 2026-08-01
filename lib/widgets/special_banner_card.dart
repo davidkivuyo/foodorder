@@ -14,6 +14,7 @@
 
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class SpecialBannerCard extends StatefulWidget {
   /// A list of image URLs for the promotional banners.
@@ -108,16 +109,21 @@ class _SpecialBannerCardState extends State<SpecialBannerCard> {
                   itemBuilder: (context, index) {
                     return GestureDetector(
                       onTap: () => widget.onTap?.call(index),
-                      child: Image.network(
-                        widget.imageUrls[index],
+                      // Phase 13: CachedNetworkImage so banner images are
+                      // cached locally and never re-downloaded on every
+                      // Home screen rebuild / page swipe.
+                      child: CachedNetworkImage(
+                        imageUrl: widget.imageUrls[index],
                         fit: BoxFit.cover,
                         width: double.infinity,
                         height: double.infinity,
+                        // Lightweight placeholder while loading.
+                        placeholder: (context, url) =>
+                            Container(color: Colors.grey.shade300),
                         // Graceful fallback when the image fails to load
                         // (network error, 404, or test environment).
-                        errorBuilder: (context, error, stackTrace) {
-                          return Container(color: Colors.grey.shade300);
-                        },
+                        errorWidget: (context, url, error) =>
+                            Container(color: Colors.grey.shade300),
                       ),
                     );
                   },

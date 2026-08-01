@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -255,25 +256,162 @@ class Section {
 }
 
 class FoodData {
-  /// Stream of all food items from Firestore database to sync app state in real-time
+  // ── Shared stream caching (Phase 13) ──────────────────────────────────────
+  //
+  // Before Phase 13, `foodItemsStream` and `sectionsStream` created a NEW
+  // Firestore snapshot listener on every access.  With Home, Categories and
+  // CommonFood all subscribing independently, the full `food_items` and
+  // `section` collections were downloaded multiple times per screen session.
+  //
+  // We now keep a single broadcast controller per collection, backed by one
+  // Firestore listener that is created lazily on first subscription and
+  // reused for the whole app lifetime.  All consumers share the same stream,
+  // eliminating duplicate queries and reducing Firestore reads.
+  //
+  // A broadcast stream does not replay the last value to late subscribers,
+  // so [foodItemsStream]/[_replayLive] first delivers the cached list to each
+  // new listener (cache-first rendering) and then forwards live updates.
+
+  static StreamController<List<FoodItem>>? _foodController;
+  static StreamController<List<Section>>? _sectionController;
+  static List<Section>? _cachedSections;
+
+  /// Active Firestore snapshot subscriptions — kept so a failed listener can
+  /// be cancelled and the stream recreated on the next access.  A Firestore
+  /// snapshot listener stops after it emits an error and never resumes, so
+  /// without this we could never recover from a single failure.
+  static StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _foodSub;
+  static StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _sectionSub;
+
+  /// Last error emitted by the shared food stream — re-delivered to late
+  /// subscribers so they see an error state instead of waiting forever.
+  static Object? _foodError;
+  static Object? _sectionError;
+
+  /// Last emitted food list — used for instant cache-first rendering.
+  static List<FoodItem>? cachedFoodItems;
+
+  /// Stream of all food items from Firestore database to sync app state in real-time.
+  ///
+  /// Single shared broadcast stream: only one Firestore listener exists for
+  /// the whole app, regardless of how many widgets subscribe.  New listeners
+  /// first receive the cached list (if any), then live updates.
   static Stream<List<FoodItem>> get foodItemsStream {
-    return FirebaseFirestore.instance.collection('food_items').snapshots().map((
-      snapshot,
-    ) {
-      return snapshot.docs.map((doc) {
-        return FoodItem.fromMap(doc.data(), id: doc.id);
-      }).toList();
-    });
+    _ensureFoodStream();
+    return _replayLive(cachedFoodItems, _foodError, _foodController!.stream);
   }
 
-  /// Stream of all sections from the `section` collection
+  /// Stream of all sections from the `section` collection (shared broadcast).
   static Stream<List<Section>> get sectionsStream {
-    return FirebaseFirestore.instance.collection('section').snapshots().map((
-      snapshot,
-    ) {
-      return snapshot.docs.map((doc) {
-        return Section.fromMap(doc.data(), id: doc.id);
-      }).toList();
+    _ensureSectionStream();
+    return _replayLive(
+      _cachedSections,
+      _sectionError,
+      _sectionController!.stream,
+    );
+  }
+
+  /// Lazily create the single `food_items` Firestore listener.
+  static void _ensureFoodStream() {
+    if (_foodController != null) return;
+    final controller = StreamController<List<FoodItem>>.broadcast();
+    _foodController = controller;
+    // The subscription is stored so a failed listener can be torn down and
+    // recreated on the next access.  A Firestore snapshot listener stops
+    // after an error and never resumes, so the controller is reset on error.
+    _foodSub = FirebaseFirestore.instance
+        .collection('food_items')
+        .snapshots()
+        .listen((snapshot) {
+          cachedFoodItems = snapshot.docs
+              .map((doc) => FoodItem.fromMap(doc.data(), id: doc.id))
+              .toList();
+          _foodError = null;
+          if (!controller.isClosed) {
+            controller.add(cachedFoodItems!);
+          }
+        }, onError: (Object e) {
+          _foodError = e;
+          if (!controller.isClosed) controller.addError(e);
+          _resetFoodStream();
+        });
+  }
+
+  /// Lazily create the single `section` Firestore listener.
+  static void _ensureSectionStream() {
+    if (_sectionController != null) return;
+    final controller = StreamController<List<Section>>.broadcast();
+    _sectionController = controller;
+    _sectionSub = FirebaseFirestore.instance
+        .collection('section')
+        .snapshots()
+        .listen((snapshot) {
+          _cachedSections = snapshot.docs
+              .map((doc) => Section.fromMap(doc.data(), id: doc.id))
+              .toList();
+          _sectionError = null;
+          if (!controller.isClosed) {
+            controller.add(_cachedSections!);
+          }
+        }, onError: (Object e) {
+          _sectionError = e;
+          if (!controller.isClosed) controller.addError(e);
+          _resetSectionStream();
+        });
+  }
+
+  /// Tears down the shared `food_items` listener so the next subscription
+  /// recreates it.  Cached items are kept for cache-first rendering, and
+  /// [_foodError] is preserved so a late subscriber can still see the last
+  /// error (only [resetStreams] clears it explicitly).
+  static void _resetFoodStream() {
+    _foodSub?.cancel();
+    _foodSub = null;
+    _foodController?.close();
+    _foodController = null;
+  }
+
+  /// Tears down the shared `section` listener so the next subscription
+  /// recreates it.  Cached sections are kept for cache-first rendering, and
+  /// [_sectionError] is preserved so a late subscriber can still see the last
+  /// error (only [resetStreams] clears it explicitly).
+  static void _resetSectionStream() {
+    _sectionSub?.cancel();
+    _sectionSub = null;
+    _sectionController?.close();
+    _sectionController = null;
+  }
+
+  /// Resets both shared stream helpers (cancels the Firestore listeners and
+  /// clears cached data/errors).  Call during sign-out and test teardown so
+  /// the next access recreates fresh listeners with a clean slate.
+  static void resetStreams() {
+    _resetFoodStream();
+    _resetSectionStream();
+    _foodError = null;
+    _sectionError = null;
+    cachedFoodItems = null;
+    _cachedSections = null;
+  }
+
+  /// Returns a stream that first emits [cached] (when non-null) and then
+  /// forwards events from [live].  Gives cache-first rendering while keeping
+  /// a single underlying Firestore listener.  If only an error is cached
+  /// (no data ever arrived), the error is re-delivered so late subscribers
+  /// see the error state instead of waiting indefinitely.
+  static Stream<T> _replayLive<T>(T? cached, Object? error, Stream<T> live) {
+    if (cached == null && error == null) return live;
+    return Stream<T>.multi((controller) {
+      if (cached != null) controller.add(cached);
+      final sub = live.listen(
+        controller.add,
+        onError: controller.addError,
+        onDone: controller.close,
+      );
+      controller.onCancel = sub.cancel;
+      if (cached == null && error != null) {
+        controller.addError(error);
+      }
     });
   }
 }

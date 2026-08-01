@@ -14,12 +14,19 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:campusbite/data/food_data.dart';
 import 'package:campusbite/main.dart';
 import 'firebase_test_helper.dart';
 
 void main() {
   setUpAll(() async {
     await setupFirebaseForTest();
+  });
+
+  tearDown(() {
+    // Reset the shared Firestore menu/section streams so cached data and
+    // listeners never leak between tests.
+    FoodData.resetStreams();
   });
 
   testWidgets('App renders correctly with no signed-in user',

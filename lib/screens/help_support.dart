@@ -15,6 +15,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../services/app_log.dart';
 
 class SupportScreen extends StatelessWidget {
   const SupportScreen({super.key});
@@ -142,7 +143,7 @@ class ContactScreen extends StatelessWidget {
     if (await canLaunchUrl(emailUri)) {
       await launchUrl(emailUri);
     } else {
-      debugPrint('Could not launch email client');
+      AppLog.e('Could not launch email client');
     }
   }
 
@@ -159,10 +160,10 @@ class ContactScreen extends StatelessWidget {
       if (await canLaunchUrl(whatsappUri)) {
         await launchUrl(whatsappUri, mode: LaunchMode.externalApplication);
       } else {
-        debugPrint('WhatsApp is not installed on this device.');
+        AppLog.d('WhatsApp is not installed on this device.');
       }
     } catch (e) {
-      debugPrint('Error launching WhatsApp: $e');
+      AppLog.e('Error launching WhatsApp', e);
     }
   }
 

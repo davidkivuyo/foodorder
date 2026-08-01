@@ -28,9 +28,11 @@ class AuthNotifier extends ChangeNotifier {
 
   late final StreamSubscription<User?> _subscription;
 
-  User? get currentUser => AuthService().authStateChanges.isBroadcast
-      ? FirebaseAuth.instance.currentUser
-      : null;
+  /// The currently signed-in Firebase user (or null).
+  ///
+  /// Phase 13: simplified from a broken `isBroadcast` check that always
+  /// returned null — this getter now returns the live auth user directly.
+  User? get currentUser => FirebaseAuth.instance.currentUser;
 
   @override
   void dispose() {

@@ -17,9 +17,11 @@ you can use the onTap callback to handle the click event and perform any
 desired actions based on the index of the clicked banner.
 */
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import '../data/food_data.dart';
 import '../data/search_bar.dart';
+import '../services/app_log.dart';
 import '../services/favorite_service.dart';
 import '../widgets/cafe_selection_dialog.dart';
 import '../widgets/cart_fab.dart';
@@ -32,6 +34,43 @@ import 'food_details.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
+
+  /// Phase 13: precache the first [limit] unique food image URLs so the
+  /// hero carousels render instantly instead of showing grey placeholders
+  /// while each image downloads on first display.
+  static final Set<String> _precachedUrls = {};
+
+  static void _precacheImages(List<FoodItem> items, BuildContext context) {
+    if (items.isEmpty) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Guard against using a context whose widget was disposed before the
+      // post-frame callback ran (e.g. navigating away while the frame was
+      // pending). precacheImage would otherwise throw on the unmounted
+      // context when resolving the image configuration.
+      if (!context.mounted) return;
+      var count = 0;
+      for (final item in items) {
+        if (count >= 12) break;
+        final url = item.image;
+        if (url.isEmpty ||
+            !(url.startsWith('http://') || url.startsWith('https://'))) {
+          continue;
+        }
+        if (_precachedUrls.add(url)) {
+          count++;
+          // On failure, drop the URL so a later build can retry it (a
+          // transient failure such as offline/404 must not block retry).
+          // The widget's own errorWidget handles display, and onError keeps
+          // the failure suppressed (the future never completes with error).
+          precacheImage(
+            CachedNetworkImageProvider(url),
+            context,
+            onError: (_, _) => _precachedUrls.remove(url),
+          );
+        }
+      }
+    });
+  }
 
   // THE SECTIONS COMES FROM FIRESTORE "section" COLLECTION
   static const Map<String, String> _sectionTitles = {
@@ -82,6 +121,8 @@ class HomeScreen extends StatelessWidget {
                 }
 
                 final allItems = foodSnapshot.data ?? [];
+                // Phase 13: warm the image cache for the first items shown.
+                _precacheImages(allItems, context);
                 final validSections =
                     sections
                         .where((s) => allItems.any((f) => f.section == s.name))
@@ -153,7 +194,7 @@ class HomeScreen extends StatelessWidget {
                             'https://res.cloudinary.com/nrwglbxh/image/upload/v1783345398/banner2_mjqb1u.png',
                           ],
                           onTap: (index) {
-                            debugPrint(
+                            AppLog.d(
                               "Promotional Banner at index $index clicked!",
                             );
                           },

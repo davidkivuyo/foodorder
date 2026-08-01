@@ -36,6 +36,10 @@ class _SearchBarScreenState extends State<SearchBarScreen> {
   String? _errorMessage;
   String _searchQuery = '';
 
+  /// Phase 13: monotonically-increasing token so a slow/stale Firestore
+  /// response can never overwrite the results of a newer search.
+  int _searchGeneration = 0;
+
   @override
   void initState() {
     super.initState();
@@ -67,6 +71,10 @@ class _SearchBarScreenState extends State<SearchBarScreen> {
 
   Future<void> _performSearch(String query) async {
     final trimmedQuery = query.trim();
+    // Capture the current generation — any in-flight older search that
+    // resolves later will see a stale token and discard its results.
+    final generation = ++_searchGeneration;
+
     if (trimmedQuery.isEmpty) {
       setState(() {
         _searchResults = [];
@@ -83,35 +91,33 @@ class _SearchBarScreenState extends State<SearchBarScreen> {
 
     try {
       final results = await SearchService.searchFoods(trimmedQuery);
-      if (mounted) {
-        setState(() {
-          _searchResults = results;
-          _isLoading = false;
-        });
-      }
+      // Discard stale responses (a newer search has already started).
+      if (!mounted || generation != _searchGeneration) return;
+      setState(() {
+        _searchResults = results;
+        _isLoading = false;
+      });
     } on FirebaseException catch (e) {
-      if (mounted) {
-        String userFriendlyError = 'Search service is temporarily unavailable.';
-        if (e.code == 'permission-denied') {
-          userFriendlyError = 'Access denied. Please contact admins.';
-        } else if (e.code == 'unavailable') {
-          userFriendlyError =
-              'Network error. Please check your internet connection.';
-        }
-        setState(() {
-          _searchResults = [];
-          _isLoading = false;
-          _errorMessage = userFriendlyError;
-        });
+      if (!mounted || generation != _searchGeneration) return;
+      String userFriendlyError = 'Search service is temporarily unavailable.';
+      if (e.code == 'permission-denied') {
+        userFriendlyError = 'Access denied. Please contact admins.';
+      } else if (e.code == 'unavailable') {
+        userFriendlyError =
+            'Network error. Please check your internet connection.';
       }
+      setState(() {
+        _searchResults = [];
+        _isLoading = false;
+        _errorMessage = userFriendlyError;
+      });
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          _searchResults = [];
-          _isLoading = false;
-          _errorMessage = 'An unexpected error occurred. Please try again.';
-        });
-      }
+      if (!mounted || generation != _searchGeneration) return;
+      setState(() {
+        _searchResults = [];
+        _isLoading = false;
+        _errorMessage = 'An unexpected error occurred. Please try again.';
+      });
     }
   }
 

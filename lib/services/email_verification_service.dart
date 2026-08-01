@@ -14,8 +14,8 @@
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'app_log.dart';
 
 /// Service that manages email verification business logic.
 ///
@@ -57,7 +57,7 @@ class EmailVerificationService {
     required Future<String?> Function() sendFn,
   }) async {
     if (isResendCooldownActive) {
-      return 'Please wait ${resendCooldownSeconds} seconds before resending.';
+      return 'Please wait $resendCooldownSeconds seconds before resending.';
     }
     final error = await sendFn();
     if (error == null) {
@@ -79,8 +79,11 @@ class EmailVerificationService {
   }) async {
     final error = await reloadFn();
     if (error != null) {
-      debugPrint(
-        '[EmailVerificationService] reloadUser error: $error',
+      // Log only the type — the raw error string may embed the user's email
+      // or other personal data.
+      AppLog.e(
+        '[EmailVerificationService] reloadUser error: '
+        'type=${error.runtimeType}',
       );
       return false;
     }
@@ -122,9 +125,7 @@ class EmailVerificationService {
       }
       return null; // success
     } catch (e) {
-      debugPrint(
-        '[EmailVerificationService] createProfile error: type=${e.runtimeType}',
-      );
+      AppLog.e('[EmailVerificationService] createProfile error: type=${e.runtimeType}');
       return 'Could not create profile. Please try again.';
     }
   }

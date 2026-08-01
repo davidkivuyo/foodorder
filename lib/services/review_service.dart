@@ -15,9 +15,9 @@
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/foundation.dart';
 import '../models/review.dart';
 import '../repositories/review_repository.dart';
+import 'app_log.dart';
 
 /// Business-logic layer for the Reviews & Feedback system.
 ///
@@ -61,8 +61,8 @@ class ReviewService {
     try {
       existingReviews =
           await _repository.findUserReviewsForFood(foodId: foodId, userId: userId);
-    } catch (e, stack) {
-      debugPrint('[ReviewService] checkEligibility review query error: $e\n$stack');
+    } catch (e) {
+      AppLog.e('[ReviewService] checkEligibility review query error', e);
       return ReviewEligibility.notEligible();
     }
     final reviewedOrderIds = existingReviews.map((r) => r.orderId).toSet();
@@ -84,8 +84,8 @@ class ReviewService {
           matchingOrderId: orderId,
         );
       }
-    } catch (e, stack) {
-      debugPrint('[ReviewService] checkEligibility order query error: $e\n$stack');
+    } catch (e) {
+      AppLog.e('[ReviewService] checkEligibility order query error', e);
       return ReviewEligibility.notEligible();
     }
 
@@ -144,7 +144,7 @@ class ReviewService {
       final orderDoc = await _firestore.collection('orders').doc(orderId).get();
 
       if (!orderDoc.exists) {
-        debugPrint('[ReviewService] createReview: order $orderId not found');
+        AppLog.d('[ReviewService] createReview: order $orderId not found');
         return null;
       }
 
@@ -152,7 +152,7 @@ class ReviewService {
 
       // Check ownership
       if (orderData['studentId'] != userId) {
-        debugPrint('[ReviewService] createReview: order $orderId ownership mismatch — rejected');
+        AppLog.d('[ReviewService] createReview: order $orderId ownership mismatch — rejected');
         return null;
       }
 
@@ -160,7 +160,7 @@ class ReviewService {
       // any normalized casing in the stored status).
       final status = orderData['status'] as String? ?? '';
       if (status.toLowerCase() != 'collected') {
-        debugPrint('[ReviewService] createReview: order $orderId status is $status, not collected');
+        AppLog.d('[ReviewService] createReview: order $orderId status is $status, not collected');
         return null;
       }
 
@@ -180,7 +180,7 @@ class ReviewService {
         }
       }
       if (!containsFood) {
-        debugPrint('[ReviewService] createReview: order $orderId does not contain food $foodId');
+        AppLog.d('[ReviewService] createReview: order $orderId does not contain food $foodId');
         return null;
       }
 
@@ -194,11 +194,11 @@ class ReviewService {
         userId: userId,
       );
       if (existingNonDeleted != null) {
-        debugPrint('[ReviewService] createReview: review already exists for $orderId');
+        AppLog.d('[ReviewService] createReview: review already exists for $orderId');
         return null;
       }
     } catch (e) {
-      debugPrint('[ReviewService] createReview eligibility check error: $e');
+      AppLog.e('[ReviewService] createReview eligibility check error', e);
       return null;
     }
 
@@ -206,7 +206,7 @@ class ReviewService {
     final clampedRating = rating.clamp(1, 5);
     final sanitizedComment = _sanitizeComment(comment);
     if (sanitizedComment == null) {
-      debugPrint('[ReviewService] createReview: comment rejected');
+      AppLog.d('[ReviewService] createReview: comment rejected');
       return null;
     }
     final validTags = _validateTags(templateTags);
@@ -269,7 +269,7 @@ class ReviewService {
       // Cloud Function. No client-side aggregation needed.
       return docId;
     } catch (e) {
-      debugPrint('[ReviewService] createReview write error: $e');
+      AppLog.e('[ReviewService] createReview write error', e);
       return null;
     }
   }
@@ -292,15 +292,15 @@ class ReviewService {
     // ── Ownership & foodId check ─────────────────────────────────────
     final existing = await _repository.getById(reviewId);
     if (existing == null) {
-      debugPrint('[ReviewService] updateReview: review $reviewId not found');
+      AppLog.d('[ReviewService] updateReview: review $reviewId not found');
       return false;
     }
     if (existing.userId != userId) {
-      debugPrint('[ReviewService] updateReview: review $reviewId owned by another user — rejected');
+      AppLog.d('[ReviewService] updateReview: review $reviewId owned by another user — rejected');
       return false;
     }
     if (existing.foodId != foodId) {
-      debugPrint('[ReviewService] updateReview: review $reviewId foodId mismatch (${existing.foodId} vs $foodId) — rejected');
+      AppLog.d('[ReviewService] updateReview: review $reviewId foodId mismatch — rejected');
       return false;
     }
 
@@ -310,7 +310,7 @@ class ReviewService {
     // Validate comment
     final sanitizedComment = _sanitizeComment(comment);
     if (sanitizedComment == null) {
-      debugPrint('[ReviewService] updateReview: comment rejected');
+      AppLog.d('[ReviewService] updateReview: comment rejected');
       return false;
     }
 
@@ -356,15 +356,15 @@ class ReviewService {
     // ── Ownership & foodId check ─────────────────────────────────────
     final existing = await _repository.getById(reviewId);
     if (existing == null) {
-      debugPrint('[ReviewService] deleteReview: review $reviewId not found');
+      AppLog.d('[ReviewService] deleteReview: review $reviewId not found');
       return false;
     }
     if (existing.userId != userId) {
-      debugPrint('[ReviewService] deleteReview: review $reviewId owned by another user — rejected');
+      AppLog.d('[ReviewService] deleteReview: review $reviewId owned by another user — rejected');
       return false;
     }
     if (existing.foodId != foodId) {
-      debugPrint('[ReviewService] deleteReview: review $reviewId foodId mismatch (${existing.foodId} vs $foodId) — rejected');
+      AppLog.d('[ReviewService] deleteReview: review $reviewId foodId mismatch — rejected');
       return false;
     }
 

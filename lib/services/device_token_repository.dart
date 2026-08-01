@@ -17,6 +17,7 @@ import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'app_log.dart';
 
 /// Repository for managing FCM device tokens in the `device_tokens` collection.
 ///
@@ -119,9 +120,7 @@ class DeviceTokenRepository {
         'updatedAt': FieldValue.serverTimestamp(),
         'lastSeen': FieldValue.serverTimestamp(),
       };
-      debugPrint(
-        '[DeviceTokenRepository] Creating device_tokens doc',
-      );
+      AppLog.d('[DeviceTokenRepository] Creating device_tokens doc');
       final docRef = await _firestore.collection(_collection).add(payload);
 
       // Persist the new document ID scoped to this user
@@ -129,7 +128,7 @@ class DeviceTokenRepository {
 
       return true;
     } catch (e) {
-      debugPrint('[DeviceTokenRepository] registerToken error: type=${e.runtimeType}');
+      AppLog.e('[DeviceTokenRepository] registerToken error: type=${e.runtimeType}');
       return false;
     }
   }
@@ -159,7 +158,7 @@ class DeviceTokenRepository {
 
       return true;
     } catch (e) {
-      debugPrint('[DeviceTokenRepository] deactivateToken error: type=${e.runtimeType}');
+      AppLog.e('[DeviceTokenRepository] deactivateToken error: type=${e.runtimeType}');
       return false;
     }
   }
@@ -199,9 +198,7 @@ class DeviceTokenRepository {
     if (legacyValue != null && legacyValue.isNotEmpty) {
       await prefs.setString(userKey, legacyValue);
       await prefs.remove(_legacyDeviceDocIdKey);
-      debugPrint(
-        '[DeviceTokenRepository] Migrated legacy doc ID to user-scoped key',
-      );
+      AppLog.d('[DeviceTokenRepository] Migrated legacy doc ID to user-scoped key');
     }
   }
 

@@ -17,6 +17,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../services/app_log.dart';
 import '../services/cart_service.dart';
 import '../services/pickup_window_service.dart';
 
@@ -775,7 +776,7 @@ class _CartBottomSheetState extends State<CartBottomSheet> {
                             }
                           } catch (e) {
                             // Location unavailable — fall back to default 20 min
-                            debugPrint('[CartSheet] Location error: $e');
+                            AppLog.e('[CartSheet] Location error', e);
                           }
                           // ── End Phase 5 ──
 

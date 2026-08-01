@@ -19,6 +19,7 @@ import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../data/food_data.dart';
 import '../models/review.dart';
+import '../services/app_log.dart';
 import '../services/review_service.dart';
 import '../widgets/cafe_selection_dialog.dart';
 import '../widgets/stock_badge.dart';
@@ -92,7 +93,7 @@ class _FoodDetailsScreenState extends State<FoodDetailsScreen> {
             }
           },
           onError: (Object error, StackTrace stack) {
-            debugPrint('[FoodDetailsScreen] foodStats stream error: $error');
+            AppLog.e('[FoodDetailsScreen] foodStats stream error', error);
           },
         );
   }
@@ -116,7 +117,7 @@ class _FoodDetailsScreenState extends State<FoodDetailsScreen> {
         });
       }
     } catch (e) {
-      debugPrint('[FoodDetailsScreen] checkEligibility error: $e');
+      AppLog.e('[FoodDetailsScreen] checkEligibility error', e);
       if (mounted) {
         setState(() {
           _checkingEligibility = false;
@@ -171,7 +172,7 @@ class _FoodDetailsScreenState extends State<FoodDetailsScreen> {
         // Re-check eligibility only after a completed operation
         if (success) _checkReviewEligibility();
       } catch (e) {
-        debugPrint('[FoodDetailsScreen] updateReview error: $e');
+        AppLog.e('[FoodDetailsScreen] updateReview error', e);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -221,7 +222,7 @@ class _FoodDetailsScreenState extends State<FoodDetailsScreen> {
         // Re-check eligibility only after a completed operation
         if (docId != null) _checkReviewEligibility();
       } catch (e) {
-        debugPrint('[FoodDetailsScreen] createReview error: $e');
+        AppLog.e('[FoodDetailsScreen] createReview error', e);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(

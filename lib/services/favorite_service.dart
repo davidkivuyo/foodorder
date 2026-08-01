@@ -15,8 +15,8 @@
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/foundation.dart';
 import '../data/food_data.dart';
+import 'app_log.dart';
 
 /// Maximum number of favourite food IDs to cache.
 const int kMaxFavoriteIds = 5;
@@ -219,7 +219,7 @@ class FavoriteService {
       final foodIds = await _calculateFavoriteIds(uid);
       await _cacheFavoriteIds(uid, foodIds);
     } catch (e) {
-      debugPrint('[FavoriteService] Recalculation error: $e');
+      AppLog.e('[FavoriteService] Recalculation error', e);
     }
   }
 
@@ -284,12 +284,18 @@ class FavoriteService {
     return sorted.take(kMaxFavoriteIds).toList();
   }
 
+  /// Last persisted favourite list per user — used to skip redundant writes.
+  final Map<String, List<String>> _lastCachedIds = {};
+
   /// Persist the top-5 favourite food IDs to the user's Firestore document.
   ///
   /// Sanitises the list before writing:
   /// - Filters out non-string values (belt-and-suspenders type safety)
   /// - Filters out empty strings
   /// - Caps at [kMaxFavoriteIds]
+  ///
+  /// Phase 13 (write optimization): if the sanitised list is unchanged from
+  /// the last persisted value, no Firestore write is performed at all.
   Future<void> _cacheFavoriteIds(String userId, List<String> ids) async {
     final sanitised = ids
         .whereType<String>()
@@ -297,10 +303,16 @@ class FavoriteService {
         .take(kMaxFavoriteIds)
         .toList();
 
+    // Skip the write entirely when nothing changed — avoids unnecessary
+    // server timestamp churn and write costs on every recalculation.
+    final previous = _lastCachedIds[userId];
+    if (_listEquals(previous, sanitised)) return;
+
     await _firestore.collection('users').doc(userId).set({
       'favoriteMenu': sanitised,
       'favoriteMenuUpdatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
+    _lastCachedIds[userId] = sanitised;
   }
 
   /// Listen for order transitions to COLLECTED and trigger recalculation.
@@ -346,6 +358,17 @@ class FavoriteService {
   }
 
   // ── Helpers ──────────────────────────────────────────────────────
+
+  /// Shallow list equality used to detect unchanged favourite lists.
+  bool _listEquals(List<String>? a, List<String>? b) {
+    if (identical(a, b)) return true;
+    if (a == null || b == null) return false;
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
 
   DateTime? _parseTimestamp(dynamic value) {
     if (value == null) return null;

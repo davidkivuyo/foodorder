@@ -15,7 +15,7 @@
 import 'dart:async';
 
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:flutter/foundation.dart';
+import 'app_log.dart';
 import 'device_token_repository.dart';
 
 /// Service that manages FCM token lifecycle and handles incoming push
@@ -98,7 +98,7 @@ class FcmService {
       );
 
       if (!_permissionGranted(permission)) {
-        debugPrint('[FcmService] Notification permission not granted');
+        AppLog.d('[FcmService] Notification permission not granted');
         return false;
       }
 
@@ -111,7 +111,7 @@ class FcmService {
 
 
       if (token == null || token.isEmpty) {
-        debugPrint('[FcmService] No FCM token available');
+        AppLog.d('[FcmService] No FCM token available');
         return false;
       }
 
@@ -123,7 +123,7 @@ class FcmService {
       );
 
       if (!registered) {
-        debugPrint('[FcmService] Token registration failed');
+        AppLog.e('[FcmService] Token registration failed');
         return false;
       }
 
@@ -148,10 +148,10 @@ class FcmService {
         }
       });
 
-      debugPrint('[FcmService] Initialized successfully');
+      AppLog.d('[FcmService] Initialized successfully');
       return true;
     } catch (e, stack) {
-      debugPrint('[FcmService] Initialization error: $e\n$stack');
+      AppLog.e('[FcmService] Initialization error', e, stack);
       return false;
     }
   }
@@ -188,17 +188,18 @@ class FcmService {
         // Only clear the userId once the token has been successfully
         // deactivated in Firestore.
         _currentUserId = null;
-        debugPrint('[FcmService] Token deactivated');
+        AppLog.d('[FcmService] Token deactivated');
       } else {
-        debugPrint(
+        AppLog.w(
           '[FcmService] Token deactivation returned false '
           '- keeping userId for potential retry',
         );
       }
     } catch (e) {
-      debugPrint(
-        '[FcmService] Token deactivation error: $e '
+      AppLog.e(
+        '[FcmService] Token deactivation error '
         '- keeping userId for potential retry',
+        e,
       );
     }
   }
@@ -217,12 +218,12 @@ class FcmService {
       );
 
       if (registered) {
-        debugPrint('[FcmService] Token refreshed and registered');
+        AppLog.d('[FcmService] Token refreshed and registered');
       } else {
-        debugPrint('[FcmService] Token refresh registration failed');
+        AppLog.e('[FcmService] Token refresh registration failed');
       }
     } catch (e) {
-      debugPrint('[FcmService] Token refresh registration error: $e');
+      AppLog.e('[FcmService] Token refresh registration error', e);
     }
   }
 
@@ -237,11 +238,11 @@ class FcmService {
       final notification = message.notification;
 
       if (notification == null) {
-        debugPrint('[FcmService] Foreground message without notification payload');
+        AppLog.d('[FcmService] Foreground message without notification payload');
         return;
       }
 
-      debugPrint(
+      AppLog.d(
         '[FcmService] Foreground notification: ${notification.title}',
       );
 
@@ -251,7 +252,7 @@ class FcmService {
         body: notification.body ?? '',
       );
     } catch (e) {
-      debugPrint('[FcmService] Foreground message handling error: $e');
+      AppLog.e('[FcmService] Foreground message handling error', e);
     }
   }
 
@@ -262,11 +263,11 @@ class FcmService {
       final deepLink = data['deepLink'] as String?;
 
       if (deepLink != null && deepLink.isNotEmpty) {
-        debugPrint('[FcmService] Notification tap — navigating to: $deepLink');
+        AppLog.d('[FcmService] Notification tap — navigating to: $deepLink');
         onDeepLinkNavigation?.call(deepLink);
       }
     } catch (e) {
-      debugPrint('[FcmService] Notification tap handling error: $e');
+      AppLog.e('[FcmService] Notification tap handling error', e);
     }
   }
 
@@ -284,7 +285,7 @@ class FcmService {
 /// app is in the background.
 @pragma('vm:entry-point')
 Future<void> fcmBackgroundMessageHandler(RemoteMessage message) async {
-  debugPrint(
+  AppLog.d(
     '[FcmService] Background message received: ${message.messageId}',
   );
 

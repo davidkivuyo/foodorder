@@ -13,8 +13,9 @@
 // limitations under the License.
 
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import '../data/food_data.dart';
+import 'app_log.dart';
 
 /// Service that wraps Firebase Authentication for email/password auth.
 class AuthService {
@@ -46,8 +47,7 @@ class AuthService {
       }
       return null; // success — Firestore profile is NOT created yet
     } catch (e, stack) {
-      debugPrint('[AuthService] register error: type=${e.runtimeType}');
-      debugPrint('[AuthService] stack: $stack');
+      AppLog.e('[AuthService] register error: type=${e.runtimeType}', e, stack);
       return _extractUserFriendlyError(e);
     }
   }
@@ -65,8 +65,7 @@ class AuthService {
       );
       return null; // success
     } catch (e, stack) {
-      debugPrint('[AuthService] signIn error: type=${e.runtimeType}');
-      debugPrint('[AuthService] stack: $stack');
+      AppLog.e('[AuthService] signIn error: type=${e.runtimeType}', e, stack);
       return _extractUserFriendlyError(e);
     }
   }
@@ -81,7 +80,7 @@ class AuthService {
       await user.sendEmailVerification();
       return null; // success
     } catch (e) {
-      debugPrint('[AuthService] sendVerificationEmail error: type=${e.runtimeType}');
+      AppLog.e('[AuthService] sendVerificationEmail error: type=${e.runtimeType}');
       return _extractUserFriendlyError(e);
     }
   }
@@ -95,7 +94,7 @@ class AuthService {
       await user.reload();
       return null; // success
     } catch (e) {
-      debugPrint('[AuthService] reloadUser error: type=${e.runtimeType}');
+      AppLog.e('[AuthService] reloadUser error: type=${e.runtimeType}');
       return _extractUserFriendlyError(e);
     }
   }
@@ -116,9 +115,9 @@ class AuthService {
       // Log the actual Firebase error code (safe for internal debugging).
       // The user-facing response stays the same for anti-enumeration.
       if (e is FirebaseAuthException) {
-        debugPrint('[AuthService] sendPasswordReset error: code="${e.code}"');
+        AppLog.e('[AuthService] sendPasswordReset error: code="${e.code}"');
       } else {
-        debugPrint('[AuthService] sendPasswordReset error: type=${e.runtimeType}');
+        AppLog.e('[AuthService] sendPasswordReset error: type=${e.runtimeType}');
       }
       // Always return null so attackers cannot distinguish "user-not-found"
       // from "invalid-email" or other failures.
@@ -136,7 +135,7 @@ class AuthService {
       await user.verifyBeforeUpdateEmail(newEmail.trim());
       return null; // success — a new verification email is sent automatically
     } catch (e) {
-      debugPrint('[AuthService] changeEmail error: type=${e.runtimeType}');
+      AppLog.e('[AuthService] changeEmail error: type=${e.runtimeType}');
       return _extractUserFriendlyError(e);
     }
   }
@@ -150,7 +149,7 @@ class AuthService {
       await user.delete();
       return null; // success
     } catch (e) {
-      debugPrint('[AuthService] deleteAccount error: type=${e.runtimeType}');
+      AppLog.e('[AuthService] deleteAccount error: type=${e.runtimeType}');
       return _extractUserFriendlyError(e);
     }
   }
@@ -159,6 +158,9 @@ class AuthService {
 
   Future<void> signOut() async {
     await _auth.signOut();
+    // Reset the shared Firestore menu/section streams: after sign-out their
+    // listeners would fail with permission-denied and never recover.
+    FoodData.resetStreams();
   }
 
   // ── Error extraction ────────────────────────────────────────────────────────
@@ -167,7 +169,7 @@ class AuthService {
   /// firebase_auth and returns a clean, user-facing string.
   String _extractUserFriendlyError(Object e) {
     if (e is FirebaseAuthException) {
-      debugPrint('[AuthService] FirebaseAuthException — code="${e.code}"');
+      AppLog.e('[AuthService] FirebaseAuthException — code="${e.code}"');
 
       // Try mapping by code first.
       final mapped = _mapErrorCode(e.code);
@@ -183,9 +185,9 @@ class AuthService {
     }
 
     if (e is PlatformException) {
-      debugPrint(
-        '[AuthService] PlatformException — code="${e.code}" message="${e.message}"',
-      );
+      // Log only the stable code — the raw message may embed the user's
+      // email, token, or other sensitive values.
+      AppLog.e('[AuthService] PlatformException — code="${e.code}"');
 
       // Details map may carry the real Firebase code.
       if (e.details is Map) {
@@ -203,7 +205,7 @@ class AuthService {
       return msg.isNotEmpty ? msg : 'Authentication failed. Please try again.';
     }
 
-    debugPrint('[AuthService] Unknown exception type: ${e.runtimeType}');
+    AppLog.e('[AuthService] Unknown exception type: ${e.runtimeType}');
     return 'An unexpected error occurred. Please try again.';
   }
 

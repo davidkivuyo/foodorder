@@ -12,9 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import '../models/notification_model.dart';
 import '../repositories/notification_repository.dart';
+import 'app_log.dart';
 
 /// Service that manages notification business logic.
 ///
@@ -92,9 +93,7 @@ class NotificationService {
     if (eventId != null && eventId.isNotEmpty) {
       final exists = await _repository.existsByEventId(eventId);
       if (exists) {
-        debugPrint(
-          '[NotificationService] Skipping duplicate notification: $eventId',
-        );
+        AppLog.d('[NotificationService] Skipping duplicate notification: $eventId');
         return null;
       }
     }
@@ -178,8 +177,6 @@ class NotificationService {
     // 1. Fetch the recipient's FCM token from Firestore
     // 2. Send push notification via Firebase Admin SDK / Cloud Function
     // 3. Record delivery status for analytics
-    debugPrint(
-      '[NotificationService] Push delivery placeholder: $title — $message',
-    );
+    AppLog.d('[NotificationService] Push delivery placeholder: $title — $message');
   }
 }

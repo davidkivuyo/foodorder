@@ -14,8 +14,8 @@
 
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/foundation.dart';
 import '../models/notification_model.dart';
+import '../services/app_log.dart';
 
 /// Data-access layer for the Firestore `notifications` collection.
 ///
@@ -92,7 +92,7 @@ class NotificationRepository {
       final docRef = await _firestore.collection(_collection).add(data);
       return docRef.id;
     } catch (e) {
-      debugPrint('[NotificationRepository] create error: $e');
+      AppLog.e('[NotificationRepository] create error', e);
       return null;
     }
   }
@@ -106,7 +106,7 @@ class NotificationRepository {
       });
       return true;
     } catch (e) {
-      debugPrint('[NotificationRepository] markAsRead error: $e');
+      AppLog.e('[NotificationRepository] markAsRead error', e);
       return false;
     }
   }
@@ -137,7 +137,7 @@ class NotificationRepository {
       await batch.commit();
       return true;
     } catch (e) {
-      debugPrint('[NotificationRepository] markAllAsRead error: $e');
+      AppLog.e('[NotificationRepository] markAllAsRead error', e);
       return false;
     }
   }
@@ -151,7 +151,7 @@ class NotificationRepository {
       });
       return true;
     } catch (e) {
-      debugPrint('[NotificationRepository] softDelete error: $e');
+      AppLog.e('[NotificationRepository] softDelete error', e);
       return false;
     }
   }
@@ -181,7 +181,7 @@ class NotificationRepository {
       await batch.commit();
       return true;
     } catch (e) {
-      debugPrint('[NotificationRepository] clearAll error: $e');
+      AppLog.e('[NotificationRepository] clearAll error', e);
       return false;
     }
   }

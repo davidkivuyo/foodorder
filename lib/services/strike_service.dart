@@ -13,9 +13,9 @@
 // limitations under the License.
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/foundation.dart';
 import '../models/strike_model.dart';
 import '../models/audit_log.dart';
+import 'app_log.dart';
 
 /// Manages strike operations for student accounts.
 ///
@@ -130,8 +130,7 @@ class StrikeService {
       return null; // success
     } catch (e, stack) {
       if (e is StateError) return e.message;
-      debugPrint('[StrikeService] pardonStrike error: $e');
-      debugPrint('[StrikeService] stack: $stack');
+      AppLog.e('[StrikeService] pardonStrike error', e, stack);
       return 'Failed to pardon strike. Please try again.';
     }
   }
@@ -174,8 +173,7 @@ class StrikeService {
       return null; // success
     } catch (e, stack) {
       if (e is StateError) return e.message;
-      debugPrint('[StrikeService] resetStrike error: $e');
-      debugPrint('[StrikeService] stack: $stack');
+      AppLog.e('[StrikeService] resetStrike error', e, stack);
       return 'Failed to reset strikes. Please try again.';
     }
   }
@@ -218,8 +216,7 @@ class StrikeService {
       return null; // success
     } catch (e, stack) {
       if (e is StateError) return e.message;
-      debugPrint('[StrikeService] reactivateAccount error: $e');
-      debugPrint('[StrikeService] stack: $stack');
+      AppLog.e('[StrikeService] reactivateAccount error', e, stack);
       return 'Failed to reactivate account. Please try again.';
     }
   }

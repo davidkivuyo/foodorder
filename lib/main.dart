@@ -13,9 +13,13 @@
 // limitations under the License.
 
 // deepLinkToTabIndex
+import 'dart:async';
+
 import 'package:campusbite/navigation/router.dart';
+import 'package:campusbite/services/app_log.dart';
 import 'package:campusbite/services/fcm_service.dart';
 import 'package:campusbite/services/notification_service.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -37,17 +41,40 @@ final FcmService fcmService = FcmService(
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // Track whether Firebase initialized so every Firebase-dependent setup
+  // below is gated behind this readiness flag. If init fails (e.g. no
+  // default Firebase app exists), the app degrades safely: FCM, the auth
+  // listener and Firestore persistence are skipped instead of throwing.
+  var firebaseReady = false;
   try {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
+    firebaseReady = true;
   } catch (e, stack) {
-    debugPrint('Firebase init error: $e\n$stack');
+    AppLog.e('Firebase init error', e, stack);
     // Continue — app degrades gracefully if Firebase is unavailable.
   }
 
-  // Register background message handler once at startup (not per-auth).
-  FirebaseMessaging.onBackgroundMessage(fcmBackgroundMessageHandler);
+  if (firebaseReady) {
+    // ── Phase 13: Firestore offline persistence ─────────────────────────
+    // Enable the local cache so menu, food details, categories and reviews
+    // render instantly from cache before the network refreshes them.
+    // Must be set before any other Firestore operation.
+    try {
+      FirebaseFirestore.instance.settings = const Settings(
+        persistenceEnabled: true,
+      );
+      AppLog.d('Firestore offline persistence enabled');
+    } catch (e) {
+      AppLog.e('Failed to enable Firestore persistence', e);
+    }
+
+    // Register background message handler once at startup (not per-auth).
+    FirebaseMessaging.onBackgroundMessage(fcmBackgroundMessageHandler);
+  } else {
+    AppLog.w('Firebase unavailable — skipping persistence and FCM setup');
+  }
 
   usePathUrlStrategy();
   LicenseRegistry.addLicense(() async* {
@@ -72,7 +99,7 @@ limitations under the License.
   ''',
     );
   });
-  runApp(const MyApp());
+  runApp(MyApp(firebaseReady: firebaseReady));
 }
 
 /// Initialize FCM for the current authenticated user.
@@ -84,20 +111,25 @@ Future<void> initializeFcmForUser(User? user) async {
     try {
       await fcmService.initialize(userId: user.uid);
     } catch (e, stack) {
-      debugPrint('[FCM] Initialization error: $e\n$stack');
+      AppLog.e('[FCM] Initialization error', e, stack);
     }
   } else {
     try {
       await fcmService.onLogout();
     } catch (e) {
-      debugPrint('[FCM] Logout error: $e');
+      AppLog.e('[FCM] Logout error', e);
     }
   }
 }
 
 // The main widget
 class MyApp extends StatefulWidget {
-  const MyApp({super.key});
+  const MyApp({super.key, this.firebaseReady = true});
+
+  /// Whether Firebase initialized successfully at startup. When false, all
+  /// Firebase-dependent wiring (auth listener, FCM) is skipped so the app
+  /// degrades safely instead of throwing.
+  final bool firebaseReady;
 
   @override
   State<MyApp> createState() => _MyAppState();
@@ -110,24 +142,34 @@ class _MyAppState extends State<MyApp> {
   // getInitialMessage, or the user tapping the same notification twice).
   String? _lastHandledDeepLink;
   DateTime? _lastHandledAt;
+  StreamSubscription<User?>? _authSub;
 
   @override
   void initState() {
     super.initState();
 
-    // Set up deep link navigation callback
-    FcmService.onDeepLinkNavigation = _handleDeepLink;
+    // Initialize FCM when auth state changes — only when Firebase is ready,
+    // otherwise FirebaseAuth.instance would throw.
+    if (widget.firebaseReady) {
+      // Set up deep link navigation callback
+      FcmService.onDeepLinkNavigation = _handleDeepLink;
 
-    // Initialize FCM when auth state changes
-    FirebaseAuth.instance.authStateChanges().listen((user) {
-      initializeFcmForUser(user);
-    });
+      _authSub = FirebaseAuth.instance.authStateChanges().listen((user) {
+        initializeFcmForUser(user);
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _authSub?.cancel();
+    super.dispose();
   }
 
   void _handleDeepLink(String deepLink) {
     // Validate: reject empty deep links
     if (deepLink.isEmpty) {
-      debugPrint('[FCM] Deep link navigation skipped: empty deep link');
+      AppLog.d('[FCM] Deep link navigation skipped: empty deep link');
       return;
     }
 
@@ -136,13 +178,13 @@ class _MyAppState extends State<MyApp> {
     if (deepLink == _lastHandledDeepLink &&
         _lastHandledAt != null &&
         now.difference(_lastHandledAt!) < const Duration(seconds: 5)) {
-      debugPrint('[FCM] Deep link navigation skipped: duplicate $deepLink');
+      AppLog.d('[FCM] Deep link navigation skipped: duplicate $deepLink');
       return;
     }
     _lastHandledDeepLink = deepLink;
     _lastHandledAt = now;
 
-    debugPrint('[FCM] Deep link navigation: $deepLink');
+    AppLog.d('[FCM] Deep link navigation: $deepLink');
 
     // Convert deep link to a main screen tab and navigate via GoRouter.
     // This works whether the user is on the welcome screen or main screen.
@@ -153,7 +195,7 @@ class _MyAppState extends State<MyApp> {
       router.go('/main');
     } else {
       // Unrecognized deep link — fallback to main screen
-      debugPrint(
+      AppLog.d(
         '[FCM] Deep link navigation: unrecognized path $deepLink, '
         'falling back to /main',
       );
