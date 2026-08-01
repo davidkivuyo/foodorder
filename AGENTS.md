@@ -29,6 +29,7 @@ Student Features
 * Place orders
 * View order history
 * Account management
+* Reviews
 
 Cafe Admin Features
 
@@ -137,446 +138,210 @@ After completing a feature:
 
 # Current Phase
 
-PHASE 13
+PHASE 14
 
 # TASK
 
-Implement Phase 13 of CampusBite.
+Implement the CampusBite seamless in-app update system end to end: the
+Cloudflare Worker metadata/download service, and the Flutter client that
+consumes it.
 
-This phase focuses exclusively on performance optimization and Firestore efficiency.
+This implementation must be production-ready.
 
-The objective is to reduce Firestore reads and writes, improve perceived application speed, optimize memory usage, and prepare the application for production-scale usage.
+## Non-negotiable constraints
 
-This phase MUST NOT modify business logic.
-
-Do not modify:
-
-- Authentication
-- Orders
-- Strike Engine
-- Notifications
-- Reviews
-- Favourite Engine
-
-Only optimize the implementation.
+- The app is NOT distributed through Google Play.
+- Release artifacts live on GitHub Releases (build + storage only).
+- `https://dl.larason.space` (Cloudflare Worker) is the ONLY endpoint the
+  Flutter app is allowed to call for update-related data.
+- The Flutter app must contain zero references to `github.com`,
+  `api.github.com`, or any GitHub org/repo name, in code or config.
+- If you find a direct GitHub reference anywhere in `lib/`, that is a bug —
+  fix it, don't leave it.
 
 ---
 
-# OBJECTIVES
+# WORKER RESPONSIBILITIES
 
-Improve:
+The Worker is the only thing allowed to know GitHub exists. It must:
 
-• Firestore efficiency
+1. Resolve "latest" by calling the GitHub Releases API server-side.
+2. Fetch that release's `release.json` asset server-side.
+3. Rewrite every URL inside that JSON so it points at
+   `dl.larason.space/{tag}/{filename}` instead of `github.com/...`.
+4. Cache the rewritten JSON at the edge (do not call GitHub on every request).
+5. Proxy-stream the actual APK/checksum bytes from GitHub when a rewritten
+   URL is requested, with long-lived immutable caching (tags are immutable).
+6. Serve arbitrary past tags via a versioned route, not just "latest," so
+   rollback and staged rollout are possible without a redeploy.
 
-• UI responsiveness
+## Routes
 
-• Startup speed
+| Route | Purpose | Cache |
+|---|---|---|
+| `GET /latest` | Metadata for the current default release | 5 min edge TTL |
+| `GET /release/{tag}` | Metadata for a specific past release (rollback, channels) | Immutable |
+| `GET /{tag}/{filename}` | Proxies the actual `.apk` / `.sha256` bytes | Immutable |
 
-• Image loading
-
-• Scroll performance
-
-• Memory usage
-
-• Network usage
-
-without changing application behaviour.
-
----
-
-# GENERAL RULES
-
-Do not rewrite existing features.
-
-Preserve backwards compatibility.
-
-Every optimization must be measurable.
-
-Avoid premature optimization.
-
-Prefer simple improvements over architectural rewrites.
+`/latest` and `/release/{tag}` must return the same JSON *shape* — the
+only difference is which tag they resolve.
 
 ---
 
-# PART 1 — FIRESTORE READ OPTIMIZATION
+# METADATA ENDPOINT CONTRACT
 
-Audit every Firestore query.
+`GET https://dl.larason.space/latest` returns:
 
-Remove duplicate queries.
+```json
+{
+  "version": "...",
+  "minimumVersion": "...",
+  "forceUpdate": false,
+  "releaseNotes": "...",
+  "downloads": {
+    "universal": "https://dl.larason.space/v1.4.2/CampusBite-universal.apk",
+    "arm64-v8a": "https://dl.larason.space/v1.4.2/CampusBite-arm64-v8a.apk",
+    "armeabi-v7a": "https://dl.larason.space/v1.4.2/CampusBite-armeabi-v7a.apk",
+    "x86_64": "https://dl.larason.space/v1.4.2/CampusBite-x86_64.apk"
+  },
+  "checksums": {
+    "universal": "https://dl.larason.space/v1.4.2/CampusBite-universal.apk.sha256",
+    ...
+  }
+}
+```
 
-Never read the same document twice during a single screen session.
-
-Reuse previously loaded data where appropriate.
-
----
-
-Replace one-time polling with realtime listeners only where realtime behaviour is required.
-
-Examples:
-
-Cart
-
-Order Status
-
-Notifications
-
-Do NOT use realtime listeners for static menu data.
-
----
-
-Menu data should be loaded once and cached.
-
----
-
-Limit every Firestore query.
-
-Never download an entire collection unless required.
-
-Examples:
-
-Reviews
-
-Notifications
-
-Orders
-
-must always paginate.
+Rules:
+- Every URL in the response MUST be a `dl.larason.space` URL. No exceptions.
+- Unknown/future top-level fields (e.g. `channel`, `rolloutPercentage`) must
+  be passed through untouched, not stripped — the client ignores fields it
+  doesn't recognize, so the Worker doesn't need an allowlist.
+- If GitHub is unreachable, return the last good cached response with a
+  `stale: true` field rather than an error, when a cached copy exists.
 
 ---
 
-Use projections where supported by future SDK updates.
+# FLUTTER CLIENT REQUIREMENTS
+
+## Version check cadence
+- On app startup (once), and
+- On a 12-hour interval while the app is installed (WorkManager /
+  background task — not "every launch").
+- Never call the endpoint more than once per cache-validity window;
+  respect a locally stored cache with its own TTL independent of the
+  Worker's edge cache.
+
+## ABI selection
+- Detect device ABI via platform channel, pick the matching download URL.
+- Fall back to `universal` if the device ABI isn't in the supported list.
+- Never prompt the user to choose an architecture.
+
+## Download
+- Stream to app-private storage with progress, size, and ETA shown.
+- Support pause/resume if the underlying download plugin does.
+- Continue in background where the OS allows; resume gracefully if killed.
+- Retry action on failure, capped attempts before surfacing a clear error.
+
+## Integrity
+- Fetch the checksum URL for the matching ABI, compute SHA-256 of the
+  downloaded file, compare before allowing install.
+- On mismatch: delete the file, do not offer install, surface a "couldn't
+  verify" retry state.
+
+## Install
+- FileProvider + `ACTION_VIEW` with
+  `application/vnd.android.package-archive`.
+- Handle `REQUEST_INSTALL_PACKAGES` permission flow gracefully if not
+  already granted.
+
+## Update types
+- `forceUpdate: true` OR local version `< minimumVersion` → mandatory,
+  blocking screen, no dismiss, no app usage until updated.
+- Otherwise optional → dismissible prompt, "Update now" / "Later".
+
+## UX copy
+- User-facing strings only: "New version available", "Downloading
+  update…", "Installing update…", "Update completed."
+- Never surface ABI names, GitHub, Cloudflare, filenames, or raw JSON.
+  Release notes render through a markdown widget, not a raw text dump.
+
+## Resilience
+- Any network failure in the update check path is silently swallowed
+  (debug-log only) and the app continues normally on the current version.
+
+## Storage hygiene
+- Delete a previously downloaded installer once install succeeds or once
+  superseded by a newer downloaded version. Never cache APK bytes
+  indefinitely.
 
 ---
 
-# PART 2 — FIRESTORE WRITE OPTIMIZATION
+# SECURITY
 
-Avoid writing unchanged data.
-
-Before updating a document:
-
-Compare values.
-
-If unchanged:
-
-Do not write.
+- Reject any download URL that isn't `https://dl.larason.space/...` —
+  hardcode the allowed host, don't just check the scheme.
+- Never construct or accept a download URL from anywhere other than the
+  `/latest` (or `/release/{tag}`) response body.
 
 ---
 
-Batch related writes.
+# LOGGING
 
-Example:
-
-Order completed
-
-↓
-
-Update order
-
-↓
-
-Create notification
-
-↓
-
-Update favourite counters
-
-↓
-
-Commit together when appropriate.
+- Debug builds only.
+- Never log: full download URLs (log tag/filename only if needed), device
+  identifiers, or any user/auth data.
 
 ---
 
-Avoid repeated server timestamps.
-
-Only write timestamps when data actually changes.
-
----
-
-# PART 3 — LOCAL CACHE
-
-Enable Firestore offline persistence.
-
-Use Firestore local cache.
-
-Menu
-
-Food details
-
-Categories
-
-Reviews
-
-should display immediately from cache before refreshing.
-
----
-
-Do not manually duplicate cached Firestore data unless required.
-
----
-
-# PART 4 — IMAGE OPTIMIZATION
-
-Replace Image.network with CachedNetworkImage.
-
-Cache all Cloudinary images.
-
-Show lightweight placeholders.
-
-Display error fallback images.
-
-Precache homepage images.
-
-Lazy-load images outside the viewport.
-
----
-
-Do not reload identical image URLs.
-
----
-
-# PART 5 — HOME SCREEN PERFORMANCE
-
-Avoid rebuilding the entire Home Screen.
-
-Split widgets into smaller reusable components.
-
-Use const constructors wherever possible.
-
-Use selectors or equivalent state filtering to rebuild only affected widgets.
-
----
-
-Horizontal food sections must not rebuild when unrelated state changes.
-
----
-
-# PART 6 — LIST PERFORMANCE
-
-Use ListView.builder.
-
-Use GridView.builder.
-
-Avoid List.generate for long lists.
-
-Provide stable Keys.
-
-Avoid rebuilding list items unnecessarily.
-
----
-
-# PART 7 — STATE MANAGEMENT
-
-Review ChangeNotifier usage.
-
-Avoid notifyListeners() when nothing changed.
-
-Notify only affected consumers.
-
-Avoid nested listeners.
-
-Dispose controllers correctly.
-
-Cancel StreamSubscriptions.
-
-Dispose AnimationControllers.
-
-Dispose ScrollControllers.
-
-Dispose Timers.
-
-Dispose TextEditingControllers.
-
----
-
-# PART 8 — STARTUP PERFORMANCE
-
-Initialize services lazily.
-
-Only initialize:
-
-Authentication
-
-Firestore
-
-Messaging
-
-Cloudinary helpers
-
-when required.
-
-Avoid heavy work inside main().
-
-Avoid synchronous initialization.
-
----
-
-# PART 9 — SEARCH PERFORMANCE
-
-Search locally whenever possible.
-
-Avoid querying Firestore for every keystroke.
-
-Debounce user input.
-
-Delay search requests by approximately 300 milliseconds.
-
-Cancel previous searches.
-
----
-
-# PART 10 — NETWORK OPTIMIZATION
-
-Reduce unnecessary HTTP requests.
-
-Avoid duplicate Cloudinary downloads.
-
-Reuse existing network responses.
-
-Cache release metadata.
-
-Cache configuration.
-
-Cache static application settings.
-
----
-
-# PART 11 — MEMORY OPTIMIZATION
-
-Avoid retaining large image objects.
-
-Release unused controllers.
-
-Avoid memory leaks.
-
-Profile allocations.
-
-Ensure scrolling remains smooth.
-
----
-
-# PART 12 — LOGGING
-
-Replace debugPrint spam.
-
-Create a centralized logging service.
-
-Debug logs enabled only in debug mode.
-
-Production builds should emit only warnings and errors.
-
-Never log:
-
-Email addresses
-
-Authentication tokens
-
-UIDs
-
-Precise locations
-
-Personal information
-
----
-
-# PART 13 — CODE QUALITY
-
-Remove dead code.
-
-Remove duplicate services.
-
-Remove unused imports.
-
-Standardize formatting.
-
-Follow repository architecture.
-
-Improve documentation.
-
----
-
-# PART 14 — PERFORMANCE METRICS
-
-Measure:
-
-App startup
-
-Home loading
-
-Menu loading
-
-Cart loading
-
-Order loading
-
-Review loading
-
-Notification loading
-
-Document improvements.
-
----
-
-# TESTING
-
-Verify:
-
-✓ No feature regressions
-
-✓ Firestore reads reduced
-
-✓ Firestore writes reduced
-
-✓ Home screen loads faster
-
-✓ Scrolling remains smooth
-
-✓ Images cache correctly
-
-✓ Notifications unchanged
-
-✓ Orders unchanged
-
-✓ Strike Engine unchanged
-
-✓ Reviews unchanged
-
-✓ Favourite Engine unchanged
-
-✓ Offline cache works
-
-✓ Memory leaks eliminated
+# SCOPE
+
+Files you are expected to touch:
+- `cloudflare-worker/src/index.js`
+- `lib/services/update_service.dart` (or equivalent — create if absent)
+- `lib/widgets/update_*.dart` (new update UI)
+- `.github/workflows/release-apk.yml` only if the metadata contract above
+  requires a workflow change
+
+Do not modify unrelated screens, features, or CI jobs.
 
 ---
 
 # DELIVERABLES
 
-Provide:
+1. Files created / modified (full list).
+2. Architecture diagram (text is fine) showing Flutter → Worker → GitHub.
+3. Download flow (sequence of calls).
+4. Installation flow.
+5. Cache strategy (edge TTL vs local client TTL, explicitly stated).
+6. Security measures taken.
+7. Manual testing checklist (use the one below, add any you find missing).
 
-1. Files modified
+---
 
-2. Performance improvements implemented
+# MANUAL TESTING CHECKLIST
 
-3. Firestore read reductions
-
-4. Firestore write reductions
-
-5. Widget rebuild optimizations
-
-6. Caching improvements
-
-7. Image optimization summary
-
-8. Startup optimization summary
-
-9. Testing checklist
-
-Stop after Phase 13.
+- [ ] App detects a new release
+- [ ] No update prompt when already current
+- [ ] Optional update is dismissible and re-prompts later
+- [ ] Mandatory update fully blocks app usage until updated
+- [ ] Correct ABI APK selected automatically, no user prompt
+- [ ] Universal APK used when ABI unsupported
+- [ ] Download progress, size, ETA all render
+- [ ] Pause/resume works if plugin supports it
+- [ ] Install prompt appears after successful verification
+- [ ] Checksum mismatch blocks install and offers retry
+- [ ] Network failure during check doesn't block app usage
+- [ ] Second check within cache TTL makes zero network calls
+- [ ] `grep -r "github.com" lib/` returns nothing
+- [ ] `/release/{old-tag}` on the Worker still serves an older version
+- [ ] Manually corrupt/replace release.json with a non-dl.larason.space URL 
+      and confirm the Worker returns 502, not the bad URL
 
 ---
 
 # Phase Completion Criteria
 
-Phase 13 is complete when:
+Phase 14 is complete when:
 
 * the new features works well with past features.
 * App runs successfully.
