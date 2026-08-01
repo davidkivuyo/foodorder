@@ -141,6 +141,66 @@ jobs:
           # sanity check the output is valid JSON before publishing
           python3 -m json.tool release/release.json > /dev/null
 
+      # Validate release.json URLs
+
+      # Every URL in release.json must point at the dl.larason.space proxy
+      # (either already rewritten, or a raw GitHub releases/download URL that
+      # the Worker will rewrite). Anything else would cause the Worker to
+      # fail closed with a 502 — better to catch it here in CI.
+
+      - name: Validate release.json URLs
+        run: |
+          python3 - <<'EOF'
+          import json
+          import re
+          import sys
+          from urllib.parse import urlparse
+
+          ALLOWED_HOST = "dl.larason.space"
+
+          with open("release/release.json") as f:
+              data = json.load(f)
+
+          # Raw GitHub download URLs are allowed: the Worker rewrites them.
+          GITHUB_DOWNLOAD = re.compile(
+              r"^https://github\.com/[^/]+/[^/]+/releases/download/[^/]+/"
+          )
+
+          def check_url(url, path):
+              # Match schemes case-insensitively: the Worker treats HTTPS:// and
+              # https:// alike, so the validator must not skip either.
+              if not re.match(r"^https?://", url, re.I):
+                  return
+              if GITHUB_DOWNLOAD.match(url):
+                  return
+              parsed = urlparse(url)
+              if parsed.scheme != "https" or parsed.hostname != ALLOWED_HOST:
+                  # Redact the query string, fragment, and any embedded userinfo
+                  # so credentials or tokens in a URL never leak into CI logs.
+                  netloc = parsed.hostname or ""
+                  if parsed.port:
+                      netloc += f":{parsed.port}"
+                  redacted = f"{parsed.scheme}://{netloc}{parsed.path}"
+                  print(
+                      f"ERROR: disallowed URL at {path}: {redacted}",
+                      file=sys.stderr,
+                  )
+                  sys.exit(1)
+
+          def walk(obj, path):
+              if isinstance(obj, str):
+                  check_url(obj, path)
+              elif isinstance(obj, list):
+                  for i, item in enumerate(obj):
+                      walk(item, f"{path}[{i}]")
+              elif isinstance(obj, dict):
+                  for key, value in obj.items():
+                      walk(value, f"{path}.{key}")
+
+          walk(data, "$")
+          print("release.json URL check passed")
+          EOF
+
 
       # Verify Release Files
 

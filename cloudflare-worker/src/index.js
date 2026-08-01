@@ -11,6 +11,42 @@ const ALLOWED_HOST = "dl.larason.space";
 // explicitly by comparing this timestamp against the configured TTL.
 const STORED_AT_HEADER = "x-proxy-cached-at";
 
+// Timeout (ms) applied to the connection + response-headers phase of GitHub
+// fetches for metadata (GitHub API + release.json). The timer is cancelled as
+// soon as headers arrive, so streamed bodies are never truncated mid-download.
+const GITHUB_TIMEOUT_MS = 10000;
+
+// Timeout (ms) for asset proxying (APK/sha256 downloads). Headers can be slow
+// to arrive under elevated GitHub TTFB, so give these a more generous budget
+// than the short metadata timeout above.
+const ASSET_TIMEOUT_MS = 60000;
+
+// After a failed refresh of /latest, keep serving the last good cached copy
+// for this many seconds without re-hitting GitHub, so an outage does not
+// stampede the rate-limited GitHub API on every request.
+const STALE_GRACE_TTL = 300;
+
+// Fetch from GitHub with a timeout that covers connecting and receiving the
+// response headers. The abort timer is cleared once the response arrives, so
+// the body can stream to completion (important for large APK downloads).
+// Callers may override the default timeout via { timeoutMs }.
+async function fetchFromGithub(url, options = {}) {
+  const { timeoutMs = GITHUB_TIMEOUT_MS, ...rest } = options;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      ...rest,
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    return response;
+  } catch (err) {
+    clearTimeout(timer);
+    throw err;
+  }
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -49,28 +85,45 @@ export default {
 
 // -- metadata --------------------------------------------------------------
 
+// Epoch seconds of the most recent failed refresh of /latest. Module-level
+// state is per-isolate, which still collapses the common stampede case.
+let lastLatestRefreshFailureAt = 0;
+
 // GET /latest
 //
 // Serves the metadata for the current default release with a 5-minute edge
 // TTL. A cached copy that has expired is refreshed from GitHub; if GitHub is
 // unreachable the last good cached copy is served with `stale: true` instead
-// of erroring out.
+// of erroring out. After a refresh failure, subsequent requests keep serving
+// the stale copy for STALE_GRACE_TTL seconds without re-hitting GitHub, so
+// an outage does not stampede the rate-limited GitHub API on every request.
 async function serveLatest(ctx) {
   const cacheKey = new Request("https://dl.larason.space/latest");
   const cache = caches.default;
 
   const cached = await cache.match(cacheKey);
+  const now = Date.now() / 1000;
+
   if (cached && ageSeconds(cached) < LATEST_META_TTL) {
     return cached;
+  }
+
+  // Outage grace window: a refresh failed recently — keep serving the last
+  // good copy until the window lapses instead of re-hitting GitHub.
+  if (cached && now - lastLatestRefreshFailureAt < STALE_GRACE_TTL) {
+    return staleResponse(cached);
   }
 
   try {
     const tag = await resolveLatestTag();
     if (!tag) throw new Error("Could not resolve latest release");
+    // Refresh succeeded — clear the failure marker.
+    lastLatestRefreshFailureAt = 0;
     return await buildMetadataResponse(tag, cache, cacheKey, ctx, {
       ttl: LATEST_META_TTL,
     });
   } catch (err) {
+    lastLatestRefreshFailureAt = Date.now() / 1000;
     if (cached) {
       return staleResponse(cached);
     }
@@ -104,7 +157,7 @@ async function serveRelease(tag, ctx) {
 // the result at the edge.
 async function buildMetadataResponse(tag, cache, cacheKey, ctx, { ttl, immutable = false }) {
   const releaseJsonUrl = `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases/download/${tag}/release.json`;
-  const originResponse = await fetch(releaseJsonUrl, {
+  const originResponse = await fetchFromGithub(releaseJsonUrl, {
     headers: { "User-Agent": "larason-release-proxy" },
   });
 
@@ -147,7 +200,7 @@ async function buildMetadataResponse(tag, cache, cacheKey, ctx, { ttl, immutable
 }
 
 async function resolveLatestTag() {
-  const res = await fetch(
+  const res = await fetchFromGithub(
     `${GITHUB_API}/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`,
     {
       headers: {
@@ -287,8 +340,9 @@ async function serveAsset(tag, filename, request, ctx) {
   const cached = await cache.match(cacheKey);
   if (cached) return cached;
 
-  const originResponse = await fetch(githubUrl, {
+  const originResponse = await fetchFromGithub(githubUrl, {
     cf: { cacheTtl: ASSET_TTL, cacheEverything: true },
+    timeoutMs: ASSET_TIMEOUT_MS,
   });
 
   if (!originResponse.ok) {
@@ -309,9 +363,10 @@ async function serveAsset(tag, filename, request, ctx) {
 }
 
 async function proxyRangeAsset(githubUrl, request, range) {
-  const originResponse = await fetch(githubUrl, {
+  const originResponse = await fetchFromGithub(githubUrl, {
     headers: { Range: range, "User-Agent": "larason-release-proxy" },
     cf: { cacheTtl: ASSET_TTL, cacheEverything: true },
+    timeoutMs: ASSET_TIMEOUT_MS,
   });
 
   if (
