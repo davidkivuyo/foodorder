@@ -11,10 +11,15 @@ const ALLOWED_HOST = "dl.larason.space";
 // explicitly by comparing this timestamp against the configured TTL.
 const STORED_AT_HEADER = "x-proxy-cached-at";
 
-// Timeout (ms) applied to the connection + response-headers phase of every
-// GitHub fetch. The timer is cancelled as soon as headers arrive, so large
-// streamed bodies (APKs) are never truncated mid-download.
+// Timeout (ms) applied to the connection + response-headers phase of GitHub
+// fetches for metadata (GitHub API + release.json). The timer is cancelled as
+// soon as headers arrive, so streamed bodies are never truncated mid-download.
 const GITHUB_TIMEOUT_MS = 10000;
+
+// Timeout (ms) for asset proxying (APK/sha256 downloads). Headers can be slow
+// to arrive under elevated GitHub TTFB, so give these a more generous budget
+// than the short metadata timeout above.
+const ASSET_TIMEOUT_MS = 60000;
 
 // After a failed refresh of /latest, keep serving the last good cached copy
 // for this many seconds without re-hitting GitHub, so an outage does not
@@ -24,12 +29,14 @@ const STALE_GRACE_TTL = 300;
 // Fetch from GitHub with a timeout that covers connecting and receiving the
 // response headers. The abort timer is cleared once the response arrives, so
 // the body can stream to completion (important for large APK downloads).
+// Callers may override the default timeout via { timeoutMs }.
 async function fetchFromGithub(url, options = {}) {
+  const { timeoutMs = GITHUB_TIMEOUT_MS, ...rest } = options;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), GITHUB_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetch(url, {
-      ...options,
+      ...rest,
       signal: controller.signal,
     });
     clearTimeout(timer);
@@ -335,6 +342,7 @@ async function serveAsset(tag, filename, request, ctx) {
 
   const originResponse = await fetchFromGithub(githubUrl, {
     cf: { cacheTtl: ASSET_TTL, cacheEverything: true },
+    timeoutMs: ASSET_TIMEOUT_MS,
   });
 
   if (!originResponse.ok) {
@@ -358,6 +366,7 @@ async function proxyRangeAsset(githubUrl, request, range) {
   const originResponse = await fetchFromGithub(githubUrl, {
     headers: { Range: range, "User-Agent": "larason-release-proxy" },
     cf: { cacheTtl: ASSET_TTL, cacheEverything: true },
+    timeoutMs: ASSET_TIMEOUT_MS,
   });
 
   if (

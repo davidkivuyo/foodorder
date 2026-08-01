@@ -167,14 +167,22 @@ jobs:
           )
 
           def check_url(url, path):
-              if not url.startswith(("http://", "https://")):
+              # Match schemes case-insensitively: the Worker treats HTTPS:// and
+              # https:// alike, so the validator must not skip either.
+              if not re.match(r"^https?://", url, re.I):
                   return
               if GITHUB_DOWNLOAD.match(url):
                   return
               parsed = urlparse(url)
               if parsed.scheme != "https" or parsed.hostname != ALLOWED_HOST:
+                  # Redact the query string, fragment, and any embedded userinfo
+                  # so credentials or tokens in a URL never leak into CI logs.
+                  netloc = parsed.hostname or ""
+                  if parsed.port:
+                      netloc += f":{parsed.port}"
+                  redacted = f"{parsed.scheme}://{netloc}{parsed.path}"
                   print(
-                      f"ERROR: disallowed URL at {path}: {url}",
+                      f"ERROR: disallowed URL at {path}: {redacted}",
                       file=sys.stderr,
                   )
                   sys.exit(1)
