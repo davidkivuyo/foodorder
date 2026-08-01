@@ -40,7 +40,11 @@ class _HoverCardScaleState extends State<HoverCardScale> {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         curve: Curves.easeOutCubic,
-        transform: Matrix4.identity()..translate(0.0, _isHovered ? -6.0 : 0.0),
+        transform: Matrix4.translationValues(
+          0.0,
+          _isHovered ? -6.0 : 0.0,
+          0.0,
+        ),
         child: AnimatedScale(
           scale: _isHovered ? 1.02 : 1.0,
           duration: const Duration(milliseconds: 200),

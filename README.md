@@ -4,11 +4,11 @@ A Flutter mobile application that lets university students browse the campus caf
 
 > **This repository** (`foodorder`) contains the **Student App**. There is the admin companion app which will not be published.
 
-Project code changes reviewed by coderabbit
 
-![CodeRabbit Pull Request Reviews](https://img.shields.io/coderabbit/prs/github/davidkivuyo/foodorder?utm_source=oss&utm_medium=github&utm_campaign=davidkivuyo%2Ffoodorder&labelColor=171717&color=FF570A&link=https%3A%2F%2Fcoderabbit.ai&label=CodeRabbit+Reviews)
-
-And sonarcloud
+This Project code changes must be reviewed by:
+* Coderabbit [coderabbit.ai](https://coderabbit.link/the-larason)
+* Qodo ai [qodo.ai](https://www.qodo.ai)
+* SonarCloud [sonarcloud.io](https://sonarcloud.io/project/overview?id=davidkivuyo_foodorder) 
 
 ---
 

@@ -6,6 +6,11 @@ const ASSET_TTL = 60 * 60 * 24 * 30;
 const GITHUB_API = "https://api.github.com";
 const ALLOWED_HOST = "dl.larason.space";
 
+// Header used to record when a response was stored in the Cache API.
+// The Cache API does not auto-expire entries, so TTLs are enforced
+// explicitly by comparing this timestamp against the configured TTL.
+const STORED_AT_HEADER = "x-proxy-cached-at";
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -16,12 +21,12 @@ export default {
 
     try {
       if (url.pathname === "/latest") {
-        return await serveMetadata(null, ctx, env);
+        return await serveLatest(ctx);
       }
 
       const releaseMatch = url.pathname.match(/^\/release\/(v[\w.\-]+)$/);
       if (releaseMatch) {
-        return await serveMetadata(releaseMatch[1], ctx, env);
+        return await serveRelease(releaseMatch[1], ctx);
       }
 
       const assetMatch = url.pathname.match(
@@ -44,28 +49,67 @@ export default {
 
 // -- metadata --------------------------------------------------------------
 
-async function serveMetadata(explicitTag, ctx, env) {
-  const cacheKeyUrl = explicitTag
-    ? `https://dl.larason.space/release/${explicitTag}`
-    : `https://dl.larason.space/latest`;
+// GET /latest
+//
+// Serves the metadata for the current default release with a 5-minute edge
+// TTL. A cached copy that has expired is refreshed from GitHub; if GitHub is
+// unreachable the last good cached copy is served with `stale: true` instead
+// of erroring out.
+async function serveLatest(ctx) {
+  const cacheKey = new Request("https://dl.larason.space/latest");
   const cache = caches.default;
-  const cacheKey = new Request(cacheKeyUrl);
+
+  const cached = await cache.match(cacheKey);
+  if (cached && ageSeconds(cached) < LATEST_META_TTL) {
+    return cached;
+  }
+
+  try {
+    const tag = await resolveLatestTag();
+    if (!tag) throw new Error("Could not resolve latest release");
+    return await buildMetadataResponse(tag, cache, cacheKey, ctx, {
+      ttl: LATEST_META_TTL,
+    });
+  } catch (err) {
+    if (cached) {
+      return staleResponse(cached);
+    }
+    return jsonResponse({ error: "Release metadata unavailable" }, 502);
+  }
+}
+
+// GET /release/{tag}
+//
+// Serves metadata for a specific immutable release. Once cached it is never
+// refreshed from GitHub.
+async function serveRelease(tag, ctx) {
+  const cacheKey = new Request(`https://dl.larason.space/release/${tag}`);
+  const cache = caches.default;
 
   const cached = await cache.match(cacheKey);
   if (cached) return cached;
 
-  const tag = explicitTag ?? (await resolveLatestTag());
-  if (!tag) {
-    return jsonResponse({ error: "Could not resolve release" }, 502);
+  try {
+    return await buildMetadataResponse(tag, cache, cacheKey, ctx, {
+      ttl: ASSET_TTL,
+      immutable: true,
+    });
+  } catch (err) {
+    return jsonResponse({ error: "Release metadata unavailable" }, 502);
   }
+}
 
+// Fetch a release's release.json from GitHub, rewrite every URL to point at
+// the proxy host, validate that nothing unexpected leaked through, then cache
+// the result at the edge.
+async function buildMetadataResponse(tag, cache, cacheKey, ctx, { ttl, immutable = false }) {
   const releaseJsonUrl = `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases/download/${tag}/release.json`;
   const originResponse = await fetch(releaseJsonUrl, {
     headers: { "User-Agent": "larason-release-proxy" },
   });
 
   if (!originResponse.ok) {
-    return jsonResponse({ error: "Release metadata unavailable" }, 502);
+    throw new Error(`Origin returned ${originResponse.status}`);
   }
 
   const raw = await originResponse.json();
@@ -76,16 +120,29 @@ async function serveMetadata(explicitTag, ctx, env) {
   // or forwarding an unexpected/malformed link to the client.
   const leak = findDisallowedUrl(rewritten);
   if (leak) {
-    return jsonResponse(
-      { error: "Release metadata failed validation" },
-      502
-    );
+    throw new Error("Release metadata failed validation");
   }
 
-  const ttl = explicitTag ? ASSET_TTL : LATEST_META_TTL;
-  const response = jsonResponse(rewritten, 200, ttl);
+  const response = jsonResponse(rewritten, 200, ttl, {
+    "Cache-Control": `public, max-age=${ttl}${immutable ? ", immutable" : ""}`,
+  });
 
-  ctx.waitUntil(cache.put(cacheKey, response.clone()));
+  // Cache the response with a stored-at timestamp so TTLs can be enforced.
+  const cachedClone = response.clone();
+  const ts = String(Math.floor(Date.now() / 1000));
+  const headers = new Headers(cachedClone.headers);
+  headers.set(STORED_AT_HEADER, ts);
+  ctx.waitUntil(
+    cache.put(
+      cacheKey,
+      new Response(cachedClone.body, {
+        status: cachedClone.status,
+        statusText: cachedClone.statusText,
+        headers,
+      })
+    )
+  );
+
   return response;
 }
 
@@ -102,6 +159,36 @@ async function resolveLatestTag() {
   if (!res.ok) return null;
   const data = await res.json();
   return data.tag_name ?? null;
+}
+
+// Age (seconds) of a cached response based on the stored-at timestamp.
+function ageSeconds(cached) {
+  const raw = cached.headers.get(STORED_AT_HEADER);
+  if (!raw) return Infinity;
+  const storedAt = Number(raw);
+  if (!Number.isFinite(storedAt)) return Infinity;
+  return (Date.now() / 1000) - storedAt;
+}
+
+// Return a stale cached copy with `stale: true` added, without mutating the
+// stored entry. Marked no-store so it is never re-cached.
+function staleResponse(cached) {
+  return cached
+    .clone()
+    .text()
+    .then((text) => {
+      let body = {};
+      try {
+        body = JSON.parse(text);
+      } catch {
+        // Non-JSON cached body is discarded — the response contains only the
+        // stale marker. Clients cannot consume raw text, so there is nothing
+        // to preserve.
+      }
+      return jsonResponse({ ...body, stale: true }, 200, null, {
+        "Cache-Control": "no-store",
+      });
+    });
 }
 
 function rewriteGithubUrls(obj, tag) {
@@ -167,17 +254,33 @@ function looksLikeAbsoluteUrl(str) {
   return /^https?:\/\//i.test(str);
 }
 
-function jsonResponse(body, status = 200, cacheTtl = null) {
+function jsonResponse(body, status = 200, cacheTtl = null, extraHeaders = {}) {
   const headers = { "content-type": "application/json" };
   if (cacheTtl) headers["Cache-Control"] = `public, max-age=${cacheTtl}`;
   headers["Access-Control-Allow-Origin"] = "*";
+  Object.assign(headers, extraHeaders);
   return new Response(JSON.stringify(body), { status, headers });
 }
 
 // -- asset proxy -------------------------------------------------------------
 
+// GET /{tag}/{filename}
+//
+// Proxies the actual APK / checksum bytes from GitHub. Tags are immutable so
+// the bytes are cached with a long-lived immutable TTL. Range requests are
+// forwarded to the origin so interrupted downloads can resume from the last
+// received byte.
 async function serveAsset(tag, filename, request, ctx) {
   const githubUrl = `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases/download/${tag}/${filename}`;
+
+  const range = request.headers.get("range");
+
+  // Range requests bypass the Cache API (a 206 partial response must never
+  // shadow the full cached representation). Cloudflare's HTTP cache handles
+  // range slices at the edge via cacheEverything below.
+  if (range) {
+    return proxyRangeAsset(githubUrl, request, range);
+  }
 
   const cache = caches.default;
   const cacheKey = new Request(request.url, request);
@@ -202,5 +305,32 @@ async function serveAsset(tag, filename, request, ctx) {
   response.headers.delete("via");
 
   ctx.waitUntil(cache.put(cacheKey, response.clone()));
+  return response;
+}
+
+async function proxyRangeAsset(githubUrl, request, range) {
+  const originResponse = await fetch(githubUrl, {
+    headers: { Range: range, "User-Agent": "larason-release-proxy" },
+    cf: { cacheTtl: ASSET_TTL, cacheEverything: true },
+  });
+
+  if (
+    originResponse.status !== 206 ||
+    !originResponse.headers.get("Content-Range")
+  ) {
+    // Do not reuse originResponse.status: a 200 full-body reply to a Range
+    // request would otherwise surface as a JSON body with status 200, which
+    // clients treat as a valid download start. Report a server error instead.
+    return jsonResponse({ error: "Asset not found" }, 502);
+  }
+
+  const response = new Response(originResponse.body, originResponse);
+  response.headers.set(
+    "Cache-Control",
+    `public, max-age=${ASSET_TTL}, immutable`
+  );
+  response.headers.set("Access-Control-Allow-Origin", "*");
+  response.headers.delete("x-github-request-id");
+  response.headers.delete("via");
   return response;
 }

@@ -19,6 +19,9 @@ import 'package:campusbite/navigation/router.dart';
 import 'package:campusbite/services/app_log.dart';
 import 'package:campusbite/services/fcm_service.dart';
 import 'package:campusbite/services/notification_service.dart';
+import 'package:campusbite/services/update_background.dart';
+import 'package:campusbite/services/update_service.dart';
+import 'package:campusbite/widgets/update_gate.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
@@ -100,6 +103,12 @@ limitations under the License.
     );
   });
   runApp(MyApp(firebaseReady: firebaseReady));
+
+  // ── Phase 14: in-app updates ─────────────────────────────────────────
+  // Fire-and-forget; every failure path in the update check is swallowed so
+  // a network error can never block app startup.
+  unawaited(registerPeriodicUpdateCheck());
+  unawaited(UpdateService.instance.checkForUpdate());
 }
 
 /// Initialize FCM for the current authenticated user.
@@ -213,6 +222,10 @@ class _MyAppState extends State<MyApp> {
         useMaterial3: true,
         textTheme: GoogleFonts.dmSansTextTheme(Theme.of(context).textTheme),
       ),
+      // Phase 14: the update gate sits above the navigator so mandatory
+      // updates can block the whole app, and optional ones can prompt over
+      // any screen.
+      builder: (context, child) => UpdateGate(child: child ?? const SizedBox()),
     );
   }
   

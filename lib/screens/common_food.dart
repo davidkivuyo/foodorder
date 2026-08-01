@@ -139,7 +139,7 @@ class _CommonFoodCircle extends StatelessWidget {
       onTap: () {
         Navigator.push(
           context,
-          MaterialPageRoute(builder: (_) => CommonFoodList(food: food)),
+          MaterialPageRoute(builder: (_) => _CommonFoodList(food: food)),
         );
       },
       child: SizedBox(
@@ -183,14 +183,14 @@ class _CommonFoodCircle extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// CommonFoodList – vertical list of food items corresponding to the tapped
+// _CommonFoodList – vertical list of food items corresponding to the tapped
 // common-food category.  Layout mirrors the category screen (FoodCard style).
 // No AppBar – uses a custom back button instead.
 // ---------------------------------------------------------------------------
-class CommonFoodList extends StatelessWidget {
+class _CommonFoodList extends StatelessWidget {
   final _CommonFoodItem food;
 
-  const CommonFoodList({super.key, required this.food});
+  const _CommonFoodList({required this.food});
 
   @override
   Widget build(BuildContext context) {

@@ -151,7 +151,7 @@ class _OrdersScreenState extends State<OrdersScreen>
     try {
       final double total = items.fold(
         0.0,
-        (sum, i) => sum + (i.foodItem.price * i.quantity),
+        (acc, i) => acc + (i.foodItem.price * i.quantity),
       );
 
       await FirebaseFirestore.instance

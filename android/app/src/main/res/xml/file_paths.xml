@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- APK installers are downloaded to the app's files dir -->
+    <files-path name="downloads" path="updates/" />
+</paths>
