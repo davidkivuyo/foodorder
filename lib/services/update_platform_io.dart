@@ -38,7 +38,7 @@ class AndroidUpdatePlatform implements UpdatePlatform {
       return abi;
     } on MissingPluginException {
       return null;
-    } catch (_) {
+    } on Exception catch (_) {
       return null;
     }
   }
@@ -53,7 +53,7 @@ class AndroidUpdatePlatform implements UpdatePlatform {
           false;
     } on MissingPluginException {
       return false;
-    } catch (_) {
+    } on Exception catch (_) {
       return false;
     }
   }
@@ -62,7 +62,7 @@ class AndroidUpdatePlatform implements UpdatePlatform {
   Future<void> openInstallSettings() async {
     try {
       await _channel.invokeMethod<void>('openInstallSettings');
-    } catch (_) {
+    } on Exception catch (_) {
       // Best effort — the user can also enable it in system settings.
     }
   }
@@ -78,7 +78,7 @@ class AndroidUpdatePlatform implements UpdatePlatform {
       return false;
     } on MissingPluginException {
       return false;
-    } catch (_) {
+    } on Exception catch (_) {
       return false;
     }
   }
@@ -89,7 +89,7 @@ class AndroidUpdatePlatform implements UpdatePlatform {
       final raf = await File(path)
           .open(mode: append ? FileMode.append : FileMode.write);
       return _IoUpdateFileHandle(raf);
-    } catch (_) {
+    } on Exception catch (_) {
       return null;
     }
   }
@@ -99,7 +99,7 @@ class AndroidUpdatePlatform implements UpdatePlatform {
     try {
       final f = File(path);
       if (await f.exists()) await f.delete();
-    } catch (_) {
+    } on Exception catch (_) {
       // Best effort cleanup.
     }
   }
@@ -108,7 +108,7 @@ class AndroidUpdatePlatform implements UpdatePlatform {
   Future<bool> fileExists(String path) async {
     try {
       return await File(path).exists();
-    } catch (_) {
+    } on Exception catch (_) {
       return false;
     }
   }
@@ -117,7 +117,7 @@ class AndroidUpdatePlatform implements UpdatePlatform {
   Future<int> fileLength(String path) async {
     try {
       return await File(path).length();
-    } catch (_) {
+    } on Exception catch (_) {
       return 0;
     }
   }
@@ -129,7 +129,7 @@ class AndroidUpdatePlatform implements UpdatePlatform {
       if (!await f.exists()) return false;
       await f.rename(to);
       return true;
-    } catch (_) {
+    } on Exception catch (_) {
       return false;
     }
   }
@@ -143,7 +143,7 @@ class AndroidUpdatePlatform implements UpdatePlatform {
           .listSync()
           .map((e) => e.path.split('/').last)
           .toList(growable: false);
-    } catch (_) {
+    } on Exception catch (_) {
       return const [];
     }
   }
@@ -153,7 +153,7 @@ class AndroidUpdatePlatform implements UpdatePlatform {
     try {
       final digest = await sha256.bind(File(path).openRead()).first;
       return digest.toString();
-    } catch (_) {
+    } on Exception catch (_) {
       return '';
     }
   }

@@ -47,4 +47,54 @@ void main() {
           isFalse);
     });
   });
+
+  group('UpdateService.resolveRedirect', () {
+    const base = 'https://dl.larason.space/v1.4.2/CampusBite-universal.apk';
+
+    test('resolves a relative location against the current hop', () {
+      expect(
+        UpdateService.resolveRedirect('/v1.4.2/CampusBite-arm64-v8a.apk', base),
+        'https://dl.larason.space/v1.4.2/CampusBite-arm64-v8a.apk',
+      );
+      expect(
+        UpdateService.resolveRedirect('app.apk', base),
+        'https://dl.larason.space/v1.4.2/app.apk',
+      );
+      expect(
+        UpdateService.resolveRedirect(
+            '/v1.4.2/CampusBite-universal.apk.sha256', base),
+        'https://dl.larason.space/v1.4.2/CampusBite-universal.apk.sha256',
+      );
+    });
+
+    test('passes through an absolute location on the allowed host', () {
+      expect(
+        UpdateService.resolveRedirect(
+            'https://dl.larason.space/v1.4.2/CampusBite-x86_64.apk', base),
+        'https://dl.larason.space/v1.4.2/CampusBite-x86_64.apk',
+      );
+    });
+
+    test('rejects a relative redirect resolving to a different host', () {
+      expect(UpdateService.resolveRedirect('//evil.com/app.apk', base),
+          isNull);
+      expect(
+        UpdateService.resolveRedirect(
+            'https://evil.com/app.apk', base),
+        isNull,
+      );
+      expect(UpdateService.resolveRedirect('http://dl.larason.space/app.apk', base),
+          isNull);
+    });
+
+    test('rejects a relative redirect resolving off the allowed path host', () {
+      expect(
+        UpdateService.resolveRedirect(
+            '/v1.4.2/app.apk', 'https://dl.larason.space.evil.com/app.apk'),
+        isNull,
+      );
+      expect(UpdateService.resolveRedirect('//evil.com/app.apk', base),
+          isNull);
+    });
+  });
 }

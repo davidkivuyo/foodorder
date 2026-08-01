@@ -22,6 +22,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/update_info.dart';
 import 'app_log.dart';
+import 'http_headers.dart';
 import 'update_platform.dart';
 
 /// Lifecycle of the in-app update flow.
@@ -180,7 +181,7 @@ class UpdateService extends ChangeNotifier {
 
       await _writeCache(fetched);
       await _applyInfo(fetched);
-    } catch (e, stack) {
+    } on Exception catch (e, stack) {
       AppLog.e('[Update] check failed', e, stack);
       await _cleanupSupersededInstallers();
       _setState(UpdateState.current);
@@ -192,7 +193,7 @@ class UpdateService extends ChangeNotifier {
   Future<UpdateInfo?> _fetchLatest() async {
     final uri = Uri.https(allowedHost, '/latest');
     final res = await http
-        .get(uri, headers: {'Accept': 'application/json'})
+        .get(uri, headers: {HttpHeaders.acceptHeader: 'application/json'})
         .timeout(const Duration(seconds: 15));
     if (res.statusCode != 200) {
       AppLog.w('[Update] check returned HTTP ${res.statusCode}');
@@ -396,7 +397,7 @@ class UpdateService extends ChangeNotifier {
       final request = http.Request('GET', Uri.parse(url))
         ..followRedirects = false;
       if (startOffset > 0) {
-        request.headers['Range'] = 'bytes=$startOffset-';
+        request.headers[HttpHeaders.rangeHeader] = 'bytes=$startOffset-';
       }
       final client = http.Client();
       _downloadClient = client;
@@ -421,9 +422,9 @@ class UpdateService extends ChangeNotifier {
         startOffset = 0;
       }
 
-      final contentLength =
-          int.tryParse(_streamedResponse!.headers['content-length'] ?? '') ??
-              -1;
+      final contentLength = int.tryParse(
+        _streamedResponse!.headers[HttpHeaders.contentLengthHeader] ?? '',
+      ) ?? -1;
       final resumed = status == 206 && startOffset > 0;
       _totalBytes = contentLength < 0
           ? 0
@@ -496,7 +497,7 @@ class UpdateService extends ChangeNotifier {
           await _verifyAndInstall(info);
         },
       );
-    } catch (e) {
+    } on Exception catch (e) {
       _closeDownloadClient();
       AppLog.d('[Update] download threw: ${e.runtimeType}');
       if (!_paused && _retryCount < maxRetries) {
@@ -564,7 +565,7 @@ class UpdateService extends ChangeNotifier {
         // failures, and exceptions alike.
         client.close();
       }
-    } catch (_) {
+    } on Exception catch (_) {
       await updatePlatform.deleteFile(path);
       _fail('Could not verify the update.');
       return;
@@ -699,7 +700,7 @@ class UpdateService extends ChangeNotifier {
           await updatePlatform.deleteFile('$dir/$e');
         }
       }
-    } catch (_) {
+    } on Exception catch (_) {
       // Best-effort hygiene — never let cleanup break the update check.
     }
   }
@@ -715,9 +716,23 @@ class UpdateService extends ChangeNotifier {
     try {
       final uri = Uri.parse(url);
       return uri.scheme == 'https' && uri.host == allowedHost;
-    } catch (_) {
+    } on Exception catch (_) {
       return false;
     }
+  }
+
+  /// Resolves a redirect [location] against the [currentUrl] hop it was
+  /// received from, then requires the resolved absolute URL to pass
+  /// [isAllowedDownloadUrl]. Returns the resolved URL, or `null` when it lands
+  /// on a disallowed host/scheme. Exposed for tests.
+  ///
+  /// `Location` headers may be relative (e.g. `/v1.4.2/app.apk`), so they must
+  /// be resolved before host validation — otherwise a legitimate relative
+  /// redirect on the allowed host would be rejected.
+  @visibleForTesting
+  static String? resolveRedirect(String location, String currentUrl) {
+    final resolved = Uri.parse(currentUrl).resolve(location).toString();
+    return isAllowedDownloadUrl(resolved) ? resolved : null;
   }
 
   /// Sends [request], following redirects only when each hop resolves to an
@@ -736,13 +751,18 @@ class UpdateService extends ChangeNotifier {
           await client.send(hopRequest).timeout(const Duration(seconds: 30));
       final status = response.statusCode;
       if (status < 300 || status >= 400) return response;
-      final location = response.headers['location'];
+      final location = response.headers[HttpHeaders.locationHeader];
       await response.stream.drain<void>();
-      if (location == null || !isAllowedDownloadUrl(location)) {
+      if (location == null) {
+        AppLog.w('[Update] rejecting redirect without location');
+        return null;
+      }
+      final resolved = resolveRedirect(location, url);
+      if (resolved == null) {
         AppLog.w('[Update] rejecting disallowed redirect');
         return null;
       }
-      url = location;
+      url = resolved;
     }
     AppLog.w('[Update] too many redirect hops');
     return null;
@@ -752,7 +772,7 @@ class UpdateService extends ChangeNotifier {
     try {
       final decoded = jsonDecode(body);
       return decoded is Map<String, dynamic> ? decoded : null;
-    } catch (_) {
+    } on Exception catch (_) {
       return null;
     }
   }
