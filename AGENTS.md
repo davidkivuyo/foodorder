@@ -138,211 +138,630 @@ After completing a feature:
 
 # Current Phase
 
-PHASE 14
+# PHASE 15 — SECURITY HARDENING
 
-# TASK
+## OBJECTIVE
 
-Implement the CampusBite seamless in-app update system end to end: the
-Cloudflare Worker metadata/download service, and the Flutter client that
-consumes it.
+Implement comprehensive production-grade security for Campus Bite.
 
-This implementation must be production-ready.
+This phase must strengthen the existing implementation without changing business logic or UI behaviour.
 
-## Non-negotiable constraints
+The objective is to protect:
 
-- The app is NOT distributed through Google Play.
-- Release artifacts live on GitHub Releases (build + storage only).
-- `https://dl.larason.space` (Cloudflare Worker) is the ONLY endpoint the
-  Flutter app is allowed to call for update-related data.
-- The Flutter app must contain zero references to `github.com`,
-  `api.github.com`, or any GitHub org/repo name, in code or config.
-- If you find a direct GitHub reference anywhere in `lib/`, that is a bug —
-  fix it, don't leave it.
+- student accounts
+- admin accounts
+- Firestore data
+- Cloud Functions
+- Cloudinary resources
+- notification system
+- review system
+- update system
+- authentication system
 
----
+The implementation must remain scalable, maintainable and cost-effective.
 
-# WORKER RESPONSIBILITIES
+Do NOT rewrite existing features.
 
-The Worker is the only thing allowed to know GitHub exists. It must:
+Do NOT modify application workflows.
 
-1. Resolve "latest" by calling the GitHub Releases API server-side.
-2. Fetch that release's `release.json` asset server-side.
-3. Rewrite every URL inside that JSON so it points at
-   `dl.larason.space/{tag}/{filename}` instead of `github.com/...`.
-4. Cache the rewritten JSON at the edge (do not call GitHub on every request).
-5. Proxy-stream the actual APK/checksum bytes from GitHub when a rewritten
-   URL is requested, with long-lived immutable caching (tags are immutable).
-6. Serve arbitrary past tags via a versioned route, not just "latest," so
-   rollback and staged rollout are possible without a redeploy.
-
-## Routes
-
-| Route | Purpose | Cache |
-|---|---|---|
-| `GET /latest` | Metadata for the current default release | 5 min edge TTL |
-| `GET /release/{tag}` | Metadata for a specific past release (rollback, channels) | Immutable |
-| `GET /{tag}/{filename}` | Proxies the actual `.apk` / `.sha256` bytes | Immutable |
-
-`/latest` and `/release/{tag}` must return the same JSON *shape* — the
-only difference is which tag they resolve.
+Only harden the existing implementation.
 
 ---
 
-# METADATA ENDPOINT CONTRACT
+# EXISTING SYSTEM
 
-`GET https://dl.larason.space/latest` returns:
+Already implemented:
 
-```json
-{
-  "version": "...",
-  "minimumVersion": "...",
-  "forceUpdate": false,
-  "releaseNotes": "...",
-  "downloads": {
-    "universal": "https://dl.larason.space/v1.4.2/CampusBite-universal.apk",
-    "arm64-v8a": "https://dl.larason.space/v1.4.2/CampusBite-arm64-v8a.apk",
-    "armeabi-v7a": "https://dl.larason.space/v1.4.2/CampusBite-armeabi-v7a.apk",
-    "x86_64": "https://dl.larason.space/v1.4.2/CampusBite-x86_64.apk"
-  },
-  "checksums": {
-    "universal": "https://dl.larason.space/v1.4.2/CampusBite-universal.apk.sha256",
-    ...
-  }
-}
-```
+✓ Firebase Authentication
 
-Rules:
-- Every URL in the response MUST be a `dl.larason.space` URL. No exceptions.
-- Unknown/future top-level fields (e.g. `channel`, `rolloutPercentage`) must
-  be passed through untouched, not stripped — the client ignores fields it
-  doesn't recognize, so the Worker doesn't need an allowlist.
-- If GitHub is unreachable, return the last good cached response with a
-  `stale: true` field rather than an error, when a cached copy exists.
+✓ Student registration
 
----
+✓ Admin application
 
-# FLUTTER CLIENT REQUIREMENTS
+✓ Firestore database
 
-## Version check cadence
-- On app startup (once), and
-- On a 12-hour interval while the app is installed (WorkManager /
-  background task — not "every launch").
-- Never call the endpoint more than once per cache-validity window;
-  respect a locally stored cache with its own TTL independent of the
-  Worker's edge cache.
+✓ Orders
 
-## ABI selection
-- Detect device ABI via platform channel, pick the matching download URL.
-- Fall back to `universal` if the device ABI isn't in the supported list.
-- Never prompt the user to choose an architecture.
+✓ Notifications
 
-## Download
-- Stream to app-private storage with progress, size, and ETA shown.
-- Support pause/resume if the underlying download plugin does.
-- Continue in background where the OS allows; resume gracefully if killed.
-- Retry action on failure, capped attempts before surfacing a clear error.
+✓ Strike Engine
 
-## Integrity
-- Fetch the checksum URL for the matching ABI, compute SHA-256 of the
-  downloaded file, compare before allowing install.
-- On mismatch: delete the file, do not offer install, surface a "couldn't
-  verify" retry state.
+✓ Favourite Engine
 
-## Install
-- FileProvider + `ACTION_VIEW` with
-  `application/vnd.android.package-archive`.
-- Handle `REQUEST_INSTALL_PACKAGES` permission flow gracefully if not
-  already granted.
+✓ Reviews
 
-## Update types
-- `forceUpdate: true` OR local version `< minimumVersion` → mandatory,
-  blocking screen, no dismiss, no app usage until updated.
-- Otherwise optional → dismissible prompt, "Update now" / "Later".
+✓ Cloudinary
 
-## UX copy
-- User-facing strings only: "New version available", "Downloading
-  update…", "Installing update…", "Update completed."
-- Never surface ABI names, GitHub, Cloudflare, filenames, or raw JSON.
-  Release notes render through a markdown widget, not a raw text dump.
+✓ Cloud Functions
 
-## Resilience
-- Any network failure in the update check path is silently swallowed
-  (debug-log only) and the app continues normally on the current version.
+✓ GitHub Release Update System
 
-## Storage hygiene
-- Delete a previously downloaded installer once install succeeds or once
-  superseded by a newer downloaded version. Never cache APK bytes
-  indefinitely.
+✓ Cloudflare Worker update proxy
+
+Your responsibility is ONLY to secure these systems.
 
 ---
 
-# SECURITY
+# PART 1 — FIREBASE APP CHECK
 
-- Reject any download URL that isn't `https://dl.larason.space/...` —
-  hardcode the allowed host, don't just check the scheme.
-- Never construct or accept a download URL from anywhere other than the
-  `/latest` (or `/release/{tag}`) response body.
+Implement Firebase App Check.
+
+Enable App Check for:
+
+• Firestore
+
+• Cloud Functions
+
+• Cloud Storage (if used)
+
+Use:
+
+Android
+
+Play Integrity API
+
+Development mode only for debug builds.
+
+Never disable App Check in release builds.
+
+App Check failures should be logged without crashing the app.
 
 ---
 
-# LOGGING
+# PART 2 — FIRESTORE SECURITY REVIEW
 
-- Debug builds only.
-- Never log: full download URLs (log tag/filename only if needed), device
-  identifiers, or any user/auth data.
+Review every Firestore rule.
+
+Apply least-privilege access.
+
+Students must never be able to:
+
+• modify menu items
+
+• modify strikes
+
+• modify reviews written by others
+
+• modify admin data
+
+• modify notification status belonging to another user
+
+Admins must never receive unrestricted database access.
+
+Every permission must be role-based.
+
+Do not use:
+
+allow read, write: if true;
+
+except for public menu data where intentionally required.
 
 ---
 
-# SCOPE
+# PART 3 — ROLE VERIFICATION
 
-Files you are expected to touch:
-- `cloudflare-worker/src/index.js`
-- `lib/services/update_service.dart` (or equivalent — create if absent)
-- `lib/widgets/update_*.dart` (new update UI)
-- `.github/workflows/release-apk.yml` only if the metadata contract above
-  requires a workflow change
+Never trust the Flutter application.
 
-Do not modify unrelated screens, features, or CI jobs.
+Every privileged operation must verify:
+
+request.auth.uid
+
+and
+
+user role
+
+inside Firestore Rules or Cloud Functions.
+
+Never trust local variables.
+
+Never trust hidden buttons.
+
+Never trust route protection.
+
+Backend validation is mandatory.
+
+---
+
+# PART 4 — ADMIN AUTHORIZATION
+
+Every admin operation must verify:
+
+Admin account exists
+
+Admin role
+
+Account active
+
+Account not suspended
+
+Only then allow:
+
+Food creation
+
+Food deletion
+
+Food editing
+
+Strike issuing
+
+Strike removal
+
+Notification broadcasting
+
+Image deletion
+
+Review moderation
+
+---
+
+# PART 5 — CLOUD FUNCTIONS SECURITY
+
+Review every Cloud Function.
+
+Validate:
+
+Authentication
+
+Authorization
+
+Input
+
+Document existence
+
+Ownership
+
+Prevent:
+
+Null values
+
+Unexpected fields
+
+Oversized payloads
+
+Invalid document IDs
+
+Invalid timestamps
+
+Malformed requests
+
+Reject invalid requests using HttpsError.
+
+Never expose stack traces.
+
+Never expose secrets.
+
+---
+
+# PART 6 — INPUT VALIDATION
+
+Validate every user input.
+
+Examples:
+
+Registration
+
+Login
+
+Forgot password
+
+Food search
+
+Reviews
+
+Orders
+
+Notifications
+
+Reject:
+
+Negative values
+
+Extremely long strings
+
+Empty required fields
+
+Malformed phone numbers
+
+Malformed emails
+
+Duplicate separators
+
+Unexpected Unicode control characters
+
+Sanitize user text before saving.
+
+---
+
+# PART 7 — REVIEW SECURITY
+
+Review system must prevent:
+
+Review spam
+
+Duplicate reviews
+
+Review flooding
+
+Review abuse
+
+Only users with COLLECTED orders may review.
+
+Users may edit only their own reviews.
+
+Users may delete only their own reviews.
+
+Users cannot modify ratings belonging to others.
+
+Template reviews remain enforced.
+
+---
+
+# PART 8 — STRIKE ENGINE SECURITY
+
+Students must never:
+
+Issue strikes
+
+Remove strikes
+
+Modify strike counters
+
+Modify suspension status
+
+Only authorized admin operations and backend automation may update strike data.
+
+Every strike action should create an audit log.
+
+---
+
+# PART 9 — NOTIFICATION SECURITY
+
+Students may:
+
+Read their notifications
+
+Mark their own notifications as read
+
+Students may NOT:
+
+Create notifications
+
+Broadcast notifications
+
+Delete notifications belonging to others
+
+Admins may only create approved notification types.
+
+---
+
+# PART 10 — ORDER SECURITY
+
+Validate every order transition.
+
+Prevent illegal transitions.
+
+Example:
+
+Collected
+
+↓
+
+Preparing
+
+must never occur.
+
+Valid transitions only.
+
+Verify ownership before allowing order cancellation or viewing.
+
+---
+
+# PART 11 — UPDATE SECURITY
+
+Update system communicates only with:
+
+https://dl.larason.space
+
+Reject:
+
+HTTP
+
+Unknown hosts
+
+Redirects to unknown domains
+
+Verify SHA-256 checksum before installation if provided.
+
+Never install an unverified APK.
+
+---
+
+# PART 12 — CLOUDINARY SECURITY
+
+The admin app(adminview) uploads food images to cloudinary.
+
+Store:
+
+public_id
+
+secure_url
+
+Delete operations must use Cloud Function.
+
+Flutter must never possess Cloudinary API Secret.
+
+Cloudinary credentials remain only inside Firebase Secret Manager.
+
+---
+
+# PART 13 — SECRET MANAGEMENT
+
+Verify no secrets exist inside:
+
+Flutter source
+
+Git repository
+
+GitHub workflow logs
+
+Never commit:
+
+API Secret
+
+Private Keys
+
+Service Accounts
+
+Signing Keys
+
+Cloudinary Secret
+
+Firebase Secret Manager remains the only storage location for sensitive backend secrets.
+
+---
+
+# PART 14 — AUTHENTICATION HARDENING
+
+Require:
+
+Verified email
+
+Before allowing ordering.
+
+Reject unverified accounts.
+
+Limit login attempts where feasible.
+
+Do not reveal:
+
+whether an email exists
+
+whether an account is suspended
+
+whether a password was correct
+
+Use generic authentication error messages.
+
+---
+
+# PART 15 — PRIVACY PROTECTION
+
+Do not log:
+
+Email
+
+Phone
+
+Exact location
+
+UID
+
+Notification tokens
+
+Order contents
+
+Review text
+
+Payment information
+
+Production logs should contain only diagnostic information.
+
+---
+
+# PART 16 — TOKEN SECURITY
+
+Never store:
+
+Firebase ID Token
+
+Refresh Token
+
+FCM Token
+
+inside SharedPreferences.
+
+Use secure storage where persistence is required.
+
+Refresh tokens automatically.
+
+Handle expired sessions gracefully.
+
+---
+
+# PART 17 — LOCAL STORAGE SECURITY
+
+Review every locally stored value.
+
+Do not cache:
+
+Passwords
+
+OTP codes
+
+Sensitive admin data
+
+Strike decisions
+
+Cache only non-sensitive data.
+
+---
+
+# PART 18 — DEPENDENCY REVIEW
+
+Audit pubspec.yaml.
+
+Remove unused packages.
+
+Update outdated packages.
+
+Replace abandoned packages.
+
+Prefer actively maintained libraries.
+
+---
+
+# PART 19 — ERROR HANDLING
+
+Replace technical errors with user-friendly messages.
+
+Example:
+
+Instead of:
+
+FirebaseException
+
+Display:
+
+"Something went wrong. Please try again."
+
+Log technical details only in debug mode.
+
+---
+
+# PART 20 — AUDIT LOGGING
+
+Create immutable audit logs for:
+
+Food creation
+
+Food deletion
+
+Food edits
+
+Strike issued
+
+Strike removed
+
+Account suspension
+
+Review deletion
+
+Cloudinary deletion
+
+Notification broadcasts
+
+Each log records:
+
+timestamp
+
+admin UID
+
+action
+
+target document
+
+No personal content beyond identifiers required for auditing.
+
+---
+
+# PART 21 — SECURITY TESTING
+
+Verify:
+
+✓ Student cannot become admin
+
+✓ Student cannot modify menu
+
+✓ Student cannot modify another cart
+
+✓ Student cannot modify another review
+
+✓ Student cannot modify strikes
+
+✓ Student cannot broadcast notifications
+
+✓ Invalid Cloud Function requests rejected
+
+✓ Cloudinary secret never exposed
+
+✓ App Check enabled
+
+✓ Firestore Rules enforced
+
+✓ Update checksum validation works
+
+✓ Review ownership enforced
+
+✓ Audit logs created
+
+✓ No secrets committed
+
+✓ Release build functions correctly
 
 ---
 
 # DELIVERABLES
 
-1. Files created / modified (full list).
-2. Architecture diagram (text is fine) showing Flutter → Worker → GitHub.
-3. Download flow (sequence of calls).
-4. Installation flow.
-5. Cache strategy (edge TTL vs local client TTL, explicitly stated).
-6. Security measures taken.
-7. Manual testing checklist (use the one below, add any you find missing).
+Provide:
 
----
+1. Files modified
 
-# MANUAL TESTING CHECKLIST
+2. Firestore Rules changes
 
-- [ ] App detects a new release
-- [ ] No update prompt when already current
-- [ ] Optional update is dismissible and re-prompts later
-- [ ] Mandatory update fully blocks app usage until updated
-- [ ] Correct ABI APK selected automatically, no user prompt
-- [ ] Universal APK used when ABI unsupported
-- [ ] Download progress, size, ETA all render
-- [ ] Pause/resume works if plugin supports it
-- [ ] Install prompt appears after successful verification
-- [ ] Checksum mismatch blocks install and offers retry
-- [ ] Network failure during check doesn't block app usage
-- [ ] Second check within cache TTL makes zero network calls
-- [ ] `grep -r "github.com" lib/` returns nothing
-- [ ] `/release/{old-tag}` on the Worker still serves an older version
-- [ ] Manually corrupt/replace release.json with a non-dl.larason.space URL 
-      and confirm the Worker returns 502, not the bad URL
+3. Cloud Function security improvements
+
+4. App Check implementation summary
+
+5. Authentication improvements
+
+6. Cloudinary security summary
+
+7. Update security summary
+
+8. Audit logging implementation
+
+9. Security test checklist
+
+10. Remaining security recommendations
+
+Stop after Phase 15.
 
 ---
 
 # Phase Completion Criteria
 
-Phase 14 is complete when:
+Phase 15 is complete when:
 
-* the new features works well with past features.
+* The new features works well with past features.
 * App runs successfully.
 * No runtime errors occur.

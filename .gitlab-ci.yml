@@ -46,6 +46,13 @@ build_apk:
 
     - fvm flutter pub get --enforce-lockfile
 
+    # Phase 15 — require the security & unit test suite to pass BEFORE
+    # building and signing any APK. auth_hardening_test.dart contains
+    # guardrail tests that verify Cloud Functions, App Check, Firestore
+    # rules and update-system security invariants; a regression must fail
+    # the release, not ship.
+    - fvm flutter test
+
     - |
       fvm flutter build apk \
         --release \
