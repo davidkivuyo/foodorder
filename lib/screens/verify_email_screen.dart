@@ -13,6 +13,7 @@
 // limitations under the License.
 
 import 'dart:async';
+import 'package:campusbite/services/app_log.dart';
 import 'package:campusbite/services/auth_service.dart';
 import 'package:campusbite/services/email_verification_service.dart';
 import 'package:flutter/material.dart';
@@ -49,28 +50,63 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
   Future<void> _handleVerify() async {
     setState(() => _isLoading = true);
 
+    // Phase 15: pin the authenticated UID BEFORE any async work. The account
+    // whose email was checked is the only one allowed to continue — a
+    // sign-out or account switch during ANY await must abort navigation.
+    final uidAtStart = _authService.currentUser?.uid;
+
     final isVerified = await _verificationService.checkEmailVerified(
       reloadFn: () => _authService.reloadUser(),
       isVerifiedFn: () => _authService.isEmailVerified,
     );
 
     if (!mounted) return;
-    setState(() => _isLoading = false);
 
     if (isVerified) {
+      // UID must be unchanged after the verification check.
+      if (uidAtStart == null || _authService.currentUser?.uid != uidAtStart) {
+        setState(() => _isLoading = false);
+        _showSnack('Could not finalize your session. Please try again.');
+        return;
+      }
+
       // Create Firestore profile now that email is verified
       final user = _authService.currentUser;
       if (user != null) {
         final profileError =
             await _verificationService.createProfileAfterVerification(user);
         if (profileError != null) {
+          setState(() => _isLoading = false);
           _showSnack(profileError);
           return;
         }
+        // UID must be unchanged after profile creation as well.
+        if (_authService.currentUser?.uid != uidAtStart) {
+          setState(() => _isLoading = false);
+          _showSnack('Could not finalize your session. Please try again.');
+          return;
+        }
       }
+
+      // Phase 15: force a fresh ID token so the `email_verified` claim is
+      // present on the next Firestore request. Security rules gate order
+      // creation on this claim. A failed refresh or a changed/missing user
+      // means we must NOT continue: stop with an error instead.
+      final tokenError = await _authService.refreshIdToken();
+      if (tokenError != null) {
+        AppLog.w('[VerifyEmail] ID token refresh failed after verification');
+      }
+
       if (!mounted) return;
+      setState(() => _isLoading = false);
+
+      if (tokenError != null || _authService.currentUser?.uid != uidAtStart) {
+        _showSnack('Could not finalize your session. Please try again.');
+        return;
+      }
       context.go('/main');
     } else {
+      setState(() => _isLoading = false);
       _showSnack('Your email has not been verified yet.');
     }
   }

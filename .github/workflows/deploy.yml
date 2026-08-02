@@ -24,13 +24,34 @@ jobs:
           channel: 'stable'
           cache: true
 
-      # Step 4: Build Flutter Web
-      - name: Build Web
+      # Step 4: Run the security & unit test suite before building.
+      # auth_hardening_test.dart contains guardrail tests (Firestore rules,
+      # Cloud Functions, App Check, update security, secret scanning); a
+      # regression must fail the deploy, not ship to Cloudflare Pages.
+      - name: Run Security & Unit Tests
         run: |
           flutter pub get
-          flutter build web --release --base-href "/"
+          flutter test
 
-      # Step 5: Deploy build/web folder to Cloudflare Pages (Pinned to a fully verified 40-character release SHA)
+      # Step 5: Build Flutter Web
+      - name: Build Web
+        # Phase 15: App Check — inject the reCAPTCHA v3 site key for web
+        # attestation. The web RELEASE build fails closed when the key is
+        # empty (lib/main.dart refuses to start), so this step must fail
+        # before building when the secret is missing — otherwise a broken
+        # app with no web attestation would be deployed.
+        env:
+          RECAPTCHA_SITE_KEY: ${{ secrets.RECAPTCHA_SITE_KEY }}
+        run: |
+          if [ -z "$RECAPTCHA_SITE_KEY" ]; then
+            echo "::error::RECAPTCHA_SITE_KEY is required for App Check on web release builds. Set it in GitHub repository secrets before deploying."
+            exit 1
+          fi
+          flutter pub get
+          flutter build web --release --base-href "/" \
+            --dart-define=RECAPTCHA_SITE_KEY="$RECAPTCHA_SITE_KEY"
+
+      # Step 6: Deploy build/web folder to Cloudflare Pages (Pinned to a fully verified 40-character release SHA)
       - name: Lets Deploy
         uses: cloudflare/wrangler-action@v3
         with:

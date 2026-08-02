@@ -16,6 +16,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'app_log.dart';
+import 'input_validator.dart';
 
 /// Service that manages email verification business logic.
 ///
@@ -104,10 +105,16 @@ class EmailVerificationService {
       final snapshot = await docRef.get();
 
       if (!snapshot.exists) {
-        final fullName = (user.displayName ?? '').trim();
+        // Phase 15 — input hygiene: strip control characters and enforce
+        // length bounds before persisting user-supplied profile fields.
+        final fullName = InputValidator.sanitizeName(user.displayName);
+        final email = InputValidator.sanitizeEmail(user.email);
+        if (fullName.isEmpty || email.isEmpty) {
+          return 'Profile name is invalid. Please re-register.';
+        }
         await docRef.set({
           'fullName': fullName,
-          'email': (user.email ?? '').trim(),
+          'email': email,
           'role': 'student',
           'createdAt': FieldValue.serverTimestamp(),
           // Strike management fields

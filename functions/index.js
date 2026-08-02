@@ -121,7 +121,7 @@ async function createNotification({
         .get();
 
     if (!existing.empty) {
-      console.log(`[createNotification] Skipping duplicate: ${eventId}`);
+      console.log("[createNotification] Skipping duplicate notification event");
       return null;
     }
   }
@@ -145,7 +145,7 @@ async function createNotification({
       createdBy,
     });
 
-    console.log(`[createNotification] Created ${type} for ${recipientId}: ${docRef.id}`);
+    console.log(`[createNotification] Created ${type} notification`);
     return docRef.id;
   } catch (err) {
     console.error(`[createNotification] Error creating ${type}:`, err);
@@ -345,8 +345,8 @@ async function recordDelivery(eventId, deviceDocId) {
 
         // Lease expired — reclaim the token with a new claimId.
         console.warn(
-          `[recordDelivery] Lease expired for ${docId} ` +
-          `(${Math.round(elapsedMs / 1000)}s old, old claimId=${data.claimId}) — reclaiming`
+          `[recordDelivery] Lease expired ` +
+          `(${Math.round(elapsedMs / 1000)}s old) — reclaiming`
         );
       }
 
@@ -361,7 +361,7 @@ async function recordDelivery(eventId, deviceDocId) {
     });
   } catch (err) {
     console.warn(
-      `[recordDelivery] Transaction error for ${docId}: ${err.message} — propagating`
+      `[recordDelivery] Transaction error: ${err.message} — propagating`
     );
     throw err;
   }
@@ -421,7 +421,7 @@ async function sendPushNotification({
 
     if (tokensSnapshot.empty) {
       console.log(
-        `[sendPush] No active tokens for ${recipientRole} ${recipientId} — skipping push`
+        `[sendPush] No active tokens for ${recipientRole} — skipping push`
       );
       return { sent: 0, total: 0, failures: [] };
     }
@@ -434,7 +434,7 @@ async function sendPushNotification({
     totalAttempted = activeTokens.length;
 
     console.log(
-      `[sendPush] Sending push to ${activeTokens.length} device(s) for ${recipientRole} ${recipientId}`
+      `[sendPush] Sending push to ${activeTokens.length} device(s) for ${recipientRole}`
     );
 
     // Step 2: Build the base FCM message (tokens are added per attempt)
@@ -543,7 +543,7 @@ async function sendPushNotification({
             .catch((err) => {
               claimErrors.push(t);
               console.warn(
-                `[sendPush] Claim failed for token ${t.docId}: ` +
+                `[sendPush] Claim failed: ` +
                 `${err.message} — will retry`
               );
             });
@@ -692,7 +692,7 @@ async function sendPushNotification({
             if (released) {
               tokensToRetry.push(tokenEntry);
               console.warn(
-                `[sendPush] Transient failure for token ${tokenEntry.docId}, ` +
+                `[sendPush] Transient failure, ` +
                 `will retry (attempt ${retryAttempt + 1}/${maxFcmRetries}): ${errorMsg}`
               );
             } else {
@@ -708,7 +708,7 @@ async function sendPushNotification({
                 transient: true,
               });
               console.warn(
-                `[sendPush] Could not release claim for token ${tokenEntry.docId} — ` +
+                `[sendPush] Could not release claim — ` +
                 `pending claim preserved for lease-based recovery: ${errorMsg}`
               );
             }
@@ -717,7 +717,7 @@ async function sendPushNotification({
           for (const { tokenEntry, errorMsg } of tokensToRelease) {
             tokensToRetry.push(tokenEntry);
             console.warn(
-              `[sendPush] Transient failure for token ${tokenEntry.docId}, ` +
+              `[sendPush] Transient failure, ` +
               `will retry (attempt ${retryAttempt + 1}/${maxFcmRetries}): ${errorMsg}`
             );
           }
@@ -732,14 +732,14 @@ async function sendPushNotification({
           const deactivateResults = await Promise.allSettled(
             tokensToDeactivate.map(({ docId, reason }) =>
               deactivateTokenDoc(docId, reason).catch((err) => {
-                console.error(`[sendPush] Failed to deactivate token ${docId} after retries: ${err.message}`);
+                console.error(`[sendPush] Failed to deactivate a permanently invalid token after retries: ${err.message}`);
                 return false;
               })
             ),
           );
           for (let i = 0; i < deactivateResults.length; i++) {
             if (deactivateResults[i].status === "rejected" || deactivateResults[i].value === false) {
-              console.warn(`[sendPush] Could not deactivate token ${tokensToDeactivate[i].docId} — will be cleaned up by weekly scheduler`);
+              console.warn(`[sendPush] Could not deactivate a permanently invalid token — will be cleaned up by weekly scheduler`);
             }
           }
         }
@@ -776,7 +776,7 @@ async function sendPushNotification({
       failures: failures,
     };
   } catch (err) {
-    console.error(`[sendPush] Error sending push to ${recipientId}:`, err);
+    console.error("[sendPush] Error sending push:", err);
 
     // The no-valid-tokens case at the send level is permanent
     if (
@@ -824,7 +824,7 @@ async function finalizeDelivery(eventId, deviceDocId, status, errorMessage, clai
         // The claim was reclaimed by a newer worker.  This is expected
         // when the lease expired before finalization completed.
         console.warn(
-          `[finalizeDelivery] claimId mismatch for ${docId}: ` +
+          `[finalizeDelivery] claimId mismatch: ` +
           `expected ${claimId}, got ${doc.data().claimId} — skipping`
         );
         return;
@@ -839,7 +839,7 @@ async function finalizeDelivery(eventId, deviceDocId, status, errorMessage, clai
     });
   } catch (err) {
     console.warn(
-      `[finalizeDelivery] Error updating ${docId} to ${status}: ${err.message}`
+      `[finalizeDelivery] Error updating delivery record to ${status}: ${err.message}`
     );
   }
 }
@@ -886,7 +886,7 @@ async function releaseDeliveryClaim(eventId, deviceDocId, claimId) {
           // already released (the new worker now owns it).  This avoids
           // a redundant finalizeDelivery attempt from the caller.
           console.warn(
-            `[releaseDeliveryClaim] claimId mismatch for ${docId}: ` +
+            `[releaseDeliveryClaim] claimId mismatch: ` +
             `expected ${claimId}, got ${doc.data().claimId} — ` +
             `claim already reclaimed, treating as released`
           );
@@ -906,7 +906,7 @@ async function releaseDeliveryClaim(eventId, deviceDocId, claimId) {
     );
   } catch (err) {
     console.warn(
-      `[releaseDeliveryClaim] Failed to release claim ${docId}: ${err.message}`
+      `[releaseDeliveryClaim] Failed to release claim: ${err.message}`
     );
     return false;
   }
@@ -933,7 +933,7 @@ async function processExpiredOrder(transaction, orderSnapshot) {
 
   const studentId = orderData.studentId;
   if (!studentId) {
-    console.warn(`[AutoStrike] Order ${orderSnapshot.id} has no studentId – skipping`);
+    console.warn("[AutoStrike] Order without studentId – skipping");
     return false;
   }
 
@@ -942,7 +942,7 @@ async function processExpiredOrder(transaction, orderSnapshot) {
   const userSnapshot = await transaction.get(userRef);
 
   if (!userSnapshot.exists) {
-    console.warn(`[AutoStrike] User ${studentId} not found – skipping order ${orderSnapshot.id}`);
+    console.warn("[AutoStrike] User not found – skipping expired order");
     return false;
   }
 
@@ -988,8 +988,7 @@ async function processExpiredOrder(transaction, orderSnapshot) {
   });
 
   console.log(
-    `[AutoStrike] Order ${orderSnapshot.id}: ` +
-    `student=${studentId}, strikeCount ${currentStrikeCount} → ${newStrikeCount}, ` +
+    `[AutoStrike] strikeCount ${currentStrikeCount} → ${newStrikeCount}, ` +
     `accountStatus=${deriveAccountStatus(newStrikeCount)}`
   );
 
@@ -1041,7 +1040,7 @@ exports.processExpiredPickups = functions
           } catch (err) {
             errorCount++;
             console.error(
-              `[AutoStrike] Failed to process order ${orderSnapshot.id}:`, err
+              `[AutoStrike] Failed to process an expired order:`, err
             );
           }
         });
@@ -1107,7 +1106,7 @@ exports.processExpiredPickups = functions
             }
           } catch (notifErr) {
             console.error(
-              `[AutoStrike] Failed to create notification for ${studentId}:`, notifErr
+              `[AutoStrike] Failed to create notification:`, notifErr
             );
           }
         }
@@ -1170,7 +1169,7 @@ exports.processExpiredPickups = functions
                 });
               } catch (notifErr) {
                 console.error(
-                  `[AutoStrike] Failed to send PICKUP_REMINDER for order ${orderDoc.id}:`, notifErr
+                  `[AutoStrike] Failed to send PICKUP_REMINDER:`, notifErr
                 );
               }
             },
@@ -1244,8 +1243,7 @@ async function backfillOrderFoodIds(orderRef, orderData) {
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
   console.log(
-    `[backfillFoodIds] Backfilled foodIds for order ${orderRef.id}: ` +
-    `${JSON.stringify(foodIds)}`
+    "[backfillFoodIds] Backfilled foodIds for order"
   );
   return true;
 }
@@ -1292,8 +1290,7 @@ exports.onOrderStatusChanged = onDocumentUpdated(
       );
     } catch (err) {
       console.error(
-        `[onOrderStatusChanged] foodIds backfill failed for order ` +
-        `${event.params.orderId}: ${err.message}`
+        `[onOrderStatusChanged] foodIds backfill failed: ${err.message}`
       );
       // NOT_FOUND means the order no longer exists — nothing left to
       // backfill and no status/notification work is meaningful for a
@@ -1326,7 +1323,7 @@ exports.onOrderStatusChanged = onDocumentUpdated(
     });
 
     console.log(
-      `[onOrderStatusChanged] Order ${event.params.orderId} marked READY. ` +
+      `[onOrderStatusChanged] Order marked READY. ` +
       `Pickup deadline: ${deadline.toDate().toISOString()}`,
     );
 
@@ -1369,7 +1366,7 @@ exports.onNewOrder = onDocumentCreated(
   async (event) => {
     const orderData = event.data.data();
     if (!orderData) {
-      console.log(`[onNewOrder] No data for order ${event.params.orderId} — skipping`);
+      console.log("[onNewOrder] No data for order — skipping");
       return;
     }
 
@@ -1396,8 +1393,7 @@ exports.onNewOrder = onDocumentCreated(
       );
     } catch (err) {
       console.error(
-        `[onNewOrder] foodIds backfill failed for order ` +
-        `${event.params.orderId}: ${err.message}`
+        `[onNewOrder] foodIds backfill failed: ${err.message}`
       );
       // NOT_FOUND means the order no longer exists — nothing left to
       // backfill and no admin notification is meaningful for a deleted
@@ -1415,7 +1411,7 @@ exports.onNewOrder = onDocumentCreated(
     const orderId = event.params.orderId;
     const totalAmount = orderData.price || orderData.totalAmount || 0;
 
-    console.log(`[onNewOrder] New order ${orderId} placed by ${studentName} (${studentId})`);
+    console.log("[onNewOrder] New order received");
 
     try {
       const adminSnapshot = await db
@@ -1480,7 +1476,7 @@ exports.onNewNotification = onDocumentCreated(
   async (event) => {
     const notifData = event.data.data();
     if (!notifData) {
-      console.log(`[onNewNotification] No data for notification ${event.params.notificationId} — skipping`);
+      console.log("[onNewNotification] No data for notification — skipping");
       return;
     }
 
@@ -1516,7 +1512,7 @@ exports.onNewNotification = onDocumentCreated(
     if (!allowedRoles) {
       console.log(
         `[onNewNotification] Unknown type "${notifData.type}" — skipping push ` +
-        `for ${recipientRole} ${recipientId}`
+        `for ${recipientRole}`
       );
       return;
     }
@@ -1524,13 +1520,13 @@ exports.onNewNotification = onDocumentCreated(
     if (!allowedRoles.includes(recipientRole)) {
       console.log(
         `[onNewNotification] Role mismatch: ${notifData.type} not allowed for ` +
-        `${recipientRole} ${recipientId} — skipping push`
+        `${recipientRole} — skipping push`
       );
       return;
     }
 
     console.log(
-      `[onNewNotification] Sending push for ${notifData.type} to ${recipientRole} ${recipientId}`
+      `[onNewNotification] Sending push for ${notifData.type} to ${recipientRole}`
     );
 
     try {
@@ -1547,14 +1543,14 @@ exports.onNewNotification = onDocumentCreated(
       });
 
       console.log(
-        `[onNewNotification] Push delivery for ${notificationId}: ` +
+        `[onNewNotification] Push delivery: ` +
         `${result.sent}/${result.total} sent, ` +
         `${result.failures.length} failure(s)`
       );
     } catch (err) {
       // Push failure must never affect the Firestore notification.
       console.error(
-        `[onNewNotification] Push delivery error for ${notificationId}:`, err
+        `[onNewNotification] Push delivery error:`, err
       );
     }
   },
@@ -1571,6 +1567,9 @@ const CLOUDINARY_API_SECRET = defineSecret("CLOUDINARY_API_SECRET");
 exports.deleteCloudinaryImage = onCall(
   {
     authPolicy: "required",
+    // Phase 15 — App Check: reject callers that cannot present a valid App
+    // Check attestation token (Play Integrity on Android release builds).
+    enforceAppCheck: true,
     secrets: [CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET],
     region: "us-central1",
   },
@@ -1582,22 +1581,92 @@ exports.deleteCloudinaryImage = onCall(
       );
     }
 
+    // ── Phase 15 — full admin authorization ───────────────────────────
+    // Role verification alone is not enough: the admin account must also
+    // exist, be active, and not be suspended. This mirrors the "Admin
+    // Authorization" checklist (Part 4).
     const uid = request.auth.uid;
     const userDoc = await admin.firestore().collection("users").doc(uid).get();
     const userData = userDoc.data();
 
-    if (!userData || userData.role !== "admin") {
+    if (!userDoc.exists || !userData) {
+      throw new HttpsError(
+        "permission-denied",
+        "Account not found. Please contact support."
+      );
+    }
+
+    if (userData.role !== "admin") {
       throw new HttpsError(
         "permission-denied",
         "Only admins can delete images."
       );
     }
 
-    const { publicId } = request.data;
-    if (!publicId || typeof publicId !== "string") {
+    // ── Phase 15 — account status and strike validation ───────────────
+    // accountStatus must be exactly "ACTIVE" — deny-by-default: a missing or
+    // malformed value is rejected, never defaulted. strikeCount must be a
+    // non-negative integer below 2 (a missing field means 0, matching the
+    // rules); non-integer, NaN, or negative values are denied rather than
+    // coerced — a NaN would otherwise bypass the suspension check because
+    // `NaN >= 2` evaluates to false.
+    const accountStatus = userData.accountStatus;
+    const rawStrikeCount = userData.strikeCount;
+    const strikeCount = rawStrikeCount === undefined ? 0 : rawStrikeCount;
+    if (
+      accountStatus !== "ACTIVE" ||
+      !Number.isInteger(strikeCount) ||
+      strikeCount < 0 ||
+      strikeCount >= 2
+    ) {
+      throw new HttpsError(
+        "permission-denied",
+        "This account is suspended and cannot perform admin actions."
+      );
+    }
+
+    // ── Phase 15 — request envelope validation ───────────────────────
+    // request.data must be a non-null, non-array object containing exactly
+    // the `publicId` field, within a bounded payload size. Validating the
+    // envelope before destructuring means a null/malformed payload surfaces
+    // as a clean HttpsError instead of a native TypeError that would bubble
+    // up as a generic internal error (Part 5: reject malformed requests).
+    const data = request.data;
+    if (
+      data === null ||
+      typeof data !== "object" ||
+      Array.isArray(data) ||
+      JSON.stringify(data).length > 4096
+    ) {
+      throw new HttpsError("invalid-argument", "Invalid request payload.");
+    }
+
+    const envelopeKeys = Object.keys(data);
+    if (envelopeKeys.length !== 1 || envelopeKeys[0] !== "publicId") {
       throw new HttpsError(
         "invalid-argument",
-        "publicId is required and must be a string."
+        "Request payload must contain exactly the publicId field."
+      );
+    }
+
+    // ── Phase 15 — input validation ──────────────────────────────────
+    // publicId must be a non-empty printable-ASCII string of at most 512
+    // characters and must not contain a `..` sequence. The denylist rejects
+    // control characters and path-traversal attempts (../) while remaining
+    // permissive enough for Cloudinary IDs derived from filenames (which
+    // may include spaces, '+', '@', '.', etc. after sanitization).
+    const { publicId } = data;
+    if (
+      !publicId ||
+      typeof publicId !== "string" ||
+      publicId.length === 0 ||
+      publicId.length > 512 ||
+      publicId.includes("..") ||
+      !/^[\x20-\x7E]+$/.test(publicId)
+    ) {
+      throw new HttpsError(
+        "invalid-argument",
+        "publicId is invalid."
       );
     }
 
@@ -1862,7 +1931,7 @@ async function updateFoodRatingStats(foodId, { removeRating, addRating }, eventI
       const foodDoc = await transaction.get(foodRef);
 
       if (!foodDoc.exists) {
-        console.warn(`[onReviewChanged] Food item ${foodId} not found — skipping stats update`);
+        console.warn("[onReviewChanged] Food item not found — skipping stats update");
         return;
       }
 
@@ -1870,7 +1939,7 @@ async function updateFoodRatingStats(foodId, { removeRating, addRating }, eventI
       const processedEventIds = data.processedEventIds || [];
 
       if (eventId && processedEventIds.includes(eventId)) {
-        console.log(`[onReviewChanged] Event ${eventId} was already processed for food ${foodId} — skipping to prevent double application`);
+        console.log("[onReviewChanged] Event already processed — skipping to prevent double application");
         return;
       }
 
@@ -1951,17 +2020,17 @@ async function updateFoodRatingStats(foodId, { removeRating, addRating }, eventI
       });
 
       console.log(
-        `[onReviewChanged] Updated stats for food ${foodId}: ` +
+        `[onReviewChanged] Updated stats: ` +
         `avg=${averageRating}, count=${reviewCount}, ` +
-        `remove=${removeRating ?? "-"}, add=${addRating ?? "-"}, eventId=${eventId ?? "-"}`
+        `remove=${removeRating ?? "-"}, add=${addRating ?? "-"}`
       );
     });
   } catch (err) {
     if (err instanceof PermanentValidationError) {
-      console.error(`[onReviewChanged] Permanent validation error for food ${foodId} — skipping permanently:`, err.message);
+      console.error("[onReviewChanged] Permanent validation error — skipping permanently:", err.message);
       return; // Do not rethrow for permanent errors
     }
-    console.error(`[onReviewChanged] Error updating stats for food ${foodId}:`, err);
+    console.error("[onReviewChanged] Error updating stats:", err);
     // Rethrow so transient transaction failures (e.g. contention) reject
     // the onReviewChanged handler and Cloud Functions retries the event.
     throw err;
@@ -1989,7 +2058,7 @@ exports.onReviewChanged = onDocumentWritten(
   async (event) => {
     if (!event.data) {
       console.log(
-        `[onReviewChanged] Review ${event.params.reviewId} has no event data — skipping`
+        `[onReviewChanged] Review has no event data — skipping`
       );
       return;
     }
@@ -2007,7 +2076,7 @@ exports.onReviewChanged = onDocumentWritten(
 
     if (!foodId) {
       console.log(
-        `[onReviewChanged] Review ${event.params.reviewId} has no foodId — skipping`
+        `[onReviewChanged] Review has no foodId — skipping`
       );
       return;
     }
@@ -2021,12 +2090,12 @@ exports.onReviewChanged = onDocumentWritten(
     if (!before && after) {
       if (after.deleted) {
         console.log(
-          `[onReviewChanged] Review ${event.params.reviewId} created as deleted — skipping`
+          `[onReviewChanged] Review created as deleted — skipping`
         );
         return;
       }
       console.log(
-        `[onReviewChanged] Review ${event.params.reviewId} CREATED for food ${foodId}, rating=${afterRating}`
+        `[onReviewChanged] Review CREATED, rating=${afterRating}`
       );
       await updateFoodRatingStats(foodId, {
         removeRating: null,
@@ -2039,12 +2108,12 @@ exports.onReviewChanged = onDocumentWritten(
     if (before && !after) {
       if (before.deleted || beforeRating == null) {
         console.log(
-          `[onReviewChanged] Review ${event.params.reviewId} hard-deleted, already soft-deleted or no rating — skipping`
+          `[onReviewChanged] Review hard-deleted, already soft-deleted or no rating — skipping`
         );
         return;
       }
       console.log(
-        `[onReviewChanged] Review ${event.params.reviewId} DELETED for food ${foodId}, rating=${beforeRating}`
+        `[onReviewChanged] Review DELETED, rating=${beforeRating}`
       );
       await updateFoodRatingStats(foodId, {
         removeRating: beforeRating,
@@ -2061,7 +2130,7 @@ exports.onReviewChanged = onDocumentWritten(
       // must not modify stats again.
       if (before.deleted && after.deleted) {
         console.log(
-          `[onReviewChanged] Review ${event.params.reviewId} already deleted — skipping`
+          `[onReviewChanged] Review already deleted — skipping`
         );
         return;
       }
@@ -2069,7 +2138,7 @@ exports.onReviewChanged = onDocumentWritten(
       // ── Sub-case 3a: Soft-delete toggle ────────────────────────────
       if (!before.deleted && after.deleted) {
         console.log(
-          `[onReviewChanged] Review ${event.params.reviewId} SOFT-DELETED for food ${foodId}, rating=${beforeRating}`
+          `[onReviewChanged] Review SOFT-DELETED, rating=${beforeRating}`
         );
         await updateFoodRatingStats(foodId, {
           removeRating: beforeRating,
@@ -2081,7 +2150,7 @@ exports.onReviewChanged = onDocumentWritten(
       // ── Sub-case 3b: Restore from soft-delete ──────────────────────
       if (before.deleted && !after.deleted) {
         console.log(
-          `[onReviewChanged] Review ${event.params.reviewId} RESTORED for food ${foodId}, rating=${afterRating}`
+          `[onReviewChanged] Review RESTORED, rating=${afterRating}`
         );
         await updateFoodRatingStats(foodId, {
           removeRating: null,
@@ -2093,7 +2162,7 @@ exports.onReviewChanged = onDocumentWritten(
       // ── Sub-case 3c: Rating change (edit) ─────────────────────────
       if (beforeRating !== afterRating) {
         console.log(
-          `[onReviewChanged] Review ${event.params.reviewId} UPDATED for food ${foodId}, ` +
+          `[onReviewChanged] Review UPDATED, ` +
           `rating ${beforeRating} → ${afterRating}`
         );
         await updateFoodRatingStats(foodId, {
@@ -2105,7 +2174,7 @@ exports.onReviewChanged = onDocumentWritten(
 
       // ── Sub-case 3d: Non-rating update (comment, tags, etc.) ───────
       console.log(
-        `[onReviewChanged] Review ${event.params.reviewId} updated metadata — no rating change`
+        `[onReviewChanged] Review updated metadata — no rating change`
       );
     }
   },
@@ -2187,7 +2256,7 @@ exports.migrateLegacyOrderFoodIds = functions
 
       const snapshot = await query.get();
       console.log(
-        `[migrateFoodIds] Phase '${phase}', cursor=${cursor || "(start)"}, ` +
+        `[migrateFoodIds] Phase '${phase}', ` +
         `found ${snapshot.size} order(s)`
       );
 
@@ -2222,7 +2291,7 @@ exports.migrateLegacyOrderFoodIds = functions
             failedOrderIds.push(doc.id);
           }
           console.error(
-            `[migrateFoodIds] Backfill failed for order ${doc.id} ` +
+            `[migrateFoodIds] Backfill failed ` +
             `after retries: ${err.message}`
           );
         }

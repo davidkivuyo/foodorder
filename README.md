@@ -10,6 +10,8 @@ This Project code changes must be reviewed by:
 * Qodo ai [qodo.ai](https://www.qodo.ai)
 * SonarCloud [sonarcloud.io](https://sonarcloud.io/project/overview?id=davidkivuyo_foodorder) 
 
+Scan the QR code to visit the web app
+![Qr code](designs/assets/qrcode.png "The Web app")
 ---
 
 ## Table of Contents
@@ -560,7 +562,7 @@ The student app uses `go_router` with authentication-aware redirects:
 - **Registration, Verification & Password Recovery** — Email/password authentication via Firebase Auth, complete with mandatory verification of email addresses before ordering and clean self-serve password recovery options.
 - **Your Favourites** — Personalized carousel of student's top favourite food items computed from order history.
 - **Reviews & Ratings** — Leave reviews for completed orders, view average food ratings, and view customer feedback.
-- **In-App Update System** — Automatic updates with resume-able downloads and SHA-256 checksum verification to guarantee authentic builds.
+- **In-App Update System** — Automatic updates with resume-able downloads and SHA-256 checksum verification to guarantee authentic builds*.
 - **Browse Menu** — Real-time Firestore stream of available food items sorted by category.
 - **Categories** — Quick navigation to browse food items by categories (e.g. Breakfast, Lunch, Dinner, Teasers, Drinks).
 - **Search** — Fast, prefix-based Firestore search with 300ms debounce and in-memory caching.
