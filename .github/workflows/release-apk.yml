@@ -1,0 +1,254 @@
+name: Build & Publish Release APKs
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    env:
+      BUILD_NUMBER: ${{ github.run_number }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install Dependencies
+        run: flutter pub get --enforce-lockfile
+
+      # Decode Android Keystore
+
+      - name: Decode Android Keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 --decode > android/app/release.jks
+
+      # Extract Version
+
+      - name: Extract Version
+        id: version
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+
+
+      # Build Universal APK
+
+
+      - name: Build Universal APK
+        env:
+          KEYSTORE_PATH: release.jks
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          flutter build apk \
+            --release \
+            --obfuscate \
+            --split-debug-info=build/debug-info \
+            --build-name=${{ steps.version.outputs.VERSION }} \
+            --build-number=${{ env.BUILD_NUMBER }}
+
+
+      # Build Split APKs
+
+
+      - name: Build Split APKs
+        env:
+          KEYSTORE_PATH: release.jks
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          flutter build apk \
+            --release \
+            --split-per-abi \
+            --obfuscate \
+            --split-debug-info=build/debug-info \
+            --build-name=${{ steps.version.outputs.VERSION }} \
+            --build-number=${{ env.BUILD_NUMBER }}
+
+
+      # Organize Release Files
+
+
+      - name: Organize Release Files
+        run: |
+          mkdir -p release
+
+          cp build/app/outputs/flutter-apk/app-release.apk \
+            release/CampusBite-universal.apk
+
+          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk \
+            release/CampusBite-arm64-v8a.apk
+
+          cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk \
+            release/CampusBite-armeabi-v7a.apk
+
+          cp build/app/outputs/flutter-apk/app-x86_64-release.apk \
+            release/CampusBite-x86_64.apk
+
+
+      # Generate SHA256 Checksums
+
+
+      - name: Generate SHA256 Checksums
+        run: |
+          cd release
+
+          sha256sum CampusBite-universal.apk > CampusBite-universal.apk.sha256
+          sha256sum CampusBite-arm64-v8a.apk > CampusBite-arm64-v8a.apk.sha256
+          sha256sum CampusBite-armeabi-v7a.apk > CampusBite-armeabi-v7a.apk.sha256
+          sha256sum CampusBite-x86_64.apk > CampusBite-x86_64.apk.sha256
+
+
+     # Generate release.json from template
+
+
+      - name: Generate release.json from template
+        env:
+          VERSION: ${{ steps.version.outputs.VERSION }}
+          REPOSITORY: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          # envsubst ships in gettext-base; ubuntu-latest has it, but
+          # this guards against runner image changes
+          command -v envsubst >/dev/null || sudo apt-get update && sudo apt-get install -y gettext-base
+          envsubst '${VERSION} ${REPOSITORY} ${TAG}' \
+            < .github/release-template.json \
+            > release/release.json
+
+          # sanity check the output is valid JSON before publishing
+          python3 -m json.tool release/release.json > /dev/null
+
+      # Validate release.json URLs
+
+      # Every URL in release.json must point at the dl.larason.space proxy
+      # (either already rewritten, or a raw GitHub releases/download URL that
+      # the Worker will rewrite). Anything else would cause the Worker to
+      # fail closed with a 502 — better to catch it here in CI.
+
+      - name: Validate release.json URLs
+        run: |
+          python3 - <<'EOF'
+          import json
+          import re
+          import sys
+          from urllib.parse import urlparse
+
+          ALLOWED_HOST = "dl.larason.space"
+
+          with open("release/release.json") as f:
+              data = json.load(f)
+
+          # Raw GitHub download URLs are allowed: the Worker rewrites them.
+          GITHUB_DOWNLOAD = re.compile(
+              r"^https://github\.com/[^/]+/[^/]+/releases/download/[^/]+/"
+          )
+
+          def check_url(url, path):
+              # Match schemes case-insensitively: the Worker treats HTTPS:// and
+              # https:// alike, so the validator must not skip either.
+              if not re.match(r"^https?://", url, re.I):
+                  return
+              if GITHUB_DOWNLOAD.match(url):
+                  return
+              parsed = urlparse(url)
+              if parsed.scheme != "https" or parsed.hostname != ALLOWED_HOST:
+                  # Redact the query string, fragment, and any embedded userinfo
+                  # so credentials or tokens in a URL never leak into CI logs.
+                  netloc = parsed.hostname or ""
+                  if parsed.port:
+                      netloc += f":{parsed.port}"
+                  redacted = f"{parsed.scheme}://{netloc}{parsed.path}"
+                  print(
+                      f"ERROR: disallowed URL at {path}: {redacted}",
+                      file=sys.stderr,
+                  )
+                  sys.exit(1)
+
+          def walk(obj, path):
+              if isinstance(obj, str):
+                  check_url(obj, path)
+              elif isinstance(obj, list):
+                  for i, item in enumerate(obj):
+                      walk(item, f"{path}[{i}]")
+              elif isinstance(obj, dict):
+                  for key, value in obj.items():
+                      walk(value, f"{path}.{key}")
+
+          walk(data, "$")
+          print("release.json URL check passed")
+          EOF
+
+
+      # Verify Release Files
+
+
+      - name: Verify Release Files
+        run: |
+          ls -lh release
+
+
+      # Create GitHub Release
+
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: false
+          prerelease: false
+          body_path: .github/release-notes.md
+
+          files: |
+            release/CampusBite-universal.apk
+            release/CampusBite-arm64-v8a.apk
+            release/CampusBite-armeabi-v7a.apk
+            release/CampusBite-x86_64.apk
+            release/CampusBite-universal.apk.sha256
+            release/CampusBite-arm64-v8a.apk.sha256
+            release/CampusBite-armeabi-v7a.apk.sha256
+            release/CampusBite-x86_64.apk.sha256
+            release/release.json
+
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+
+    # Deploy Cloudflare Worker Proxy
+
+      - name: Deploy Cloudflare Worker
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: cloudflare-worker
+          command: deploy
+
+      # Cleanup
+
+
+      - name: Cleanup
+        if: always()
+        run: |
+          rm -f android/app/release.jks

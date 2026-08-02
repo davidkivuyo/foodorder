@@ -1,20 +1,158 @@
+// Copyright 2026 davidkivuyo, johnsonmushi, edwinkessy276-art, jugraki-art.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../services/app_log.dart';
 import '../services/cart_service.dart';
+import '../services/pickup_window_service.dart';
 
-class CartBottomSheet extends StatelessWidget {
+class CartBottomSheet extends StatefulWidget {
   final VoidCallback onOrderPlaced;
 
   const CartBottomSheet({super.key, required this.onOrderPlaced});
 
   @override
-  Widget build(BuildContext context) {
-    final cartService = CartService();
+  State<CartBottomSheet> createState() => _CartBottomSheetState();
+}
 
+class _CartBottomSheetState extends State<CartBottomSheet> {
+  final CartService _cartService = CartService();
+  bool? _isSuspended;
+
+  /// Per-document listeners keyed by food item ID — only listens to
+  /// items currently in the cart, not the entire collection.
+  final Map<String, StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>>
+  _foodItemListeners = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _cartService.addListener(_onCartChanged);
+    _loadSuspensionStatus();
+    _refreshAvailability();
+    _reconcileFoodItemSubscriptions();
+  }
+
+  @override
+  void dispose() {
+    _cartService.removeListener(_onCartChanged);
+    _cancelAllFoodItemListeners();
+    super.dispose();
+  }
+
+  /// Called whenever CartService notifies listeners (cart contents changed).
+  /// Keeps per-document subscriptions in sync with the current cart items.
+  void _onCartChanged() {
+    _reconcileFoodItemSubscriptions();
+  }
+
+  /// Cancel all active per-document listeners.
+  void _cancelAllFoodItemListeners() {
+    for (final sub in _foodItemListeners.values) {
+      sub.cancel();
+    }
+    _foodItemListeners.clear();
+  }
+
+  /// Reconcile active subscriptions with the current cart item IDs.
+  ///
+  /// Cancels listeners for items removed from the cart and adds
+  /// listeners for new items, without re-subscribing to existing ones.
+  void _reconcileFoodItemSubscriptions() {
+    final cartItems = _cartService.cartItems;
+    final wantedIds = cartItems.map((item) => item.foodItem.id).toSet();
+
+    // Remove listeners for items no longer in the cart.
+    _foodItemListeners.removeWhere((id, sub) {
+      if (!wantedIds.contains(id)) {
+        sub.cancel();
+        return true;
+      }
+      return false;
+    });
+
+    // Add listeners for new cart items.
+    for (final id in wantedIds) {
+      if (_foodItemListeners.containsKey(id)) continue;
+
+      final sub = FirebaseFirestore.instance
+          .collection('food_items')
+          .doc(id)
+          .snapshots()
+          .listen((snapshot) {
+            _onFoodItemChanged(snapshot);
+          });
+      _foodItemListeners[id] = sub;
+    }
+  }
+
+  /// Handle a single food-item document snapshot — update availability
+  /// in-place for the matching cart item, if it changed.
+  void _onFoodItemChanged(DocumentSnapshot<Map<String, dynamic>> snapshot) {
+    if (!mounted || !snapshot.exists) return;
+
+    final data = snapshot.data();
+    if (data == null) return;
+
+    final newAvailable = data['available'] as bool? ?? true;
+    final docId = snapshot.id;
+
+    final cartItems = _cartService.cartItems;
+    final idx = cartItems.indexWhere((item) => item.foodItem.id == docId);
+    if (idx < 0) return;
+
+    final item = cartItems[idx];
+    if (item.foodItem.available != newAvailable) {
+      item.foodItem.available = newAvailable;
+      if (mounted) setState(() {});
+    }
+  }
+
+  Future<void> _refreshAvailability() async {
+    await _cartService.refreshCartItemAvailability();
+    if (mounted) setState(() {});
+  }
+
+  /// Remove all out-of-stock items from the cart in batch.
+  Future<void> _removeOutOfStockItems() async {
+    for (final item in _cartService.outOfStockItems) {                      await _cartService.deleteFromCart(
+                        item.foodItem,
+                        selectedCafe: item.selectedCafe,
+                      );
+    }
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  Future<void> _loadSuspensionStatus() async {
+    final suspended = await _cartService.isAccountSuspended();
+    if (mounted) {
+      setState(() => _isSuspended = suspended);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: cartService,
+      listenable: _cartService,
       builder: (context, child) {
-        final items = cartService.cartItems;
+        final items = _cartService.cartItems;
 
         if (items.isEmpty) {
           return SizedBox(
@@ -63,21 +201,190 @@ class CartBottomSheet extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Suspension Banner — shown when the account is suspended
+              if (_isSuspended == true) ...[
+                const SizedBox(height: 4),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.red.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.red.shade200),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: Colors.red.shade100,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Icon(
+                          Icons.block,
+                          size: 18,
+                          color: Colors.red.shade700,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'Account Suspended',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.red.shade800,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'You cannot place orders at this time.',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.red.shade700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+              ],
+
+              // Out-of-Stock Warning Banner — shown when some cart items
+              // are no longer available (admin marked them unavailable).
+              if (_cartService.hasOutOfStockItems) ...[
+                const SizedBox(height: 4),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.orange.shade300),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              color: Colors.orange.shade100,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Icon(
+                              Icons.warning_amber_rounded,
+                              size: 18,
+                              color: Colors.orange.shade800,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Text(
+                            'Some items are unavailable',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.orange.shade900,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      ..._cartService.outOfStockItems.map(
+                        (item) => Padding(
+                          padding: const EdgeInsets.only(left: 34, top: 2),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.block,
+                                size: 14,
+                                color: Colors.orange.shade700,
+                              ),
+                              const SizedBox(width: 6),
+                              Flexible(
+                                child: Text(
+                                  '${item.foodItem.title} ×${item.quantity} — removed from stock',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.orange.shade800,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: _removeOutOfStockItems,
+                          icon: const Icon(
+                            Icons.remove_circle_outline,
+                            size: 16,
+                          ),
+                          label: const Text('Remove unavailable items'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.orange.shade800,
+                            side: BorderSide(color: Colors.orange.shade300),
+                            backgroundColor: Colors.orange.shade50,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            textStyle: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+              ],
+
               // Header
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    'My Cart (${cartService.totalItemsCount} items)',
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black,
+                  Flexible(
+                    child: Text(
+                      'My Cart (${_cartService.totalItemsCount} items)',
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                   TextButton.icon(
                     onPressed: () {
-                      cartService.clearCart();
+                      _cartService.clearCart();
                     },
                     icon: const Icon(
                       CupertinoIcons.trash,
@@ -108,8 +415,7 @@ class CartBottomSheet extends StatelessWidget {
                           // Food Image
                           ClipRRect(
                             borderRadius: BorderRadius.circular(12),
-                            child: Image.asset(
-                              item.foodItem.image,
+                            child: item.foodItem.buildImage(
                               width: 60,
                               height: 60,
                               fit: BoxFit.cover,
@@ -132,12 +438,26 @@ class CartBottomSheet extends StatelessWidget {
                                   overflow: TextOverflow.ellipsis,
                                 ),
                                 const SizedBox(height: 2),
-                                Text(
-                                  'Cafe ${item.foodItem.cafe}',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey[600],
-                                  ),
+                                Row(
+                                  children: [
+                                    Icon(
+                                      Icons.storefront_outlined,
+                                      size: 14,
+                                      color: Colors.grey.shade400,
+                                    ),
+                                    const SizedBox(width: 2),
+                                    Flexible(
+                                      child: Text(
+                                        item.displayCafe,
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.grey[600],
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
@@ -147,17 +467,23 @@ class CartBottomSheet extends StatelessWidget {
                                     fontWeight: FontWeight.bold,
                                     color: Colors.orange,
                                   ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ],
                             ),
                           ),
 
                           // Quantity Controls & Delete Button
+                          // Quantity Controls & Delete Button
                           Row(
                             children: [
                               GestureDetector(
                                 onTap: () {
-                                  cartService.removeFromCart(item.foodItem);
+                                  _cartService.removeFromCart(
+                                    item.foodItem,
+                                    selectedCafe: item.selectedCafe,
+                                  );
                                 },
                                 child: Container(
                                   padding: const EdgeInsets.all(4),
@@ -185,8 +511,22 @@ class CartBottomSheet extends StatelessWidget {
                                 ),
                               ),
                               GestureDetector(
-                                onTap: () {
-                                  cartService.addToCart(item.foodItem);
+                                onTap: () async {
+                                  final success = await _cartService.addToCart(
+                                    item.foodItem,
+                                    selectedCafe: item.selectedCafe,
+                                  );
+                                  if (!success && context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text(
+                                          'Failed to add item. Please try again.',
+                                        ),
+                                        backgroundColor: Colors.red,
+                                        duration: Duration(seconds: 2),
+                                      ),
+                                    );
+                                  }
                                 },
                                 child: Container(
                                   padding: const EdgeInsets.all(4),
@@ -204,7 +544,10 @@ class CartBottomSheet extends StatelessWidget {
                               const SizedBox(width: 8),
                               IconButton(
                                 onPressed: () {
-                                  cartService.deleteFromCart(item.foodItem);
+                                  _cartService.deleteFromCart(
+                                    item.foodItem,
+                                    selectedCafe: item.selectedCafe,
+                                  );
                                 },
                                 icon: const Icon(
                                   CupertinoIcons.delete_simple,
@@ -233,11 +576,15 @@ class CartBottomSheet extends StatelessWidget {
                     'Subtotal',
                     style: TextStyle(fontSize: 14, color: Colors.grey),
                   ),
-                  Text(
-                    'Tsh ${cartService.totalAmount.toInt()}',
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
+                  Flexible(
+                    child: Text(
+                      'Tsh ${_cartService.totalAmount.toInt()}',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                 ],
@@ -268,60 +615,294 @@ class CartBottomSheet extends StatelessWidget {
                     'Total Amount',
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
-                  Text(
-                    'Tsh ${cartService.totalAmount.toInt()}',
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.orange,
+                  Flexible(
+                    child: Text(
+                      'Tsh ${_cartService.totalAmount.toInt()}',
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.orange,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 20),
-
-              // Place Order Button
+              const SizedBox(
+                height: 20,
+              ), // Place Order Button — disabled when account is suspended
               SizedBox(
                 width: double.infinity,
                 height: 50,
                 child: ElevatedButton(
-                  onPressed: () {
-                    // Place the order
-                    cartService.placeOrder();
+                  onPressed:
+                      _isSuspended == true || _cartService.hasOutOfStockItems
+                      ? null
+                      : () async {
+                          // Revalidate availability immediately
+                          // before the order action in case the
+                          // live subscription hasn't caught up.
+                          await _cartService.refreshCartItemAvailability();
+                          if (!context.mounted) return;
 
-                    // Close Bottom Sheet
-                    Navigator.pop(context);
+                          // If items went out of stock since the
+                          // button was enabled, bail out.
+                          if (_cartService.hasOutOfStockItems) {
+                            if (mounted) setState(() {});
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: const Row(
+                                  children: [
+                                    Icon(
+                                      Icons.warning_amber_rounded,
+                                      color: Colors.white,
+                                      size: 20,
+                                    ),
+                                    SizedBox(width: 10),
+                                    Expanded(
+                                      child: Text(
+                                        'Some items are no longer '
+                                        'available. Please remove '
+                                        'them to place your order.',
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                backgroundColor: Colors.orange.shade800,
+                                behavior: SnackBarBehavior.floating,
+                                duration: const Duration(seconds: 5),
+                              ),
+                            );
+                            return;
+                          }
 
-                    // Show dynamic feedback
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Row(
-                          children: const [
-                            Icon(Icons.check_circle, color: Colors.white),
-                            SizedBox(width: 8),
-                            Text('Order placed successfully!.'),
-                          ],
-                        ),
-                        backgroundColor: Colors.green[800],
-                        duration: const Duration(seconds: 4),
-                      ),
-                    );
+                          // First check if the account is suspended
+                          final suspended = await _cartService
+                              .isAccountSuspended();
+                          if (!context.mounted) return;
 
-                    // Callback to switch to order tracking screen
-                    onOrderPlaced();
-                  },
+                          if (suspended) {
+                            setState(() => _isSuspended = true);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: const Row(
+                                  children: [
+                                    Icon(
+                                      Icons.block,
+                                      color: Colors.white,
+                                      size: 20,
+                                    ),
+                                    SizedBox(width: 10),
+                                    Expanded(
+                                      child: Text(
+                                        'Your account is suspended. '
+                                        'You cannot place orders at this time.',
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                backgroundColor: Colors.red.shade800,
+                                behavior: SnackBarBehavior.floating,
+                                duration: const Duration(seconds: 5),
+                              ),
+                            );
+                            return;
+                          }
+
+                          // ── Phase 5: Distance-aware pickup window ──
+                          // Location is requested ONLY after the student
+                          // presses "Place Order".
+                          LocationPermission permission;
+                          Position? position;
+                          int pickupWindowMinutes = 20;
+                          double? distanceMeters;
+                          GeoPoint? cafeLocation;
+                          String? cafeId;
+
+                          try {
+                            permission = await Geolocator.checkPermission();
+                            if (permission == LocationPermission.denied) {
+                              permission = await Geolocator.requestPermission();
+                            }
+
+                            if (permission == LocationPermission.whileInUse ||
+                                permission == LocationPermission.always) {
+                              position = await Geolocator.getCurrentPosition(
+                                desiredAccuracy: LocationAccuracy.high,
+                              );
+
+                              // Look up the selected cafe's GeoPoint
+                              // from the cafes collection.
+                              // Use the first cart item's cafe.
+                              final firstItem =
+                                  _cartService.cartItems.firstOrNull;
+                              final cafeName =
+                                  firstItem?.selectedCafe ??
+                                  firstItem
+                                      ?.foodItem
+                                      .availableCafes
+                                      .firstOrNull;
+
+                              if (cafeName != null && cafeName.isNotEmpty) {
+                                final cafeQuery = await FirebaseFirestore
+                                    .instance
+                                    .collection('cafes')
+                                    .where('name', isEqualTo: cafeName)
+                                    .limit(1)
+                                    .get();
+
+                                if (cafeQuery.docs.isNotEmpty) {
+                                  final cafeData = cafeQuery.docs.first.data();
+                                  cafeLocation =
+                                      cafeData['geoLocation'] as GeoPoint?;
+                                  cafeId = cafeQuery.docs.first.id;
+                                }
+                              }
+
+                              if (cafeLocation != null) {
+                                distanceMeters =
+                                    PickupWindowService.calculateDistance(
+                                      startLatitude: position.latitude,
+                                      startLongitude: position.longitude,
+                                      endLatitude: cafeLocation.latitude,
+                                      endLongitude: cafeLocation.longitude,
+                                    );
+                                pickupWindowMinutes =
+                                    PickupWindowService.calculatePickupWindow(
+                                      distanceMeters,
+                                    );
+                              }
+                            }
+                          } catch (e) {
+                            // Location unavailable — fall back to default 20 min
+                            AppLog.e('[CartSheet] Location error', e);
+                          }
+                          // ── End Phase 5 ──
+
+                          if (!context.mounted) return;
+
+                          // Capture navigator reference BEFORE the async gap
+                          // so the loading dialog can be dismissed even if
+                          // the widget becomes unmounted.
+                          Navigator.of(context);
+
+                          // Show loading indicator
+                          showDialog(
+                            context: context,
+                            barrierDismissible: false,
+                            builder: (_) => const Center(
+                              child: CircularProgressIndicator(),
+                            ),
+                          );
+
+                          // Clear sensitive location data from memory
+                          // immediately after use — never persisted.
+                          position = null;
+
+                          // Place the order with distance data only
+                          final orderId = await _cartService.placeOrder(
+                            cafeLocation: cafeLocation,
+                            cafeId: cafeId,
+                            distanceMeters: distanceMeters,
+                            pickupWindowMinutes: pickupWindowMinutes,
+                          );
+
+                          // Dismiss the loading dialog safely
+                          if (context.mounted) {
+                            Navigator.of(context, rootNavigator: true).pop();
+                          }
+
+                          if (orderId != null) {
+                            // Dismiss the bottom sheet ONLY if it was opened as a modal route (mobile)
+                            // and NOT when embedded in the main desktop screen layout.
+                            if (context.mounted &&
+                                ModalRoute.of(context) is! PageRoute) {
+                              Navigator.of(context).maybePop();
+                            }
+
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Row(
+                                  children: const [
+                                    Icon(
+                                      Icons.check_circle,
+                                      color: Colors.white,
+                                    ),
+                                    SizedBox(width: 8),
+                                    Flexible(
+                                      child: Text(
+                                        'Order placed successfully!',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                backgroundColor: Colors.green[800],
+                                duration: const Duration(seconds: 4),
+                              ),
+                            );
+
+                            // Callback to switch to order tracking screen
+                            widget.onOrderPlaced();
+                          } else {
+                            // Failure: keep the bottom sheet visible so the
+                            // user can retry.  Only dismiss the loading dialog
+                            // (already popped above).
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: const Text(
+                                  'Failed to place order. Please try again.',
+                                ),
+                                backgroundColor: Colors.red,
+                                duration: const Duration(seconds: 4),
+                              ),
+                            );
+                          }
+                        },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.orange,
-                    foregroundColor: Colors.white,
+                    backgroundColor: _isSuspended == true
+                        ? Colors.grey.shade300
+                        : Colors.orange,
+                    foregroundColor: _isSuspended == true
+                        ? Colors.grey.shade500
+                        : Colors.white,
+                    disabledBackgroundColor: Colors.grey.shade300,
+                    disabledForegroundColor: Colors.grey.shade500,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
                     elevation: 0,
                   ),
-                  child: const Text(
-                    'Place Order & Notify Cafe',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
+                  child: _isSuspended == true
+                      ? Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.block,
+                              size: 18,
+                              color: Colors.grey.shade500,
+                            ),
+                            const SizedBox(width: 8),
+                            const Text(
+                              'Orders Disabled',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        )
+                      : const Text(
+                          'Place Order & Notify Cafe',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                 ),
               ),
             ],

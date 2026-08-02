@@ -1,0 +1,136 @@
+stages:
+  - build
+  - package
+  - release
+
+image: ghcr.io/cirruslabs/flutter:stable
+
+variables:
+  GRADLE_OPTS: "-Dorg.gradle.daemon=false"
+  FLUTTER_VERSION: "3.44.6"
+
+cache:
+  key: "$CI_COMMIT_REF_SLUG"
+  paths:
+    - .pub-cache/
+    - android/.gradle/
+    - .fvm/
+
+build_apk:
+  stage: build
+
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v/
+
+  before_script:
+    - dart pub global activate fvm
+    - export PATH="$PATH:$HOME/.pub-cache/bin"
+
+    - fvm install $FLUTTER_VERSION
+    - fvm use $FLUTTER_VERSION --force
+
+    - fvm flutter --version
+    - fvm flutter config --no-analytics
+
+    # Decode Android signing keystore
+    - echo "$KEYSTORE_BASE64" | base64 -d > android/app/release.jks
+
+    # Signing variables
+    - export KEYSTORE_PATH="$CI_PROJECT_DIR/android/app/release.jks"
+    - export KEYSTORE_PASSWORD="$KEYSTORE_STORE_PASSWORD"
+    - export KEY_ALIAS="$KEYSTORE_KEY_ALIAS"
+    - export KEY_PASSWORD="$KEYSTORE_KEY_PASSWORD"
+
+  script:
+    - VERSION=${CI_COMMIT_TAG#v}
+
+    - fvm flutter pub get --enforce-lockfile
+
+    - |
+      fvm flutter build apk \
+        --release \
+        --split-per-abi \
+        --build-name=$VERSION \
+        --build-number=$CI_PIPELINE_IID \
+        --obfuscate \
+        --split-debug-info=build/debug-info
+
+  after_script:
+    - rm -f android/app/release.jks
+
+  artifacts:
+    name: "CampusBite-$CI_COMMIT_TAG"
+    paths:
+      - build/app/outputs/flutter-apk/
+      - build/debug-info/
+
+package_apk:
+  stage: package
+
+  image: curlimages/curl:latest
+
+  needs:
+    - build_apk
+
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v/
+
+  script:
+    - |
+      for apk in build/app/outputs/flutter-apk/*.apk; do
+        filename=$(basename "$apk")
+
+        echo "Uploading $filename..."
+
+        curl \
+          --fail \
+          --header "JOB-TOKEN: $CI_JOB_TOKEN" \
+          --upload-file "$apk" \
+          "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/campus-bite/${CI_COMMIT_TAG}/${filename}"
+      done
+
+create_release:
+  stage: release
+
+  image: registry.gitlab.com/gitlab-org/release-cli:latest
+
+  needs:
+    - package_apk
+
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v/
+
+  script:
+    - echo "Creating GitLab Release..."
+
+  release:
+    tag_name: "$CI_COMMIT_TAG"
+
+    name: "Campus Bite $CI_COMMIT_TAG"
+
+    description: |
+      ## Campus Bite
+
+      ### Release $CI_COMMIT_TAG
+
+      Automatically built using GitLab CI/CD.
+
+      #### Available APKs
+
+      - ARM64 (Most Android phones)
+      - ARMv7 (Older Android phones)
+      - x86_64 (Emulators and Intel devices)
+
+    assets:
+      links:
+        - name: "App release apk (ARM64-v8a)"
+          url: "${CI_SERVER_URL}/api/v4/projects/${CI_PROJECT_ID}/packages/generic/campus-bite/${CI_COMMIT_TAG}/app-arm64-v8a-release.apk"
+          link_type: package
+
+        - name: "App release apk (ARMv7)"
+          url: "${CI_SERVER_URL}/api/v4/projects/${CI_PROJECT_ID}/packages/generic/campus-bite/${CI_COMMIT_TAG}/app-armeabi-v7a-release.apk"
+          link_type: package
+
+        - name: "App release apk (x86_64)"
+          url: "${CI_SERVER_URL}/api/v4/projects/${CI_PROJECT_ID}/packages/generic/campus-bite/${CI_COMMIT_TAG}/app-x86_64-release.apk"
+          link_type: package

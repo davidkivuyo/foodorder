@@ -16,7 +16,7 @@ This application will eventually use Firebase for authentication and data storag
 
 ---
 
-# Product Vision (Future Features)
+# Product Vision
 
 The completed system may include:
 
@@ -29,6 +29,7 @@ Student Features
 * Place orders
 * View order history
 * Account management
+* Reviews
 
 Cafe Admin Features
 
@@ -51,6 +52,7 @@ Backend
 * Firebase Authentication
 * Cloud Firestore
 * Firebase Storage
+* firebase notifications
 
 These features are future phases and must not be implemented unless activated.
 
@@ -78,6 +80,8 @@ Implement only the active phase.
 
 Do not implement future phases.
 
+All changes made are must be **production ready** hence solve any security and performance issues arise during development.
+
 ---
 
 ## Rule 2
@@ -100,11 +104,13 @@ Use simple Flutter architecture.
 Preferred structure:
 
 lib/
+├── data/
 ├── screens/
 ├── widgets/
 ├── models/
 ├── services/
 ├── navigation/
+├── repositories/
 
 Avoid unnecessary complexity.
 
@@ -126,71 +132,217 @@ After completing a feature:
 
 * Verify build succeeds.
 * Verify navigation works.
-* Verify existing features still work.
+* Verify all features still work.
 
 ---
 
 # Current Phase
 
-PHASE 1
+PHASE 14
 
-Goal:
+# TASK
 
-add and update **click to view the full list** on home screen food cards
+Implement the CampusBite seamless in-app update system end to end: the
+Cloudflare Worker metadata/download service, and the Flutter client that
+consumes it.
 
-Requirements:
+This implementation must be production-ready.
 
-* enable user to click the forward arrow iconbutton and view the extended list of food items from the horizontal row of cards
-* in the CategoriesTitles screen instead of using flutter's default back iconbutton navigation use close Iconbutton its the appbar
-* on the appbar make sure the title is the same as in the homescreen horizontal list cards sections
-* in the CategoriesTitles screen, the food cards should be layed out vetically like in the categories_screen.dart file inside screens folder
+## Non-negotiable constraints
 
-Restrictions:
+- The app is NOT distributed through Google Play.
+- Release artifacts live on GitHub Releases (build + storage only).
+- `https://dl.larason.space` (Cloudflare Worker) is the ONLY endpoint the
+  Flutter app is allowed to call for update-related data.
+- The Flutter app must contain zero references to `github.com`,
+  `api.github.com`, or any GitHub org/repo name, in code or config.
+- If you find a direct GitHub reference anywhere in `lib/`, that is a bug —
+  fix it, don't leave it.
 
-* No Firebase
-* No authentication
-* No registration
-* No database
-* No admin functionality
+---
+
+# WORKER RESPONSIBILITIES
+
+The Worker is the only thing allowed to know GitHub exists. It must:
+
+1. Resolve "latest" by calling the GitHub Releases API server-side.
+2. Fetch that release's `release.json` asset server-side.
+3. Rewrite every URL inside that JSON so it points at
+   `dl.larason.space/{tag}/{filename}` instead of `github.com/...`.
+4. Cache the rewritten JSON at the edge (do not call GitHub on every request).
+5. Proxy-stream the actual APK/checksum bytes from GitHub when a rewritten
+   URL is requested, with long-lived immutable caching (tags are immutable).
+6. Serve arbitrary past tags via a versioned route, not just "latest," so
+   rollback and staged rollout are possible without a redeploy.
+
+## Routes
+
+| Route | Purpose | Cache |
+|---|---|---|
+| `GET /latest` | Metadata for the current default release | 5 min edge TTL |
+| `GET /release/{tag}` | Metadata for a specific past release (rollback, channels) | Immutable |
+| `GET /{tag}/{filename}` | Proxies the actual `.apk` / `.sha256` bytes | Immutable |
+
+`/latest` and `/release/{tag}` must return the same JSON *shape* — the
+only difference is which tag they resolve.
+
+---
+
+# METADATA ENDPOINT CONTRACT
+
+`GET https://dl.larason.space/latest` returns:
+
+```json
+{
+  "version": "...",
+  "minimumVersion": "...",
+  "forceUpdate": false,
+  "releaseNotes": "...",
+  "downloads": {
+    "universal": "https://dl.larason.space/v1.4.2/CampusBite-universal.apk",
+    "arm64-v8a": "https://dl.larason.space/v1.4.2/CampusBite-arm64-v8a.apk",
+    "armeabi-v7a": "https://dl.larason.space/v1.4.2/CampusBite-armeabi-v7a.apk",
+    "x86_64": "https://dl.larason.space/v1.4.2/CampusBite-x86_64.apk"
+  },
+  "checksums": {
+    "universal": "https://dl.larason.space/v1.4.2/CampusBite-universal.apk.sha256",
+    ...
+  }
+}
+```
+
+Rules:
+- Every URL in the response MUST be a `dl.larason.space` URL. No exceptions.
+- Unknown/future top-level fields (e.g. `channel`, `rolloutPercentage`) must
+  be passed through untouched, not stripped — the client ignores fields it
+  doesn't recognize, so the Worker doesn't need an allowlist.
+- If GitHub is unreachable, return the last good cached response with a
+  `stale: true` field rather than an error, when a cached copy exists.
+
+---
+
+# FLUTTER CLIENT REQUIREMENTS
+
+## Version check cadence
+- On app startup (once), and
+- On a 12-hour interval while the app is installed (WorkManager /
+  background task — not "every launch").
+- Never call the endpoint more than once per cache-validity window;
+  respect a locally stored cache with its own TTL independent of the
+  Worker's edge cache.
+
+## ABI selection
+- Detect device ABI via platform channel, pick the matching download URL.
+- Fall back to `universal` if the device ABI isn't in the supported list.
+- Never prompt the user to choose an architecture.
+
+## Download
+- Stream to app-private storage with progress, size, and ETA shown.
+- Support pause/resume if the underlying download plugin does.
+- Continue in background where the OS allows; resume gracefully if killed.
+- Retry action on failure, capped attempts before surfacing a clear error.
+
+## Integrity
+- Fetch the checksum URL for the matching ABI, compute SHA-256 of the
+  downloaded file, compare before allowing install.
+- On mismatch: delete the file, do not offer install, surface a "couldn't
+  verify" retry state.
+
+## Install
+- FileProvider + `ACTION_VIEW` with
+  `application/vnd.android.package-archive`.
+- Handle `REQUEST_INSTALL_PACKAGES` permission flow gracefully if not
+  already granted.
+
+## Update types
+- `forceUpdate: true` OR local version `< minimumVersion` → mandatory,
+  blocking screen, no dismiss, no app usage until updated.
+- Otherwise optional → dismissible prompt, "Update now" / "Later".
+
+## UX copy
+- User-facing strings only: "New version available", "Downloading
+  update…", "Installing update…", "Update completed."
+- Never surface ABI names, GitHub, Cloudflare, filenames, or raw JSON.
+  Release notes render through a markdown widget, not a raw text dump.
+
+## Resilience
+- Any network failure in the update check path is silently swallowed
+  (debug-log only) and the app continues normally on the current version.
+
+## Storage hygiene
+- Delete a previously downloaded installer once install succeeds or once
+  superseded by a newer downloaded version. Never cache APK bytes
+  indefinitely.
+
+---
+
+# SECURITY
+
+- Reject any download URL that isn't `https://dl.larason.space/...` —
+  hardcode the allowed host, don't just check the scheme.
+- Never construct or accept a download URL from anywhere other than the
+  `/latest` (or `/release/{tag}`) response body.
+
+---
+
+# LOGGING
+
+- Debug builds only.
+- Never log: full download URLs (log tag/filename only if needed), device
+  identifiers, or any user/auth data.
+
+---
+
+# SCOPE
+
+Files you are expected to touch:
+- `cloudflare-worker/src/index.js`
+- `lib/services/update_service.dart` (or equivalent — create if absent)
+- `lib/widgets/update_*.dart` (new update UI)
+- `.github/workflows/release-apk.yml` only if the metadata contract above
+  requires a workflow change
+
+Do not modify unrelated screens, features, or CI jobs.
+
+---
+
+# DELIVERABLES
+
+1. Files created / modified (full list).
+2. Architecture diagram (text is fine) showing Flutter → Worker → GitHub.
+3. Download flow (sequence of calls).
+4. Installation flow.
+5. Cache strategy (edge TTL vs local client TTL, explicitly stated).
+6. Security measures taken.
+7. Manual testing checklist (use the one below, add any you find missing).
+
+---
+
+# MANUAL TESTING CHECKLIST
+
+- [ ] App detects a new release
+- [ ] No update prompt when already current
+- [ ] Optional update is dismissible and re-prompts later
+- [ ] Mandatory update fully blocks app usage until updated
+- [ ] Correct ABI APK selected automatically, no user prompt
+- [ ] Universal APK used when ABI unsupported
+- [ ] Download progress, size, ETA all render
+- [ ] Pause/resume works if plugin supports it
+- [ ] Install prompt appears after successful verification
+- [ ] Checksum mismatch blocks install and offers retry
+- [ ] Network failure during check doesn't block app usage
+- [ ] Second check within cache TTL makes zero network calls
+- [ ] `grep -r "github.com" lib/` returns nothing
+- [ ] `/release/{old-tag}` on the Worker still serves an older version
+- [ ] Manually corrupt/replace release.json with a non-dl.larason.space URL 
+      and confirm the Worker returns 502, not the bad URL
 
 ---
 
 # Phase Completion Criteria
 
-Phase 1 is complete when:
+Phase 14 is complete when:
 
+* the new features works well with past features.
 * App runs successfully.
 * No runtime errors occur.
-
----
-
-
-
-
-# The following below words are out of scope for the app, **PLEASE do not read or use this implement anything**
-
-**1. Firebase setup + data layer first (not last)**
-
-This should come early, not late, because right now your `FoodItem` lists are hardcoded inline in `home_screen.dart` and `category_screen.dart`. Every other feature you listed — auth, search, admin — depends on having a real, shared data source. If you build auth or search against hardcoded local lists, you'll just have to rewire everything once Firebase lands anyway. Concretely: define your Firestore schema (`foods`, `cafes`, `orders`, `users` collections) and swap your current static lists for Firestore queries/streams first. This also naturally fixes your image-resolution problem, since you'd store image URLs (Firebase Storage, properly resized) instead of bundled assets — but only after you fix the cache-size logic we discussed, since `cached_network_image` still needs `memCacheWidth`/`memCacheHeight` bounds to avoid the same memory issue.
-
-**2. Authentication second**
-
-Auth should come right after the data layer, because almost everything downstream — orders, cart persistence across devices, admin permissions — needs to know *who* the user is. It's also lower-risk to integrate early: Firebase Auth is fairly self-contained and won't require you to re-architect existing screens much, since your current cart/order flow doesn't appear to be user-scoped yet.
-
-**3. Admin app connection third**
-
-This depends entirely on your Firestore schema being stable, since the admin app and the user-facing app will both read/write the same collections (e.g. cafes mark orders "ready", admins add/edit menu items). Building this before your schema is finalized means you'll likely have to change both apps in lockstep every time you adjust a field. Once Firestore + auth + role-based access (e.g. an `isAdmin` flag or custom claims) are in place, the admin app becomes a second client of the same backend rather than a new architectural layer.
-
-**4. Algolia search last**
-
-This is genuinely the right thing to save for last, and not just for convenience — it's a derivative feature. Algolia indexes need to mirror your Firestore data (usually via a Cloud Function that syncs on write), so it can't meaningfully exist until your Firestore schema is finalized and stable. Building search against a schema that's still shifting means re-indexing and re-mapping fields repeatedly. Your current `SearchBarScreen` can keep working against local/Firestore queries in the meantime as a placeholder — Algolia is a performance/relevance upgrade on top of working search, not a prerequisite for having search at all.
-
-**Maintainability framing**
-
-The general principle: *build the things other features depend on first, and the things that depend on other features last.* Your dependency graph here is roughly:
-
-Firestore schema → Auth → (Cart/Orders become user-scoped, Admin app gets a backend to talk to) → Algolia indexing on top of stable Firestore data
-
-Doing Algolia or the admin connection early — before your schema and auth are settled — is the most likely path to throwaway work, since both are tightly coupled to decisions (field names, collection structure, access rules) that are still likely to shift while you're building out core CRUD with Firebase.
-
-One practical suggestion: before wiring any of this up, write out your Firestore schema on paper/in a doc (collections, fields, relationships, who reads/writes what) and get auth + a working CRUD round-trip (read foods, place an order) solid first. That single piece of groundwork is what makes the rest of your list — admin, search, anything else — additive rather than disruptive.

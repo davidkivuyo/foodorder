@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "902096299828",
+    "project_id": "foodorder-8ffcf",
+    "storage_bucket": "foodorder-8ffcf.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:902096299828:android:0b57ca089af62085656761",
+        "android_client_info": {
+          "package_name": "com.example.adminview"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAvwKRRERqgtZeqf9D0gvSbqa9f2mLyFEw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:902096299828:android:9eb3ff3fead1d5d0656761",
+        "android_client_info": {
+          "package_name": "com.example.campusbite"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAvwKRRERqgtZeqf9D0gvSbqa9f2mLyFEw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,0 +1,244 @@
+<!DOCTYPE html><html class="light" lang="en"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0, viewport-fit=cover" name="viewport">
+<title>Register - Campus Bite</title>
+<!-- Fonts -->
+<link href="https://fonts.googleapis.com" rel="preconnect">
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Plus+Jakarta+Sans:wght@600;700;800&amp;display=swap" rel="stylesheet">
+<!-- Icons -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<!-- Tailwind -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "on-tertiary-container": "#ecf1ff",
+                    "surface-container-lowest": "#ffffff",
+                    "background": "#f8f9fa",
+                    "inverse-on-surface": "#f0f1f2",
+                    "tertiary-fixed-dim": "#a5c8ff",
+                    "on-primary": "#ffffff",
+                    "primary-container": "#2e7d32",
+                    "tertiary": "#00569f",
+                    "surface-container-highest": "#e1e3e4",
+                    "surface": "#f8f9fa",
+                    "surface-container": "#edeeef",
+                    "on-secondary-fixed-variant": "#6d3a00",
+                    "outline-variant": "#bfcaba",
+                    "on-secondary": "#ffffff",
+                    "on-error": "#ffffff",
+                    "secondary-fixed-dim": "#ffb77a",
+                    "secondary": "#8f4e00",
+                    "surface-dim": "#d9dadb",
+                    "secondary-container": "#fea85a",
+                    "surface-variant": "#e1e3e4",
+                    "on-primary-container": "#cbffc2",
+                    "surface-bright": "#f8f9fa",
+                    "on-secondary-container": "#733d00",
+                    "tertiary-container": "#2f6fb9",
+                    "surface-container-low": "#f3f4f5",
+                    "secondary-fixed": "#ffdcc2",
+                    "on-tertiary-fixed": "#001c3a",
+                    "on-error-container": "#93000a",
+                    "primary-fixed": "#a3f69c",
+                    "inverse-surface": "#2e3132",
+                    "on-tertiary": "#ffffff",
+                    "inverse-primary": "#88d982",
+                    "tertiary-fixed": "#d4e3ff",
+                    "primary": "#0e631b",
+                    "on-surface": "#191c1d",
+                    "on-background": "#191c1d",
+                    "on-primary-fixed-variant": "#005312",
+                    "on-tertiary-fixed-variant": "#004785",
+                    "primary-fixed-dim": "#88d982",
+                    "on-secondary-fixed": "#2e1500",
+                    "surface-tint": "#1b6d24",
+                    "on-surface-variant": "#40493d",
+                    "surface-container-high": "#e7e8e9",
+                    "outline": "#707a6c",
+                    "error-container": "#ffdad6",
+                    "on-primary-fixed": "#002203",
+                    "error": "#ba1a1a"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.25rem",
+                    "lg": "0.5rem",
+                    "xl": "0.75rem",
+                    "full": "9999px"
+            },
+            "spacing": {
+                    "gutter": "16px",
+                    "xs": "4px",
+                    "sm": "12px",
+                    "md": "16px",
+                    "container-margin": "16px",
+                    "lg": "24px",
+                    "xl": "32px",
+                    "base": "8px"
+            },
+            "fontFamily": {
+                    "label-sm": ["Inter"],
+                    "headline-md": ["Plus Jakarta Sans"],
+                    "headline-lg": ["Plus Jakarta Sans"],
+                    "title-lg": ["Inter"],
+                    "display-lg": ["Plus Jakarta Sans"],
+                    "body-md": ["Inter"],
+                    "title-md": ["Inter"],
+                    "body-lg": ["Inter"],
+                    "label-lg": ["Inter"],
+                    "headline-sm": ["Plus Jakarta Sans"],
+                    "headline-lg-mobile": ["Plus Jakarta Sans"]
+            },
+            "fontSize": {
+                    "label-sm": ["11px", {"lineHeight": "16px", "letterSpacing": "0.5px", "fontWeight": "500"}],
+                    "headline-md": ["28px", {"lineHeight": "36px", "fontWeight": "600"}],
+                    "headline-lg": ["32px", {"lineHeight": "40px", "fontWeight": "600"}],
+                    "title-lg": ["22px", {"lineHeight": "28px", "fontWeight": "500"}],
+                    "display-lg": ["57px", {"lineHeight": "64px", "letterSpacing": "-0.25px", "fontWeight": "700"}],
+                    "body-md": ["14px", {"lineHeight": "20px", "letterSpacing": "0.25px", "fontWeight": "400"}],
+                    "title-md": ["16px", {"lineHeight": "24px", "letterSpacing": "0.15px", "fontWeight": "600"}],
+                    "body-lg": ["16px", {"lineHeight": "24px", "letterSpacing": "0.5px", "fontWeight": "400"}],
+                    "label-lg": ["14px", {"lineHeight": "20px", "letterSpacing": "0.1px", "fontWeight": "500"}],
+                    "headline-sm": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                    "headline-lg-mobile": ["28px", {"lineHeight": "34px", "fontWeight": "600"}]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .bouncy-btn:active {
+            transform: scale(0.92);
+        }
+        .input-focus-ring:focus-within {
+            border-color: #1b6d24;
+            box-shadow: 0 0 0 1px #1b6d24;
+        }
+    </style>
+</head>
+<body class="bg-background text-on-surface min-h-screen flex flex-col font-body-md">
+<!-- Hero Background Animation / Graphic Area -->
+<div class="relative w-full h-48 md:h-64 overflow-hidden bg-primary-container">
+<!-- Abstract Decorative Graphics -->
+<div class="absolute top-0 left-0 w-full h-full opacity-20 pointer-events-none">
+<div class="absolute top-[-20%] left-[-10%] w-64 h-64 bg-secondary rounded-full blur-3xl"></div>
+<div class="absolute bottom-[-20%] right-[-10%] w-80 h-80 bg-primary-fixed-dim rounded-full blur-3xl"></div>
+</div>
+<div class="relative z-10 flex flex-col items-center justify-center h-full text-center px-gutter">
+<h1 class="font-headline-lg-mobile md:font-headline-lg text-headline-lg-mobile md:text-headline-lg text-on-primary-container tracking-tight">Campus Bite</h1>
+<p class="font-title-md text-title-md text-primary-fixed mt-xs">Elevate Your Campus Dining</p>
+</div>
+</div>
+<!-- Main Registration Canvas -->
+<main class="flex-grow flex items-start justify-center px-gutter pb-xl mt-lg">
+<div class="w-full max-w-md bg-surface-container-lowest rounded-xl shadow-lg p-lg border border-outline-variant">
+<!-- Header -->
+<div class="mb-lg">
+<h2 class="font-headline-sm text-headline-sm text-primary">Create Account</h2>
+<p class="font-body-md text-body-md text-on-surface-variant mt-xs">Join the campus food community</p>
+</div>
+<!-- Form -->
+<form class="space-y-md" onsubmit="event.preventDefault();">
+<!-- Full Name -->
+<div class="flex flex-col gap-xs">
+<label class="font-label-lg text-label-lg text-on-surface-variant px-xs" for="fullName">Full Name</label>
+<div class="relative flex items-center bg-surface-container-low rounded-lg border border-outline-variant px-md py-sm transition-all input-focus-ring">
+<span class="material-symbols-outlined text-outline mr-sm">person</span>
+<input class="bg-transparent border-none focus:ring-0 w-full text-body-md placeholder:text-outline-variant" id="fullName" placeholder="John Doe" type="text">
+</div>
+</div>
+<!-- Email -->
+<div class="flex flex-col gap-xs">
+<label class="font-label-lg text-label-lg text-on-surface-variant px-xs" for="email">University Email</label>
+<div class="relative flex items-center bg-surface-container-low rounded-lg border border-outline-variant px-md py-sm transition-all input-focus-ring">
+<span class="material-symbols-outlined text-outline mr-sm">alternate_email</span>
+<input class="bg-transparent border-none focus:ring-0 w-full text-body-md placeholder:text-outline-variant" id="email" placeholder="student@university.edu" type="email">
+</div>
+</div>
+<!-- Password -->
+<div class="flex flex-col gap-xs">
+<label class="font-label-lg text-label-lg text-on-surface-variant px-xs" for="password">Password</label>
+<div class="relative flex items-center bg-surface-container-low rounded-lg border border-outline-variant px-md py-sm transition-all input-focus-ring">
+<span class="material-symbols-outlined text-outline mr-sm">lock</span>
+<input class="bg-transparent border-none focus:ring-0 w-full text-body-md placeholder:text-outline-variant" id="password" placeholder="••••••••" type="password">
+<button class="material-symbols-outlined text-outline-variant hover:text-outline transition-colors" type="button">visibility</button>
+</div>
+</div>
+<!-- Confirm Password -->
+<div class="flex flex-col gap-xs">
+<label class="font-label-lg text-label-lg text-on-surface-variant px-xs" for="confirmPassword">Confirm Password</label>
+<div class="relative flex items-center bg-surface-container-low rounded-lg border border-outline-variant px-md py-sm transition-all input-focus-ring">
+<span class="material-symbols-outlined text-outline mr-sm">lock_reset</span>
+<input class="bg-transparent border-none focus:ring-0 w-full text-body-md placeholder:text-outline-variant" id="confirmPassword" placeholder="••••••••" type="password">
+</div>
+</div>
+<!-- Terms & Conditions -->
+<div class="flex items-center gap-sm py-xs">
+<input class="w-5 h-5 rounded border-outline-variant text-primary focus:ring-primary/20" id="terms" type="checkbox">
+<label class="font-label-lg text-label-lg text-on-surface-variant" for="terms">
+                        I agree to the <a class="text-primary font-semibold hover:underline" href="#">Terms &amp; Conditions</a>
+</label>
+</div>
+<!-- Primary Action -->
+<button class="w-full bg-primary text-on-primary py-md rounded-full font-title-md text-title-md shadow-sm transition-all bouncy-btn mt-base flex items-center justify-center gap-sm" type="submit">
+                    Register
+                    <span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">arrow_forward</span>
+</button>
+</form>
+<!-- Bottom Navigation Link -->
+<div class="mt-lg pt-lg border-t border-surface-container-highest text-center">
+<p class="font-body-md text-body-md text-on-surface-variant">
+                    Already have an account? 
+                    <a class="text-secondary font-semibold hover:underline decoration-2 underline-offset-4 ml-xs" href="#">Login</a>
+</p>
+</div>
+</div>
+</main>
+<!-- Social Proof / Footer Context -->
+<footer class="mt-auto px-gutter py-lg text-center opacity-70">
+<div class="flex flex-col items-center gap-sm">
+<div class="flex -space-x-3 overflow-hidden">
+<img class="inline-block h-8 w-8 rounded-full ring-2 ring-surface" data-alt="Close-up portrait of a smiling university student with a bright yellow backpack in a sunlit modern campus plaza, clean corporate photography style with fresh greens and soft warm lighting." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCzkQspiKRM0lFr0QH3Td_9pz1vodcE4bAQr7ZQu6ExJ7UHmCUXierHPb5DPTwCmXIy1QGmd45LLGrTFiZjSC627nkCKFQh503Xlrrf5QtLc2ieIlIKPhqocIv0_PbjTg8BpGuz7byDQneS_Ic-qpx6blSxCWpcuBZfc1LG3ffVjB2qyogD-eLSm0ntncjX7KOswcoiSYEQ-1wa1LMbwZaBZJkTJp7icymqeDyJlSIdHaKassoRCyKzJxUal2WBt-a9ihieaZqvO84q">
+<img class="inline-block h-8 w-8 rounded-full ring-2 ring-surface" data-alt="A focused young diverse student studying at a cafe with a healthy bowl of food nearby, warm afternoon sunlight casting soft shadows, modern collegiate lifestyle aesthetic with vibrant color accents." src="https://lh3.googleusercontent.com/aida-public/AB6AXuD9NW-O0OEzVrh_eeZcygsu_DJOSHoUL5uHysrJIh1MzV67oe038t5CKJLKwAcu06WdlHu3dFYYOLsbeJ8E-CQjQuBXDf24NhjDmJIKL4KvS6dRANkZ5boB7ll9fT8r_DBcorocz2OX8ITD4_rWeqACBjOjcuiun7wM7lLxwCr0twR7jwtsp3gyHP2kjHOSWy8vaObH8j7h2KHWqp6FdkZudTK0JXc-yPmudZb1NG1c-23-_85s_aC7SV1nKKLm_NBxeFABdz4RuU2O">
+<img class="inline-block h-8 w-8 rounded-full ring-2 ring-surface" data-alt="A laughing group of college friends sharing a pizza in a vibrant campus lounge, high-quality modern commercial photography, energetic and social mood with balanced forest green and amber tones." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDH3bPCI7bsgAp9Tv2hf4AonedYGhxHRTgrhKERFtGM7lQgyvpKpSZ4iDpT5WaIyEMnehl4gGOxCD1qUmKc6Zed-aPWYEPLXkeCPQR3AD5qoQebWYAczBngo-yrO0kq63MMGtuTFEhQhaKQl7ElLE5DUJlslXkw948MqyGLnokE1P4Jsy9ngN-vKQNQXK0eYgiCixpPBcP_3o_AkeDU9MpKYEggQTDlADgHgg_47tM4MuGLFhkwjJZankiqTebouyA02_OgxNnANad9">
+<div class="flex items-center justify-center h-8 w-8 rounded-full ring-2 ring-surface bg-surface-container-high text-[10px] font-bold text-on-surface-variant">+2k</div>
+</div>
+<p class="font-label-sm text-label-sm text-on-surface-variant">Join thousands of students saving time on every meal.</p>
+</div>
+</footer>
+<!-- Micro-interaction Script -->
+<script>
+        // Toggle Password Visibility
+        const passToggle = document.querySelector('button[type="button"]');
+        const passInput = document.querySelector('#password');
+        
+        if (passToggle && passInput) {
+            passToggle.addEventListener('click', () => {
+                const isPass = passInput.type === 'password';
+                passInput.type = isPass ? 'text' : 'password';
+                passToggle.textContent = isPass ? 'visibility_off' : 'visibility';
+            });
+        }
+
+        // Simple Form Focus Styles (Enhanced via JS if needed, but handled by Tailwind for now)
+        const inputs = document.querySelectorAll('input');
+        inputs.forEach(input => {
+            input.addEventListener('focus', () => {
+                input.parentElement.classList.add('shadow-md');
+            });
+            input.addEventListener('blur', () => {
+                input.parentElement.classList.remove('shadow-md');
+            });
+        });
+    </script>
+
+
+</body></html>

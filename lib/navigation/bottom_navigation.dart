@@ -1,5 +1,19 @@
-import 'package:flutter/cupertino.dart';
+// Copyright 2026 davidkivuyo, johnsonmushi, edwinkessy276-art, jugraki-art.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../screens/home_screen.dart';
 import '../screens/account_screen.dart';
 import '../screens/category_screen.dart';
@@ -7,7 +21,9 @@ import '../screens/order_screen.dart';
 import '../data/search_bar.dart';
 import 'package:dash_no_internet_screen/dash_no_internet_screen.dart';
 import '../services/cart_service.dart';
+import '../services/notification_service.dart';
 import '../widgets/cart_bottom_sheet.dart';
+import '../widgets/cart_fab.dart';
 
 // home screen
 class MainScreen extends StatefulWidget {
@@ -29,8 +45,70 @@ class _NavigationExampleState extends State<MainScreen> {
     AccountScreen(),
   ];
 
+  // Helper method to handle navigation choices
+  void _onPageSelected(int index) {
+    if (index == 2) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => const SearchBarScreen(),
+        ),
+      );
+    } else {
+      setState(() {
+        currentPageIndex = index;
+      });
+    }
+  }
+
+  // Sidebar item widget with hover/active styling for desktop
+  Widget _buildSidebarItem({
+    required IconData icon,
+    required IconData selectedIcon,
+    required String label,
+    required int index,
+  }) {
+    final isSelected = currentPageIndex == index;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4.0),
+      child: InkWell(
+        onTap: () => _onPageSelected(index),
+        borderRadius: BorderRadius.circular(12),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+          decoration: BoxDecoration(
+            color: isSelected ? Colors.orange.withValues(alpha: 0.1) : Colors.transparent,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                isSelected ? selectedIcon : icon,
+                color: isSelected ? Colors.orange : Colors.grey.shade700,
+                size: 22,
+              ),
+              const SizedBox(width: 16),
+              Text(
+                label,
+                style: TextStyle(
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                  color: isSelected ? Colors.orange : Colors.grey.shade800,
+                  fontSize: 15,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final double screenWidth = MediaQuery.of(context).size.width;
+    final bool isDesktop = screenWidth >= 850;
+
     return DashNoInterNetScreen(
       image: Image.asset("designs/assets/satellite.png", width: 90, height: 90),
       titleText: "Sorry for the delay",
@@ -86,139 +164,333 @@ class _NavigationExampleState extends State<MainScreen> {
         );
       },
       child: Scaffold(
-        // TopBar
-        appBar: AppBar(
-          toolbarHeight: 50,
-          title: const AppLogo(),
-
-          // notification icon, its screen can be found in account_screen.dart file
-          actions: <Widget>[
-            IconButton(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => Notify()),
-                );
-              },
-              icon: const Icon(
-                CupertinoIcons.bell,
-                semanticLabel: 'notification bell',
+        // Top Bar — Visible only on mobile
+        appBar: isDesktop
+            ? null
+            : AppBar(
+                toolbarHeight: 50,
+                title: const AppLogo(),
+                actions: <Widget>[
+                  // Notifications Icon
+                  StreamBuilder<int>(
+                    stream: NotificationService().unreadCountStream(
+                      recipientId: FirebaseAuth.instance.currentUser?.uid ?? '',
+                      recipientRole: NotificationService.roleStudent,
+                    ),
+                    builder: (context, snapshot) {
+                      final unreadCount = snapshot.hasData ? snapshot.data! : 0;
+                      return Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          IconButton(
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => const NotificationScreen(),
+                                ),
+                              );
+                            },
+                            icon: const Icon(
+                              Icons.notifications_outlined,
+                              semanticLabel: 'notification bell',
+                            ),
+                          ),
+                          if (unreadCount > 0)
+                            Positioned(
+                              right: 8,
+                              top: 8,
+                              child: Container(
+                                padding: const EdgeInsets.all(2),
+                                decoration: const BoxDecoration(
+                                  color: Color(0xFF2E7D32),
+                                  shape: BoxShape.circle,
+                                ),
+                                constraints: const BoxConstraints(
+                                  minWidth: 16,
+                                  minHeight: 16,
+                                ),
+                                child: Text(
+                                  unreadCount > 9 ? '9+' : '$unreadCount',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                            ),
+                        ],
+                      );
+                    },
+                  ),
+                  // Cart Icon
+                  ListenableBuilder(
+                    listenable: CartService(),
+                    builder: (context, child) {
+                      final cartItemsCount = CartService().totalItemsCount;
+                      return Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          IconButton(
+                            onPressed: () {
+                              showModalBottomSheet<void>(
+                                context: context,
+                                isScrollControlled: true,
+                                showDragHandle: true,
+                                builder: (BuildContext context) {
+                                  return CartBottomSheet(
+                                    onOrderPlaced: () {
+                                      setState(() {
+                                        currentPageIndex = 3;
+                                      });
+                                    },
+                                  );
+                                },
+                              );
+                            },
+                            icon: const Icon(
+                              Icons.shopping_cart_outlined,
+                              semanticLabel: 'cart',
+                            ),
+                          ),
+                          if (cartItemsCount > 0)
+                            Positioned(
+                              right: 8,
+                              top: 8,
+                              child: Container(
+                                padding: const EdgeInsets.all(2),
+                                decoration: BoxDecoration(
+                                  color: Colors.red,
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                constraints: const BoxConstraints(
+                                  minWidth: 16,
+                                  minHeight: 16,
+                                ),
+                                child: Text(
+                                  '$cartItemsCount',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                            ),
+                        ],
+                      );
+                    },
+                  ),
+                ],
               ),
-            ),
-            ListenableBuilder(
-              listenable: CartService(),
-              builder: (context, child) {
-                final cartItemsCount = CartService().totalItemsCount;
-                return Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    IconButton(
-                      onPressed: () {
-                        showModalBottomSheet<void>(
-                          context: context,
-                          isScrollControlled: true,
-                          showDragHandle: true,
-                          builder: (BuildContext context) {
-                            return CartBottomSheet(
-                              onOrderPlaced: () {
-                                setState(() {
-                                  currentPageIndex =
-                                      3; // Navigate to Orders Screen (index 3)
-                                });
-                              },
-                            );
-                          },
-                        );
-                      },
-                      icon: const Icon(
-                        CupertinoIcons.cart,
-                        semanticLabel: 'cart',
+
+        // Yellow floating basket button — visible only on mobile when cart has items
+        floatingActionButton: isDesktop
+            ? null
+            : CartFab(
+                onOrderPlaced: () {
+                  setState(() {
+                    currentPageIndex = 3;
+                  });
+                },
+              ),
+        floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+
+        // Responsive Body
+        body: isDesktop
+            ? Row(
+                children: [
+                  // --- LEFT SIDEBAR (Desktop Menu) ---
+                  Container(
+                    width: 250,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      border: Border(
+                        right: BorderSide(color: Colors.grey.shade200, width: 1.5),
                       ),
                     ),
-                    if (cartItemsCount > 0)
-                      Positioned(
-                        right: 8,
-                        top: 8,
-                        child: Container(
-                          padding: const EdgeInsets.all(2),
-                          decoration: BoxDecoration(
-                            color: Colors.red,
-                            borderRadius: BorderRadius.circular(10),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 24.0, vertical: 30.0),
+                          child: AppLogo(),
+                        ),
+                        const SizedBox(height: 8),
+                        _buildSidebarItem(
+                          icon: Icons.home_outlined,
+                          selectedIcon: Icons.home,
+                          label: "Home",
+                          index: 0,
+                        ),
+                        _buildSidebarItem(
+                          icon: Icons.category_outlined,
+                          selectedIcon: Icons.category,
+                          label: "Categories",
+                          index: 1,
+                        ),
+                        _buildSidebarItem(
+                          icon: Icons.search_outlined,
+                          selectedIcon: Icons.search,
+                          label: "Search",
+                          index: 2,
+                        ),
+                        _buildSidebarItem(
+                          icon: Icons.receipt_long_outlined,
+                          selectedIcon: Icons.receipt_long,
+                          label: "Orders",
+                          index: 3,
+                        ),
+                        _buildSidebarItem(
+                          icon: Icons.person_outlined,
+                          selectedIcon: Icons.person,
+                          label: "Account",
+                          index: 4,
+                        ),
+                        const Spacer(),
+                        // Desktop Notification summary button
+                        StreamBuilder<int>(
+                          stream: NotificationService().unreadCountStream(
+                            recipientId: FirebaseAuth.instance.currentUser?.uid ?? '',
+                            recipientRole: NotificationService.roleStudent,
                           ),
-                          constraints: const BoxConstraints(
-                            minWidth: 16,
-                            minHeight: 16,
-                          ),
-                          child: Text(
-                            '$cartItemsCount',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                            ),
-                            textAlign: TextAlign.center,
+                          builder: (context, snapshot) {
+                            final unreadCount = snapshot.hasData ? snapshot.data! : 0;
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                              child: TextButton.icon(
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => const NotificationScreen(),
+                                    ),
+                                  );
+                                },
+                                icon: Stack(
+                                  clipBehavior: Clip.none,
+                                  children: [
+                                    Icon(Icons.notifications_outlined, color: Colors.grey.shade700),
+                                    if (unreadCount > 0)
+                                      Positioned(
+                                        right: -4,
+                                        top: -4,
+                                        child: Container(
+                                          padding: const EdgeInsets.all(2),
+                                          decoration: const BoxDecoration(
+                                            color: Color(0xFF2E7D32),
+                                            shape: BoxShape.circle,
+                                          ),
+                                          constraints: const BoxConstraints(
+                                            minWidth: 14,
+                                            minHeight: 14,
+                                          ),
+                                          child: Text(
+                                            unreadCount > 9 ? '9+' : '$unreadCount',
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 8,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                            textAlign: TextAlign.center,
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                                label: Text(
+                                  "Notifications",
+                                  style: TextStyle(color: Colors.grey.shade800, fontSize: 14),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 16),
+                      ],
+                    ),
+                  ),
+
+                  // --- CENTER CANVAS (Constrained Screen Content) ---
+                  Expanded(
+                    child: Container(
+                      color: Colors.grey.shade50,
+                      alignment: Alignment.topCenter,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 1000),
+                        child: _pages[currentPageIndex],
+                      ),
+                    ),
+                  ),
+
+                  // --- RIGHT SIDEBAR (Desktop Persistent Cart) ---
+                  ListenableBuilder(
+                    listenable: CartService(),
+                    builder: (context, child) {
+                      final cartItemsCount = CartService().totalItemsCount;
+                      if (cartItemsCount == 0) return const SizedBox.shrink();
+
+                      return Container(
+                        width: 340,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          border: Border(
+                            left: BorderSide(color: Colors.grey.shade200, width: 1.5),
                           ),
                         ),
-                      ),
-                  ],
-                );
-              },
-            ),
-          ],
-        ),
+                        child: SafeArea(
+                          child: CartBottomSheet(
+                            onOrderPlaced: () {
+                              setState(() {
+                                currentPageIndex = 3;
+                              });
+                            },
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              )
+            : _pages[currentPageIndex],
 
-        // body
-        body: _pages[currentPageIndex],
-
-        // bottom navigation bar
-        bottomNavigationBar: NavigationBar(
-          selectedIndex: currentPageIndex,
-          onDestinationSelected: (index) {
-            if (index == 2) {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const SearchBarScreen(),
-                ),
-              );
-            } else {
-              // For all other tabs, switch the index normally
-              setState(() {
-                currentPageIndex = index;
-              });
-            }
-          },
-
-          indicatorColor: Colors.green,
-
-          labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
-          destinations: [
-            NavigationDestination(
-              icon: Icon(CupertinoIcons.home, semanticLabel: 'home'),
-              label: "Home",
-            ),
-            NavigationDestination(
-              icon: Icon(CupertinoIcons.layers, semanticLabel: 'categories'),
-              label: "Categories",
-            ),
-            NavigationDestination(
-              icon: Icon(CupertinoIcons.search, semanticLabel: 'search food'),
-
-              label: "Search",
-            ),
-            NavigationDestination(
-              icon: Icon(CupertinoIcons.archivebox, semanticLabel: 'my orders'),
-              label: "Orders",
-            ),
-            NavigationDestination(
-              icon: Icon(
-                CupertinoIcons.person_circle,
-                semanticLabel: 'my profile',
+        // Bottom Navigation Bar — Visible only on mobile
+        bottomNavigationBar: isDesktop
+            ? null
+            : NavigationBar(
+                selectedIndex: currentPageIndex,
+                onDestinationSelected: _onPageSelected,
+                indicatorColor: Colors.orange,
+                labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
+                destinations: const [
+                  NavigationDestination(
+                    icon: Icon(Icons.home_outlined, semanticLabel: 'home'),
+                    label: "Home",
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.category_outlined, semanticLabel: 'categories'),
+                    label: "Categories",
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.search, semanticLabel: 'search food'),
+                    label: "Search",
+                  ),
+                  NavigationDestination(
+                    icon: Icon(
+                      Icons.receipt_long_outlined,
+                      semanticLabel: 'my orders',
+                    ),
+                    label: "Orders",
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.person_outlined, semanticLabel: 'my profile'),
+                    label: "Account",
+                  ),
+                ],
               ),
-              label: "Account",
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -233,7 +505,7 @@ class AppLogo extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Image.asset('designs/assets/logo.png', width: 40, height: 40),
-        Text(
+        const Text(
           'Campus Bite',
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
         ),
