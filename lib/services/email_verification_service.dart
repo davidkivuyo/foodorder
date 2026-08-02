@@ -15,6 +15,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../models/user_profile.dart';
 import 'app_log.dart';
 import 'input_validator.dart';
 
@@ -112,19 +113,12 @@ class EmailVerificationService {
         if (fullName.isEmpty || email.isEmpty) {
           return 'Profile name is invalid. Please re-register.';
         }
-        await docRef.set({
-          'fullName': fullName,
-          'email': email,
-          'role': 'student',
-          'createdAt': FieldValue.serverTimestamp(),
-          // Strike management fields
-          'strikePercentage': 0,
-          'strikeCount': 0,
-          'accountStatus': 'ACTIVE',
-          'lastStrikeAt': null,
-          'lastPardonAt': null,
-          'updatedAt': FieldValue.serverTimestamp(),
-        });
+        await docRef.set(
+          UserProfile(
+            fullName: fullName,
+            email: email,
+          ).toFirestoreCreate(),
+        );
 
         // Set welcome screen flag for the newly verified user
         final prefs = await SharedPreferences.getInstance();

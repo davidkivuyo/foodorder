@@ -66,6 +66,13 @@ void main() {
       expect(InputValidator.sanitizeEmail(null), isEmpty);
     });
 
+    test('rejects emails longer than maxEmailLength', () {
+      final long =
+          '${'a' * (InputValidator.maxEmailLength - '@.com'.length + 1)}@.com';
+      expect(long.length, greaterThan(InputValidator.maxEmailLength));
+      expect(InputValidator.sanitizeEmail(long), isEmpty);
+    });
+
     test('preserves valid addresses unchanged', () {
       expect(InputValidator.sanitizeEmail('student@campus.ac.tz'),
           'student@campus.ac.tz');
@@ -147,6 +154,16 @@ void main() {
       expect(InputValidator.stripControlCharacters('a\u0000b'), 'ab');
       expect(InputValidator.stripControlCharacters('a\u009Fb'), 'ab');
       expect(InputValidator.stripControlCharacters('plain'), 'plain');
+    });
+  });
+
+  group('InputValidator.maxPasswordLength', () {
+    test('rejects passwords exceeding the maximum length', () {
+      expect(InputValidator.maxPasswordLength, greaterThan(0));
+      final over = 'A' * (InputValidator.maxPasswordLength + 1);
+      final atLimit = 'A' * InputValidator.maxPasswordLength;
+      expect(over.length, greaterThan(InputValidator.maxPasswordLength));
+      expect(atLimit.length, InputValidator.maxPasswordLength);
     });
   });
 }

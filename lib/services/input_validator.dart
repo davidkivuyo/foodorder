@@ -36,6 +36,10 @@ class InputValidator {
   /// Maximum length of a phone number (matches rules).
   static const int maxPhoneLength = 20;
 
+  /// Maximum length of a password (Firebase Auth rejects passwords longer
+  /// than 1024 characters server-side; reject locally for a clear message).
+  static const int maxPasswordLength = 1024;
+
   /// Simple RFC-5322-ish email check. Deliberately lenient — Firebase Auth
   /// performs the authoritative email validation server-side.
   static bool isValidEmail(String? value) {
@@ -142,14 +146,18 @@ class InputValidator {
   /// Sanitizes an email address: trims surrounding whitespace.
   ///
   /// Phase 15 — Part 6: validates the RAW input before transforming it.
-  /// Addresses containing Unicode control characters are REJECTED (empty
-  /// string returned) rather than persisted in a modified form.
+  /// Addresses containing Unicode control characters or exceeding
+  /// [maxEmailLength] are REJECTED (empty string returned) rather than
+  /// persisted in a modified form.
   ///
-  /// Returns an empty string when the input is null, blank, or contains
-  /// control characters.
+  /// Returns an empty string when the input is null, blank, contains control
+  /// characters, or exceeds [maxEmailLength].
   static String sanitizeEmail(String? value) {
     if (value == null) return '';
     if (containsControlCharacters(value)) return '';
-    return value.trim();
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return '';
+    if (trimmed.length > maxEmailLength) return '';
+    return trimmed;
   }
 }

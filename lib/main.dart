@@ -111,7 +111,7 @@ Future<void> main() async {
       );
       await FirebaseAppCheck.instance.setTokenAutoRefreshEnabled(true);
       AppLog.d('Firebase App Check activated');
-    } catch (e, stack) {
+    } on Exception catch (e, stack) {
       AppLog.e('App Check activation failed — continuing without attestation',
           e, stack);
     }

@@ -12,10 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import 'dart:async';
-import 'package:campusbite/services/app_log.dart';
-import 'package:campusbite/services/auth_service.dart';
-import 'package:campusbite/services/email_verification_service.dart';
+import 'package:campusbite/viewmodels/verify_email_view_model.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -23,6 +20,11 @@ import 'package:go_router/go_router.dart';
 ///
 /// The user MUST verify their email before accessing the app.  Firestore
 /// profile creation is deferred until verification succeeds.
+///
+/// This widget is a pure View: it renders state from
+/// [VerifyEmailViewModel] and triggers its actions. All business logic
+/// (verification checks, profile creation, token refresh, UID consistency,
+/// error messaging) lives in the ViewModel.
 class VerifyEmailScreen extends StatefulWidget {
   const VerifyEmailScreen({super.key});
 
@@ -31,124 +33,55 @@ class VerifyEmailScreen extends StatefulWidget {
 }
 
 class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
-  final _authService = AuthService();
-  final _verificationService = EmailVerificationService();
+  late final VerifyEmailViewModel _viewModel;
 
-  bool _isLoading = false;
-  bool _isResending = false;
-  int _cooldownSeconds = 0;
-  Timer? _cooldownTimer;
+  @override
+  void initState() {
+    super.initState();
+    _viewModel = VerifyEmailViewModel();
+    _viewModel.addListener(_onViewModelChanged);
+  }
 
   @override
   void dispose() {
-    _cooldownTimer?.cancel();
+    _viewModel.removeListener(_onViewModelChanged);
+    _viewModel.dispose();
     super.dispose();
+  }
+
+  void _onViewModelChanged() {
+    if (!mounted) return;
+    setState(() {});
   }
 
   // ── I've Verified My Email ────────────────────────────────────────────────
 
   Future<void> _handleVerify() async {
-    setState(() => _isLoading = true);
-
-    // Phase 15: pin the authenticated UID BEFORE any async work. The account
-    // whose email was checked is the only one allowed to continue — a
-    // sign-out or account switch during ANY await must abort navigation.
-    final uidAtStart = _authService.currentUser?.uid;
-
-    final isVerified = await _verificationService.checkEmailVerified(
-      reloadFn: () => _authService.reloadUser(),
-      isVerifiedFn: () => _authService.isEmailVerified,
-    );
-
+    final outcome = await _viewModel.verify();
     if (!mounted) return;
 
-    if (isVerified) {
-      // UID must be unchanged after the verification check.
-      if (uidAtStart == null || _authService.currentUser?.uid != uidAtStart) {
-        setState(() => _isLoading = false);
-        _showSnack('Could not finalize your session. Please try again.');
-        return;
-      }
+    final message = _viewModel.message;
+    if (message != null) {
+      _viewModel.consumeMessage();
+      _showSnack(message);
+    }
 
-      // Create Firestore profile now that email is verified
-      final user = _authService.currentUser;
-      if (user != null) {
-        final profileError =
-            await _verificationService.createProfileAfterVerification(user);
-        if (profileError != null) {
-          setState(() => _isLoading = false);
-          _showSnack(profileError);
-          return;
-        }
-        // UID must be unchanged after profile creation as well.
-        if (_authService.currentUser?.uid != uidAtStart) {
-          setState(() => _isLoading = false);
-          _showSnack('Could not finalize your session. Please try again.');
-          return;
-        }
-      }
-
-      // Phase 15: force a fresh ID token so the `email_verified` claim is
-      // present on the next Firestore request. Security rules gate order
-      // creation on this claim. A failed refresh or a changed/missing user
-      // means we must NOT continue: stop with an error instead.
-      final tokenError = await _authService.refreshIdToken();
-      if (tokenError != null) {
-        AppLog.w('[VerifyEmail] ID token refresh failed after verification');
-      }
-
-      if (!mounted) return;
-      setState(() => _isLoading = false);
-
-      if (tokenError != null || _authService.currentUser?.uid != uidAtStart) {
-        _showSnack('Could not finalize your session. Please try again.');
-        return;
-      }
+    if (outcome == VerifyEmailOutcome.verified) {
       context.go('/main');
-    } else {
-      setState(() => _isLoading = false);
-      _showSnack('Your email has not been verified yet.');
     }
   }
 
   // ── Resend Verification Email ─────────────────────────────────────────────
 
   Future<void> _handleResend() async {
-    if (_cooldownSeconds > 0 || _isResending) return;
-
-    setState(() => _isResending = true);
-
-    final error = await _verificationService.sendVerificationEmail(
-      sendFn: () => _authService.sendVerificationEmail(),
-    );
-
+    await _viewModel.resend();
     if (!mounted) return;
-    setState(() => _isResending = false);
 
-    if (error != null) {
-      _showSnack(error);
-    } else {
-      _showSnack('Verification email resent. Check spam if not received.');
-      _startCooldown();
+    final message = _viewModel.message;
+    if (message != null) {
+      _viewModel.consumeMessage();
+      _showSnack(message);
     }
-  }
-
-  void _startCooldown() {
-    _cooldownSeconds = 60;
-    _cooldownTimer?.cancel();
-    _cooldownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (!mounted) {
-        timer.cancel();
-        return;
-      }
-      setState(() {
-        _cooldownSeconds--;
-        if (_cooldownSeconds <= 0) {
-          _cooldownSeconds = 0;
-          timer.cancel();
-        }
-      });
-    });
   }
 
   // ── Change Email ──────────────────────────────────────────────────────────
@@ -179,10 +112,8 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
     if (confirmed != true) return;
     if (!mounted) return;
 
-    setState(() => _isLoading = true);
-    final error = await _authService.deleteAccount();
+    final error = await _viewModel.changeEmail();
     if (!mounted) return;
-    setState(() => _isLoading = false);
 
     if (error != null) {
       _showSnack(error);
@@ -195,7 +126,7 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
   // ── Logout ─────────────────────────────────────────────────────────────────
 
   Future<void> _handleLogout() async {
-    await _authService.signOut();
+    await _viewModel.logout();
     if (!mounted) return;
     context.go('/');
   }
@@ -215,8 +146,10 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final user = _authService.currentUser;
-    final email = user?.email ?? '';
+    final String email = _viewModel.email;
+    final bool isLoading = _viewModel.isLoading;
+    final bool isResending = _viewModel.isResending;
+    final int cooldownSeconds = _viewModel.cooldownSeconds;
 
     final double screenWidth = MediaQuery.of(context).size.width;
     final bool isDesktop = screenWidth >= 850;
@@ -361,7 +294,7 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
             width: double.infinity,
             height: 54,
             child: ElevatedButton(
-              onPressed: _isLoading ? null : _handleVerify,
+              onPressed: isLoading ? null : _handleVerify,
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF116522),
                 disabledBackgroundColor:
@@ -371,7 +304,7 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
                 ),
                 elevation: 0,
               ),
-              child: _isLoading
+              child: isLoading
                   ? const SizedBox(
                       height: 22,
                       width: 22,
@@ -405,12 +338,12 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
             width: double.infinity,
             height: 48,
             child: OutlinedButton(
-              onPressed: (_cooldownSeconds > 0 || _isResending || _isLoading)
+              onPressed: (cooldownSeconds > 0 || isResending || isLoading)
                   ? null
                   : _handleResend,
               style: OutlinedButton.styleFrom(
                 side: BorderSide(
-                  color: _cooldownSeconds > 0
+                  color: cooldownSeconds > 0
                       ? Colors.grey.shade300
                       : const Color(0xFF116522),
                 ),
@@ -418,20 +351,20 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
-              child: _isResending
+              child: isResending
                   ? const SizedBox(
                       height: 20,
                       width: 20,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : Text(
-                      _cooldownSeconds > 0
-                          ? 'Resend in $_cooldownSeconds s'
+                      cooldownSeconds > 0
+                          ? 'Resend in $cooldownSeconds s'
                           : 'Resend Verification Email',
                       style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w500,
-                        color: _cooldownSeconds > 0
+                        color: cooldownSeconds > 0
                             ? Colors.grey
                             : const Color(0xFF116522),
                       ),
@@ -443,7 +376,7 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
 
           // Change email
           TextButton.icon(
-            onPressed: _isLoading ? null : _handleChangeEmail,
+            onPressed: isLoading ? null : _handleChangeEmail,
             icon: const Icon(Icons.edit_outlined, size: 18),
             label: const Text(
               'Change Email',
@@ -458,7 +391,7 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
 
           // Logout
           TextButton.icon(
-            onPressed: _isLoading ? null : _handleLogout,
+            onPressed: isLoading ? null : _handleLogout,
             icon: const Icon(Icons.logout, size: 18),
             label: const Text(
               'Logout',

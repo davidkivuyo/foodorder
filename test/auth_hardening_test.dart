@@ -34,10 +34,8 @@ import 'package:campusbite/services/cart_service.dart';
 ///      fails the pipeline instead of shipping.
 void main() {
   group('AuthService.userFacingSignInError — anti-enumeration', () {
-    FirebaseAuthException authError(String code) => FirebaseAuthException(
-          code: code,
-          message: 'message for $code',
-        );
+    FirebaseAuthException authError(String code) =>
+        FirebaseAuthException(code: code, message: 'message for $code');
 
     test('unknown email and wrong password produce the SAME message', () {
       final unknownEmail = AuthService.userFacingSignInError(
@@ -76,7 +74,10 @@ void main() {
       final msg = AuthService.userFacingSignInError(
         authError('too-many-requests'),
       );
-      expect(msg, 'Too many failed attempts. Please wait a moment and try again.');
+      expect(
+        msg,
+        'Too many failed attempts. Please wait a moment and try again.',
+      );
     });
 
     test('network failures are reported generically', () {
@@ -108,126 +109,196 @@ void main() {
   String readRepoFile(String path) => File(path).readAsStringSync();
 
   // ── Firestore Rules — authorization boundaries (Part 2/3) ────────────────
+  //
+  // firestore.rules is tracked in the repository, so it is present in CI
+  // checkouts and these guardrails always run — a regression must fail the
+  // release, never ship.
 
-  group('Firestore security rules — least privilege', () {
-    late String rules;
-    setUpAll(() {
-      rules = readRepoFile('firestore.rules');
-    });
+  group(
+    'Firestore security rules — least privilege',
+    () {
+      late String rules;
+      setUpAll(() {
+        rules = readRepoFile('firestore.rules');
+      });
 
-    test('no collection is wide-open (allow read, write: if true)', () {
-      expect(rules, isNot(contains('allow read, write: if true;')));
-      expect(rules, isNot(contains('allow read, write: if true')));
-    });
+      test('no collection is wide-open (allow read, write: if true)', () {
+        expect(rules, isNot(contains('allow read, write: if true;')));
+        expect(rules, isNot(contains('allow read, write: if true')));
+      });
 
-    test('role helper functions exist (isAuth / isOwner / isAdmin)', () {
-      expect(rules, contains('function isAuth()'));
-      expect(rules, contains('function isOwner('));
-      expect(rules, contains('function isAdmin()'));
-    });
+      test('role helper functions exist (isAuth / isOwner / isAdmin)', () {
+        expect(rules, contains('function isAuth()'));
+        expect(rules, contains('function isOwner('));
+        expect(rules, contains('function isAdmin()'));
+      });
 
-    test('food_items writes are admin-only (Part 4)', () {
-      final foodBlock = rules.substring(
-        rules.indexOf('match /food_items/{docId}'),
-        rules.indexOf('match /categories/{docId}'),
-      );
-      expect(foodBlock, contains('allow create: if isAdmin()'));
-      expect(foodBlock, contains('allow update: if isAdmin()'));
-      expect(foodBlock, contains('allow delete: if isAdmin()'));
-      // Students must never modify the menu.
-      expect(foodBlock, isNot(contains('allow update: if isAuth()')));
-    });
+      test('food_items writes are admin-only (Part 4)', () {
+        final foodBlock = rules.substring(
+          rules.indexOf('match /food_items/{docId}'),
+          rules.indexOf('match /categories/{docId}'),
+        );
+        expect(foodBlock, contains('allow create: if isAdmin()'));
+        expect(foodBlock, contains('allow update: if isAdmin()'));
+        expect(foodBlock, contains('allow delete: if isAdmin()'));
+        // Students must never modify the menu.
+        expect(foodBlock, isNot(contains('allow update: if isAuth()')));
+      });
 
-    test('reviews enforce ownership and COLLECTED-order eligibility (Part 7)',
+      test(
+        'reviews enforce ownership and COLLECTED-order eligibility (Part 7)',
         () {
-      final reviewBlock = rules.substring(
-        rules.indexOf('match /reviews/{docId}'),
-        rules.indexOf('match /device_tokens/{docId}'),
+          final reviewBlock = rules.substring(
+            rules.indexOf('match /reviews/{docId}'),
+            rules.indexOf('match /device_tokens/{docId}'),
+          );
+          // Only the author may update their own review.
+          expect(
+            reviewBlock,
+            contains('resource.data.userId == request.auth.uid'),
+          );
+          expect(reviewBlock, contains('validReviewOrderEligibility()'));
+          expect(reviewBlock, contains('reviewCompositeId('));
+          expect(reviewBlock, contains('allow delete: if false;'));
+          // The eligibility rule must require a populated foodIds list that
+          // contains the reviewed food — no legacy fallback (Part 7).
+          expect(
+            rules,
+            contains('order.data.foodIds is list'),
+          );
+          expect(
+            rules,
+            contains('order.data.foodIds.hasAny([request.resource.data.foodId])'),
+          );
+        },
       );
-      // Only the author may update their own review.
-      expect(reviewBlock, contains('resource.data.userId == request.auth.uid'));
-      expect(reviewBlock, contains('validReviewOrderEligibility()'));
-      expect(reviewBlock, contains('reviewCompositeId('));
-      expect(reviewBlock, contains('allow delete: if false;'));
-    });
 
-    test('audit_logs are admin-append-only (Part 20)', () {
-      final auditBlock = rules.substring(
-        rules.indexOf('match /audit_logs/{docId}'),
-        rules.indexOf('match /users/{userId}'),
-      );
-      expect(auditBlock, contains('allow create: if isAdmin()'));
-      expect(auditBlock, contains('validAuditLogCreate()'));
-      expect(auditBlock, contains('allow update: if false;'));
-      expect(auditBlock, contains('allow delete: if false;'));
-    });
+      test('audit_logs are admin-append-only (Part 20)', () {
+        final auditBlock = rules.substring(
+          rules.indexOf('match /audit_logs/{docId}'),
+          rules.indexOf('match /users/{userId}'),
+        );
+        expect(auditBlock, contains('allow create: if isAdmin()'));
+        expect(auditBlock, contains('validAuditLogCreate()'));
+        expect(auditBlock, contains('allow update: if false;'));
+        expect(auditBlock, contains('allow delete: if false;'));
+        // Admins may only log actions as themself — no spoofing another admin
+        // or the automation engine ("system").
+        final auditFn = rules.substring(
+          rules.indexOf('function validAuditLogCreate()'),
+          rules.indexOf('// ── Rules ─'),
+        );
+        expect(auditFn, contains('request.auth.uid'));
+        expect(
+          auditFn,
+          contains("request.resource.data.adminId == request.auth.uid"),
+        );
+        expect(
+          auditFn,
+          contains("request.resource.data.performedBy == request.auth.uid"),
+        );
+      });
 
-    test('orders are owner-scoped and admin-gated (Part 10)', () {
-      final orderBlock = rules.substring(
-        rules.indexOf('match /orders/{docId}'),
-        rules.indexOf('match /section/{sectionId}'),
-      );
-      expect(orderBlock, contains('isOwner('));
-      expect(orderBlock, contains('validOrderCreateRequest()'));
-      expect(orderBlock, contains('adminNotModifyingProtectedOrderFields()'));
-    });
+      test('orders are owner-scoped and admin-gated (Part 10)', () {
+        final orderBlock = rules.substring(
+          rules.indexOf('match /orders/{docId}'),
+          rules.indexOf('match /section/{sectionId}'),
+        );
+        expect(orderBlock, contains('isOwner('));
+        expect(orderBlock, contains('validOrderCreateRequest()'));
+        expect(orderBlock, contains('adminNotModifyingProtectedOrderFields()'));
+        // Illegal/backwards status transitions must be rejected (Part 10).
+        expect(orderBlock, contains('validOrderStatusTransition()'));
+        expect(rules, contains('function canonicalOrderStatus(status)'));
+        expect(rules, contains('function validOrderStatusTransition()'));
+      });
 
-    test('strike data is immutable for students (Part 8)', () {
-      // Students may never modify strike counters or suspension status —
-      // only admins via validAdminStrikeUpdate().
-      expect(rules, contains('studentNotModifyingProtectedFields()'));
-      expect(rules, contains('validAdminStrikeUpdate()'));
-      final usersUpdate = rules.substring(
-        rules.indexOf('match /users/{userId}'),
-        rules.indexOf('match /user/{userId}'),
-      );
-      expect(usersUpdate, contains("allow update: if (isOwner(userId)"));
-      expect(usersUpdate, contains('studentNotModifyingProtectedFields()'));
-      expect(usersUpdate, contains('validAdminStrikeUpdate()'));
-    });
+      test('strike data is immutable for students (Part 8)', () {
+        // Students may never modify strike counters or suspension status —
+        // only admins via validAdminStrikeUpdate().
+        expect(rules, contains('studentNotModifyingProtectedFields()'));
+        expect(rules, contains('validAdminStrikeUpdate()'));
+        final usersUpdate = rules.substring(
+          rules.indexOf('match /users/{userId}'),
+          rules.indexOf('match /user/{userId}'),
+        );
+        expect(usersUpdate, contains("allow update: if (isOwner(userId)"));
+        expect(usersUpdate, contains('studentNotModifyingProtectedFields()'));
+        expect(usersUpdate, contains('validAdminStrikeUpdate()'));
+      });
 
-    test('students cannot change their role (Part 21 checklist)', () {
-      // A student who could edit `role` could self-promote to admin.
-      // studentNotModifyingProtectedFields() must therefore keep `role` off
-      // the student-editable allowlist.
-      final fn = rules.substring(
-        rules.indexOf('function studentNotModifyingProtectedFields()'),
-        rules.indexOf('function validUserCreateRequest()'),
-      );
-      expect(fn, contains(
-          "let allowed = ['fullName', 'email', 'phoneNumber', 'cafeName'];"));
-      // role / strikeCount / accountStatus must NOT be student-writable.
-      expect(fn, isNot(contains("'role'")));
-      expect(fn, isNot(contains("'strikeCount'")));
-      expect(fn, isNot(contains("'accountStatus'")));
-    });
+      test('students cannot change their role (Part 21 checklist)', () {
+        // A student who could edit `role` could self-promote to admin.
+        // studentNotModifyingProtectedFields() must therefore keep `role` off
+        // the student-editable allowlist.
+        final fn = rules.substring(
+          rules.indexOf('function studentNotModifyingProtectedFields()'),
+          rules.indexOf('function validUserCreateRequest()'),
+        );
+        expect(
+          fn,
+          contains(
+            "let allowed = ['fullName', 'email', 'phoneNumber', 'cafeName'];",
+          ),
+        );
+        // role / strikeCount / accountStatus must NOT be student-writable.
+        expect(fn, isNot(contains("'role'")));
+        expect(fn, isNot(contains("'strikeCount'")));
+        expect(fn, isNot(contains("'accountStatus'")));
+        // A changed email must equal the verified ID-token email claim.
+        expect(
+          fn,
+          contains('request.resource.data.email == request.auth.token.email'),
+        );
+      });
 
-    test('notifications are owner-scoped, admin-created only (Part 9)', () {
-      final notifBlock = rules.substring(
-        rules.indexOf('match /notifications/{docId}'),
-        rules.indexOf('match /delivery_records/{docId}'),
-      );
-      expect(notifBlock, contains('isOwner(resource.data.recipientId)'));
-      expect(notifBlock, contains('allow create: if isAdmin();'));
-      // Students may only toggle read/deleted flags on their own.
-      expect(notifBlock, contains("['read', 'readAt', 'deleted', 'deletedAt']"));
-      expect(notifBlock, contains('allow delete: if false;'));
-    });
+      test('student profile email must match the ID-token email claim', () {
+        // A student creating their own profile cannot forge an email that
+        // differs from the one in their verified ID token (Part 3).
+        final fn = rules.substring(
+          rules.indexOf('function validUserCreateRequest()'),
+          rules.indexOf('function validFavoriteMenuUpdate()'),
+        );
+        expect(
+          fn,
+          contains('request.resource.data.email == request.auth.token.email'),
+        );
+        // Exempt admins (admin creation gated by isAdmin(), not the claim).
+        expect(fn, contains('!isStudentRole'));
+      });
 
-    test('cart lives under users/{userId} (Part 3 ownership by path)', () {
-      // The cart sub-collection is defined inside the users/{userId} match,
-      // so a student's cart is inherently scoped to their own document.
-      expect(rules, contains('match /cart/{itemId}'));
-      // Bound the plural /users/{userId} block with its closing sibling
-      // (the singular /user/{userId} match), then assert the cart match
-      // falls within that range — not merely after the block's start.
-      final usersStart = rules.indexOf('match /users/{userId}');
-      final usersEnd = rules.indexOf('match /user/{userId}');
-      final cartMatch = rules.indexOf('match /cart/{itemId}');
-      expect(cartMatch, greaterThan(usersStart));
-      expect(cartMatch, lessThan(usersEnd));
-    });
-  });
+      test('notifications are owner-scoped, admin-created only (Part 9)', () {
+        final notifBlock = rules.substring(
+          rules.indexOf('match /notifications/{docId}'),
+          rules.indexOf('match /delivery_records/{docId}'),
+        );
+        expect(notifBlock, contains('isOwner(resource.data.recipientId)'));
+        expect(notifBlock, contains("'recipientId' in resource.data"));
+        expect(notifBlock, contains('validNotificationCreate()'));
+        expect(notifBlock, contains('allow create: if isAdmin() && validNotificationCreate();'));
+        // Students may only toggle read/deleted flags on their own.
+        expect(
+          notifBlock,
+          contains("['read', 'readAt', 'deleted', 'deletedAt']"),
+        );
+        expect(notifBlock, contains('allow delete: if false;'));
+      });
+
+      test('cart lives under users/{userId} (Part 3 ownership by path)', () {
+        // The cart sub-collection is defined inside the users/{userId} match,
+        // so a student's cart is inherently scoped to their own document.
+        expect(rules, contains('match /cart/{itemId}'));
+        // Bound the plural /users/{userId} block with its closing sibling
+        // (the singular /user/{userId} match), then assert the cart match
+        // falls within that range — not merely after the block's start.
+        final usersStart = rules.indexOf('match /users/{userId}');
+        final usersEnd = rules.indexOf('match /user/{userId}');
+        final cartMatch = rules.indexOf('match /cart/{itemId}');
+        expect(cartMatch, greaterThan(usersStart));
+        expect(cartMatch, lessThan(usersEnd));
+      });
+    },
+  );
 
   // ── Cloud Functions — invalid request rejection (Part 5) ─────────────────
 
@@ -261,16 +332,18 @@ void main() {
       expect(fn, isNot(contains('apiSecret = "')));
     });
 
-    test('admin account gate checks ACTIVE status with no default (Part 4)',
-        () {
-      // deleteCloudinaryImage must require accountStatus exactly "ACTIVE" —
-      // missing/null values are denied, never defaulted.
-      expect(
-        fn,
-        contains('accountStatus !== "ACTIVE"'),
-        reason: 'missing status must not default to ACTIVE',
-      );
-    });
+    test(
+      'admin account gate checks ACTIVE status with no default (Part 4)',
+      () {
+        // deleteCloudinaryImage must require accountStatus exactly "ACTIVE" —
+        // missing/null values are denied, never defaulted.
+        expect(
+          fn,
+          contains('accountStatus !== "ACTIVE"'),
+          reason: 'missing status must not default to ACTIVE',
+        );
+      },
+    );
 
     test('audit logs are written for privileged actions (Part 20)', () {
       expect(fn, contains('collection("audit_logs")'));
@@ -285,7 +358,10 @@ void main() {
   group('App Check enforcement', () {
     test('web release build fails closed without a reCAPTCHA key', () {
       final main = readRepoFile('lib/main.dart');
-      expect(main, contains('kIsWeb && !kDebugMode && kRecaptchaSiteKey.isEmpty'));
+      expect(
+        main,
+        contains('kIsWeb && !kDebugMode && kRecaptchaSiteKey.isEmpty'),
+      );
       expect(main, contains('_AppCheckMisconfiguredApp'));
     });
 
@@ -314,13 +390,15 @@ void main() {
       expect(svc, contains('isAllowedDownloadUrl'));
     });
 
-    test('installer fails closed when the checksum is missing or mismatched',
-        () {
-      final svc = readRepoFile('lib/services/update_service.dart');
-      expect(svc, contains('No checksum to compare — fail closed'));
-      expect(svc, contains("_fail('Could not verify the update.')"));
-      expect(svc, contains('checksum mismatch — installer discarded'));
-    });
+    test(
+      'installer fails closed when the checksum is missing or mismatched',
+      () {
+        final svc = readRepoFile('lib/services/update_service.dart');
+        expect(svc, contains('No checksum to compare — fail closed'));
+        expect(svc, contains("_fail('Could not verify the update.')"));
+        expect(svc, contains('checksum mismatch — installer discarded'));
+      },
+    );
   });
 
   // ── Secret scanning (Part 13) ─────────────────────────────────────────────
@@ -335,12 +413,21 @@ void main() {
           .where((f) => f.path.endsWith('.dart'));
       for (final file in libDirs) {
         final src = file.readAsStringSync();
-        expect(src, isNot(contains('-----BEGIN')),
-            reason: '${file.path} must not embed private keys');
-        expect(src, isNot(contains('sk_live_')),
-            reason: '${file.path} must not embed Stripe live keys');
-        expect(src, isNot(contains('cloudinary_api_secret')),
-            reason: '${file.path} must not embed Cloudinary credentials');
+        expect(
+          src,
+          isNot(contains('-----BEGIN')),
+          reason: '${file.path} must not embed private keys',
+        );
+        expect(
+          src,
+          isNot(contains('sk_live_')),
+          reason: '${file.path} must not embed Stripe live keys',
+        );
+        expect(
+          src,
+          isNot(contains('cloudinary_api_secret')),
+          reason: '${file.path} must not embed Cloudinary credentials',
+        );
       }
       final deploy = readRepoFile('.github/workflows/deploy.yml');
       final release = readRepoFile('.github/workflows/release-apk.yml');
@@ -357,8 +444,7 @@ void main() {
   // ── Release-build behavior (Part 21) ─────────────────────────────────────
 
   group('Release-build behavior', () {
-    test('the app ships zero GitHub references (update system proxy rule)',
-        () {
+    test('the app ships zero GitHub references (update system proxy rule)', () {
       // The update system may only talk to dl.larason.space; GitHub must
       // never appear in app code.
       final main = readRepoFile('lib/main.dart');
@@ -369,25 +455,34 @@ void main() {
       final release = readRepoFile('.github/workflows/release-apk.yml');
       final testStep = release.indexOf('flutter test');
       expect(testStep, isNot(-1), reason: 'release workflow must run tests');
-      expect(testStep, lessThan(release.indexOf('Build Universal APK')),
-          reason: 'tests must run BEFORE building');
+      expect(
+        testStep,
+        lessThan(release.indexOf('Build Universal APK')),
+        reason: 'tests must run BEFORE building',
+      );
     });
 
-    test('web deploy pipeline runs the security test suite before building',
-        () {
-      final deploy = readRepoFile('.github/workflows/deploy.yml');
-      final testStep = deploy.indexOf('flutter test');
-      expect(testStep, isNot(-1), reason: 'deploy workflow must run tests');
-      expect(testStep, lessThan(deploy.indexOf('flutter build web')),
-          reason: 'tests must run BEFORE the web build');
-    });
+    test(
+      'web deploy pipeline runs the security test suite before building',
+      () {
+        final deploy = readRepoFile('.github/workflows/deploy.yml');
+        final testStep = deploy.indexOf('flutter test');
+        expect(testStep, isNot(-1), reason: 'deploy workflow must run tests');
+        expect(
+          testStep,
+          lessThan(deploy.indexOf('flutter build web')),
+          reason: 'tests must run BEFORE the web build',
+        );
+      },
+    );
   });
 
   // ── Behavioral authorization boundary (Part 3) ───────────────────────────
 
   group('CartService — user-scoped writes (authorization boundary)', () {
-    testWidgets('cart items are written under the authenticated user doc',
-        (WidgetTester tester) async {
+    testWidgets('cart items are written under the authenticated user doc', (
+      WidgetTester tester,
+    ) async {
       final firestore = FakeFirebaseFirestore();
       final service = CartService.testing(
         firestore: firestore,
@@ -437,7 +532,10 @@ void main() {
       // (Covered statically because the testing constructor always injects
       // a userId — the production guard is on the null path.)
       final svc = readRepoFile('lib/services/cart_service.dart');
-      expect(svc, contains('if (userId == null || item.id.isEmpty) return false;'));
+      expect(
+        svc,
+        contains('if (userId == null || item.id.isEmpty) return false;'),
+      );
     });
   });
 }

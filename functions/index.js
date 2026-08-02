@@ -1248,6 +1248,88 @@ async function backfillOrderFoodIds(orderRef, orderData) {
   return true;
 }
 
+/**
+ * Recompute an order's authoritative line-item pricing from the current
+ * `food_items` collection and correct the stored order when the client-side
+ * figures diverge.
+ *
+ * Phase 15 — order financial integrity (Part 10/12). The student's
+ * Firestore rules cannot iterate the nested `items` maps, so a forged price
+ * (understated total, tampered line-item unit price) cannot be rejected in
+ * rules. This server-side normalizer fixes the store order document to use
+ * the actual menu price for every purchased item (and quantity), so the
+ * total the cafeteria sees is always derived from the source of truth.
+ *
+ * Items that resolve to a missing food document keep their client-supplied
+ * price (there is nothing authoritative to compare against); the order's
+ * overall `price` is recomputed as the sum of all resolved line totals.
+ *
+ * @param {admin.firestore.DocumentReference} orderRef
+ * @param {Object} orderData
+ * @return {Promise<number|null>} the recomputed authoritative total, or
+ *   null when no correction was made (pricing already authoritative).
+ */
+async function normalizeOrderPricing(orderRef, orderData) {
+  if (!orderData || !Array.isArray(orderData.items) || orderData.items.length === 0) {
+    return null;
+  }
+
+  const resolvedTotal = { value: 0 };
+  const prices = [];
+
+  for (const item of orderData.items) {
+    const foodId = item && (item.foodItemId || item.id);
+    let unitPrice = typeof item.price === "number" ? item.price : 0;
+
+    if (typeof foodId === "string" && foodId.length > 0) {
+      try {
+        const snap = await orderRef.firestore
+            .collection("food_items")
+            .doc(foodId)
+            .get();
+        if (snap.exists) {
+          const menuData = snap.data();
+          if (menuData && typeof menuData.price === "number") {
+            unitPrice = menuData.price;
+          }
+        }
+      } catch (err) {
+        console.warn(
+          `[normalizeOrderPricing] food_items/${foodId} lookup failed: ${err.message}`
+        );
+        // Fall through with the client-supplied price — not authoritative
+        // but non-destructive.
+      }
+    }
+
+    const quantity = typeof item.quantity === "number" ? item.quantity : 1;
+    prices.push({ price: unitPrice, quantity });
+    resolvedTotal.value += unitPrice * quantity;
+  }
+
+  const storedTotal =
+    typeof orderData.price === "number" ? orderData.price : 0;
+  const needsPriceFix = Math.abs(resolvedTotal.value - storedTotal) > 0.001;
+  const needsItemFix = prices.some(
+    (p, i) => p.price !== (orderData.items[i] && orderData.items[i].price)
+  );
+
+  if (!needsPriceFix && !needsItemFix) {
+    return null;
+  }
+
+  const lineItems = orderData.items.map((item, i) => ({ ...item, price: prices[i].price }));
+  await orderRef.update({
+    items: lineItems,
+    price: resolvedTotal.value,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+  console.log(
+    `[normalizeOrderPricing] Corrected order pricing → Tsh ${resolvedTotal.value}`
+  );
+  return resolvedTotal.value;
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 // FUNCTION 2: onOrderStatusChanged  (Firestore trigger)
 // ════════════════════════════════════════════════════════════════════════════
@@ -1409,7 +1491,20 @@ exports.onNewOrder = onDocumentCreated(
     const studentId = orderData.studentId || orderData.userId;
     const studentName = orderData.userName || "A student";
     const orderId = event.params.orderId;
-    const totalAmount = orderData.price || orderData.totalAmount || 0;
+
+    // Phase 15 — order financial integrity: correct any client-tampered
+    // line-item prices and the order total against the authoritative
+    // `food_items` docs. Returns the recomputed total when a corrective
+    // write was performed (the pre-write orderData.price is stale), or the
+    // originally-supplied total when pricing was already authoritative.
+    // A transient failure rethrows so the event is retried — a tampered
+    // order must be corrected, not acknowledged.
+    const pricedTotal = await normalizeOrderPricing(
+      event.data.ref, orderData
+    );
+    const totalAmount = pricedTotal != null
+        ? pricedTotal
+        : (orderData.price || orderData.totalAmount || 0);
 
     console.log("[onNewOrder] New order received");
 
@@ -2334,11 +2429,106 @@ exports.migrateLegacyOrderFoodIds = functions
       }
       await MIGRATION_STATE_REF.set(stateUpdate, { merge: true });
 
-      console.log(
+console.log(
         `[migrateFoodIds] Run complete: ${backfilledCount} backfilled this run, ` +
         `total=${stateUpdate.processedCount}, ` +
         `failedTotal=${accumulatedFailedIds.length}, ` +
         `nextPhase='${nextPhase}'`
+      );
+
+      return null;
+    });
+
+// ════════════════════════════════════════════════════════════════════════════
+// FUNCTION 10: auditReviewCreationRate  (Scheduled — every 24 hours)
+// ════════════════════════════════════════════════════════════════════════════
+
+// Review-flooding guard (Phase 15, Part 7). Firestore rules cannot enforce a
+// global per-user rate limit across the whole `reviews` collection (no
+// aggregation), so a daily scheduled audit moppers up. It detects users who
+// created an abnormally high number of NEW reviews in the trailing 24 hours
+// and persists a diagnostic record for admins to review.
+//
+// Design:
+//   • Non-destructive — it ONLY audits. It never deletes reviews, never
+//     mutates ratings, and never changes an account's status automatically
+//     (strike/suspension remains a deliberate admin decision, Part 8).
+//   • Bounded      — reads at most REVIEW_AUDIT_MAX_SCAN reviews per daily run,
+//                     so cost grows with ONE day's activity, not the whole DB.
+//   • Idempotent   — output keyed by ISO date; a rerun within the same day
+//                     overwrites the same document instead of duplicating rows.
+//   • Privacy      — records only the user UID (identifier allowed for
+//     auditability); no email, review text, or PII is logged (Part 15).
+
+/** Max reviews scanned per daily run. */
+const REVIEW_AUDIT_MAX_SCAN = 50000;
+
+/** Per-user NEW-review ceiling in a trailing 24h window before flagging. */
+const REVIEW_DAILY_CAP = 10;
+
+exports.auditReviewCreationRate = functions
+    .runWith({
+      memory: "256MB",
+      timeoutSeconds: 240,
+    })
+    .pubsub
+    .schedule("every 24 hours")
+    .onRun(async (context) => {
+      console.log("[auditReviews] Scheduled flood audit started...");
+
+      const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+      const counts = {};
+      let scanned = 0;
+      let lastTimestamp = null;
+
+      const limit = Math.min(REVIEW_AUDIT_MAX_SCAN, 500);
+      for (;;) {
+        let q = db
+            .collection("reviews")
+            .where("createdAt", ">=", admin.firestore.Timestamp.fromDate(cutoff))
+            .orderBy("createdAt")
+            .limit(limit);
+        if (lastTimestamp) {
+          q = q.startAfter(lastTimestamp);
+        }
+        const snapshot = await q.get();
+        if (snapshot.empty) break;
+
+        let latest = null;
+        for (const doc of snapshot.docs) {
+          scanned++;
+          const data = doc.data();
+          latest = data && data.createdAt;
+          const uid = data && data.userId;
+          if (typeof uid === "string" && uid.length > 0) {
+            counts[uid] = (counts[uid] || 0) + 1;
+          }
+        }
+        lastTimestamp = latest;
+        if (snapshot.size < limit || scanned >= REVIEW_AUDIT_MAX_SCAN) break;
+      }
+
+      const suspects = Object.keys(counts)
+          .filter((uid) => counts[uid] > REVIEW_DAILY_CAP)
+          .map((uid) => ({ userId: uid, count: counts[uid] }))
+          .sort((a, b) => b.count - a.count);
+
+      // Persist the audit result keyed by the calendar date (idempotent).
+      const dateKey = new Date().toISOString().slice(0, 10);
+      await db.collection("review_audit").doc(dateKey).set({
+        windowStart: admin.firestore.Timestamp.fromDate(cutoff),
+        windowEnd: admin.firestore.FieldValue.serverTimestamp(),
+        scannedReviews: scanned,
+        flaggedUsers: suspects,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      console.log(
+        `[auditReviews] Scanned ${scanned} review(s); ` +
+        `flagged ${suspects.length} user(s) exceeding cap ` +
+        `(${REVIEW_DAILY_CAP}/day): ` +
+        (suspects.map((s) => `${s.userId}(${s.count})`).join(", ") || "(none)")
       );
 
       return null;

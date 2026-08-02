@@ -51,8 +51,14 @@ class AuthService {
     if (fullName.trim().length > InputValidator.maxNameLength) {
       return 'Name is too long. Use ${InputValidator.maxNameLength} characters or fewer.';
     }
+    if (password.isEmpty) {
+      return 'Invalid email or password. Please try again.';
+    }
     if (InputValidator.containsControlCharacters(password)) {
       return 'Password contains invalid characters.';
+    }
+    if (password.length > InputValidator.maxPasswordLength) {
+      return 'Password is too long. Use ${InputValidator.maxPasswordLength} characters or fewer.';
     }
 
     final cleanEmail = InputValidator.sanitizeEmail(email);
@@ -341,10 +347,10 @@ class AuthService {
       case 'user-not-found':
         return 'No account found for this email. Please register first.';
       case 'wrong-password':
-        return 'Incorrect password. Please try again.';
       case 'invalid-credential':
-        return 'Invalid email or password. Please try again.';
       case 'invalid-login-credentials':
+        // Single generic message — never discloses email existence or whether
+        // the password was correct (Part 14 anti-enumeration).
         return 'Invalid email or password. Please try again.';
       case 'too-many-requests':
         return 'Too many failed attempts. Please wait a moment and try again.';
