@@ -35,6 +35,15 @@ jobs:
       - name: Install Dependencies
         run: flutter pub get --enforce-lockfile
 
+      # Phase 15 — Run the security & unit test suite BEFORE any build.
+      # auth_hardening_test.dart contains guardrail tests that verify the
+      # Cloud Functions, App Check, Firestore rules and update-system security
+      # invariants; a regression must fail the release, not ship.
+      # firestore.rules is tracked, so the rules guardrails run here as well.
+
+      - name: Run Security & Unit Tests
+        run: flutter test
+
       # Decode Android Keystore
 
       - name: Decode Android Keystore
