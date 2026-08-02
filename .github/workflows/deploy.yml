@@ -31,7 +31,7 @@ jobs:
       # firestore.rules is tracked, so the rules guardrails run here as well.
       - name: Run Security & Unit Tests
         run: |
-          flutter pub get
+          flutter pub get --enforce-lockfile
           flutter test
 
       # Step 5: Build Flutter Web
@@ -48,7 +48,7 @@ jobs:
             echo "::error::RECAPTCHA_SITE_KEY is required for App Check on web release builds. Set it in GitHub repository secrets before deploying."
             exit 1
           fi
-          flutter pub get
+          flutter pub get --enforce-lockfile
           flutter build web --release --base-href "/" \
             --dart-define=RECAPTCHA_SITE_KEY="$RECAPTCHA_SITE_KEY"
 
