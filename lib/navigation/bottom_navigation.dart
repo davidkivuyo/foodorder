@@ -21,6 +21,7 @@ import '../screens/order_screen.dart';
 import '../data/search_bar.dart';
 import 'package:dash_no_internet_screen/dash_no_internet_screen.dart';
 import '../services/cart_service.dart';
+import '../services/connectivity_service.dart';
 import '../services/notification_service.dart';
 import '../widgets/cart_bottom_sheet.dart';
 import '../widgets/cart_fab.dart';
@@ -149,12 +150,15 @@ class _NavigationExampleState extends State<MainScreen> {
         elevation: 4,
         backgroundColor: Colors.orange,
       ),
+      // Notify ConnectivityService so SyncQueueService triggers queue processing.
       onInternetAvailable: () {
+        ConnectivityService().setOnline(true);
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(const SnackBar(content: Text("Internet connected!")));
       },
       onRetryFailed: () {
+        ConnectivityService().setOnline(false);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(

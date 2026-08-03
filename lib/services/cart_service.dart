@@ -18,8 +18,11 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/cart_item.dart';
 import '../models/order.dart';
+import '../models/sync_operation.dart';
 import '../data/food_data.dart';
 import 'app_log.dart';
+import 'connectivity_service.dart';
+import 'sync_queue_service.dart';
 
 class CartService extends ChangeNotifier {
   // Singleton pattern to share state across screens
@@ -35,6 +38,7 @@ class CartService extends ChangeNotifier {
   CartService._internal()
       : _firestore = FirebaseFirestore.instance {
     _initAuthListener();
+    _initSyncHandlers();
   }
 
   /// Testing constructor with injectable Firestore.
@@ -238,6 +242,31 @@ class CartService extends ChangeNotifier {
     _cartSubscription = null;
   }
 
+  void _initSyncHandlers() {
+    final queue = SyncQueueService();
+    queue.registerHandler('cart_add', (op) async {
+      final itemId = op.payload['foodItemId'] as String?;
+      final qty = (op.payload['quantity'] as num?)?.toInt() ?? 1;
+      final selectedCafe = op.payload['selectedCafe'] as String?;
+      if (itemId == null) return true;
+
+      FoodItem? foodItem = _foodItemsCache[itemId];
+      if (foodItem == null) {
+        try {
+          final doc = await _firestore.collection('food_items').doc(itemId).get();
+          if (doc.exists && doc.data() != null) {
+            foodItem = FoodItem.fromMap(doc.data()!, id: doc.id);
+            _foodItemsCache[itemId] = foodItem;
+          }
+        } catch (_) {}
+      }
+      if (foodItem == null || !foodItem.available) {
+        return true; // Skip deleted or out-of-stock items gracefully
+      }
+      return await _directAddToCart(foodItem, selectedCafe: selectedCafe, quantity: qty);
+    });
+  }
+
   // ---------- Cart Operations ----------
 
   /// Add an item to the cart.
@@ -262,6 +291,46 @@ class CartService extends ChangeNotifier {
       AppLog.d('[CartService] Cannot add item with invalid quantity: $quantity');
       return false;
     }
+
+    if (!ConnectivityService().isOnline) {
+      final existingIndex = _cartItems.indexWhere(
+        (element) => element.foodItem.id == item.id && element.selectedCafe == selectedCafe,
+      );
+      if (existingIndex >= 0) {
+        _cartItems[existingIndex].quantity += quantity;
+      } else {
+        _cartItems.add(
+          CartItem(
+            id: '${item.id}_${selectedCafe ?? ''}',
+            foodItem: item,
+            quantity: quantity,
+            selectedCafe: selectedCafe,
+          ),
+        );
+      }
+      notifyListeners();
+
+      await SyncQueueService().enqueue(
+        SyncOperation(
+          id: 'cart_add_${DateTime.now().millisecondsSinceEpoch}',
+          type: 'cart_add',
+          payload: {
+            'foodItemId': item.id,
+            'quantity': quantity,
+            'selectedCafe': selectedCafe,
+          },
+          timestamp: DateTime.now().millisecondsSinceEpoch,
+        ),
+      );
+      return true;
+    }
+
+    return await _directAddToCart(item, selectedCafe: selectedCafe, quantity: quantity);
+  }
+
+  Future<bool> _directAddToCart(FoodItem item, {String? selectedCafe, int quantity = 1}) async {
+    final userId = _currentUserId;
+    if (userId == null || item.id.isEmpty) return false;
 
     final cartCollection = _firestore
         .collection('users')
