@@ -169,7 +169,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
         _hasMore = result.key.length >= 20;
         _isLoading = false;
       });
-    } catch (e) {
+    } on Exception catch (e) {
       AppLog.e('[ReviewsScreen] load error', e);
       if (mounted && generation == _requestGeneration) {
         setState(() {
@@ -205,7 +205,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
         _hasMore = result.key.length >= 20;
         _isLoading = false;
       });
-    } catch (e) {
+    } on Exception catch (e) {
       AppLog.e('[ReviewsScreen] loadMore error', e);
       if (mounted && generation == _requestGeneration) {
         setState(() {
@@ -242,7 +242,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
           reviewId: review.id,
           foodId: review.foodId,
         );
-      } catch (e) {
+      } on Exception catch (e) {
         AppLog.e('[ReviewsScreen] deleteReview error', e);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -286,7 +286,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
           comment: result.comment,
           anonymous: result.anonymous,
         );
-      } catch (e) {
+      } on Exception catch (e) {
         AppLog.e('[ReviewsScreen] updateReview error', e);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(

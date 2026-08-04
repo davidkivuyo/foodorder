@@ -17,10 +17,13 @@ import 'dart:async';
 
 import 'package:campusbite/navigation/router.dart';
 import 'package:campusbite/services/app_log.dart';
+import 'package:campusbite/services/connectivity_service.dart';
 import 'package:campusbite/services/fcm_service.dart';
 import 'package:campusbite/services/notification_service.dart';
+import 'package:campusbite/services/sync_queue_service.dart';
 import 'package:campusbite/services/update_background.dart';
 import 'package:campusbite/services/update_service.dart';
+import 'package:campusbite/widgets/offline_banner.dart';
 import 'package:campusbite/widgets/update_gate.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
@@ -75,7 +78,7 @@ Future<void> main() async {
       options: DefaultFirebaseOptions.currentPlatform,
     );
     firebaseReady = true;
-  } catch (e, stack) {
+  } on Exception catch (e, stack) {
     AppLog.e('Firebase init error', e, stack);
     // Continue — app degrades gracefully if Firebase is unavailable.
   }
@@ -127,7 +130,7 @@ Future<void> main() async {
         persistenceEnabled: true,
       );
       AppLog.d('Firestore offline persistence enabled');
-    } catch (e) {
+    } on Exception catch (e) {
       AppLog.e('Failed to enable Firestore persistence', e);
     }
 
@@ -160,6 +163,13 @@ limitations under the License.
   ''',
     );
   });
+  // ── Phase 12: Connectivity & Sync Queue bootstrap ───────────────────
+  // Eagerly spin up the singleton so the polling timer starts and the
+  // SyncQueueService loads any queued operations from SharedPreferences
+  // before the first frame is drawn.
+  ConnectivityService();
+  SyncQueueService();
+
   runApp(MyApp(firebaseReady: firebaseReady));
 
   // ── Phase 14: in-app updates ─────────────────────────────────────────
@@ -177,13 +187,13 @@ Future<void> initializeFcmForUser(User? user) async {
   if (user != null) {
     try {
       await fcmService.initialize(userId: user.uid);
-    } catch (e, stack) {
+    } on Exception catch (e, stack) {
       AppLog.e('[FCM] Initialization error', e, stack);
     }
   } else {
     try {
       await fcmService.onLogout();
-    } catch (e) {
+    } on Exception catch (e) {
       AppLog.e('[FCM] Logout error', e);
     }
   }
@@ -283,7 +293,16 @@ class _MyAppState extends State<MyApp> {
       // Phase 14: the update gate sits above the navigator so mandatory
       // updates can block the whole app, and optional ones can prompt over
       // any screen.
-      builder: (context, child) => UpdateGate(child: child ?? const SizedBox()),
+      // Phase 12: OfflineBanner is added inside UpdateGate so it appears on
+      // every screen as a slim status banner above the page content.
+      builder: (context, child) => UpdateGate(
+        child: Column(
+          children: [
+            const OfflineBanner(),
+            Expanded(child: child ?? const SizedBox()),
+          ],
+        ),
+      ),
     );
   }
   

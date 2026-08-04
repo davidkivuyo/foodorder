@@ -17,6 +17,14 @@ import '../models/strike_model.dart';
 import '../models/audit_log.dart';
 import 'app_log.dart';
 
+/// Thrown when a strike operation targets a non-existent student account.
+class StudentNotFoundException implements Exception {
+  const StudentNotFoundException(this.message);
+  final String message;
+  @override
+  String toString() => message;
+}
+
 /// Manages strike operations for student accounts.
 ///
 /// Business logic must live here — never inside Widgets.
@@ -100,7 +108,7 @@ class StrikeService {
         final doc = await transaction.get(docRef);
 
         if (!doc.exists) {
-          throw StateError('Student not found.');
+          throw StudentNotFoundException('Student not found.');
         }
 
         final currentCount =
@@ -128,8 +136,9 @@ class StrikeService {
       });
 
       return null; // success
-    } catch (e, stack) {
-      if (e is StateError) return e.message;
+    } on StudentNotFoundException catch (e) {
+      return e.message;
+    } on Exception catch (e, stack) {
       AppLog.e('[StrikeService] pardonStrike error', e, stack);
       return 'Failed to pardon strike. Please try again.';
     }
@@ -148,7 +157,7 @@ class StrikeService {
         final doc = await transaction.get(docRef);
 
         if (!doc.exists) {
-          throw StateError('Student not found.');
+          throw StudentNotFoundException('Student not found.');
         }
 
         transaction.update(docRef, {
@@ -171,8 +180,9 @@ class StrikeService {
       });
 
       return null; // success
-    } catch (e, stack) {
-      if (e is StateError) return e.message;
+    } on StudentNotFoundException catch (e) {
+      return e.message;
+    } on Exception catch (e, stack) {
       AppLog.e('[StrikeService] resetStrike error', e, stack);
       return 'Failed to reset strikes. Please try again.';
     }
@@ -191,7 +201,7 @@ class StrikeService {
         final doc = await transaction.get(docRef);
 
         if (!doc.exists) {
-          throw StateError('Student not found.');
+          throw StudentNotFoundException('Student not found.');
         }
 
         transaction.update(docRef, {
@@ -214,8 +224,9 @@ class StrikeService {
       });
 
       return null; // success
-    } catch (e, stack) {
-      if (e is StateError) return e.message;
+    } on StudentNotFoundException catch (e) {
+      return e.message;
+    } on Exception catch (e, stack) {
       AppLog.e('[StrikeService] reactivateAccount error', e, stack);
       return 'Failed to reactivate account. Please try again.';
     }

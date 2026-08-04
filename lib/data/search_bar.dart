@@ -111,7 +111,7 @@ class _SearchBarScreenState extends State<SearchBarScreen> {
         _isLoading = false;
         _errorMessage = userFriendlyError;
       });
-    } catch (e) {
+    } on Exception catch (_) {
       if (!mounted || generation != _searchGeneration) return;
       setState(() {
         _searchResults = [];

@@ -78,7 +78,7 @@ class FoodItem {
       // Firebase Timestamp has a toDate() method
       try {
         return (value as dynamic).toDate() as DateTime;
-      } catch (_) {}
+      } on Exception catch (_) {}
       return null;
     }
 

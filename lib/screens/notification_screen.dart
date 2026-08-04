@@ -233,11 +233,11 @@ class _NotificationScreenState extends State<NotificationScreen> {
         }
       }
       // For null tabIndex (e.g., '/notifications'), stay on the current screen.
-    } catch (_) {
+    } on Exception catch (_) {
       // Fallback: pop back to main screen
       try {
         if (mounted) Navigator.pop(context);
-      } catch (_) {}
+      } on Exception catch (_) {}
     }
   }
 

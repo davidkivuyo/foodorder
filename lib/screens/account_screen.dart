@@ -88,7 +88,7 @@ class _AccountScreenState extends State<AccountScreen> {
       if (mounted) {
         setState(() => _appVersion = info.version);
       }
-    } catch (_) {
+    } on Exception catch (_) {
       // Graceful degradation: leave _appVersion null; UI shows a dash.
     }
   }
@@ -364,7 +364,7 @@ class AccountSettings extends StatelessWidget {
         rootNavigator: true,
       ).pop(); // close the loading dialog
       context.go('/');
-    } catch (e) {
+    } on Exception catch (e) {
       if (!context.mounted) return;
       Navigator.of(
         context,

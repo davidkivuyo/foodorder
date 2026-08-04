@@ -61,7 +61,7 @@ class ReviewService {
     try {
       existingReviews =
           await _repository.findUserReviewsForFood(foodId: foodId, userId: userId);
-    } catch (e) {
+    } on Exception catch (e) {
       AppLog.e('[ReviewService] checkEligibility review query error', e);
       return ReviewEligibility.notEligible();
     }
@@ -84,7 +84,7 @@ class ReviewService {
           matchingOrderId: orderId,
         );
       }
-    } catch (e) {
+    } on Exception catch (e) {
       AppLog.e('[ReviewService] checkEligibility order query error', e);
       return ReviewEligibility.notEligible();
     }
@@ -197,7 +197,7 @@ class ReviewService {
         AppLog.d('[ReviewService] createReview: review already exists for $orderId');
         return null;
       }
-    } catch (e) {
+    } on Exception catch (e) {
       AppLog.e('[ReviewService] createReview eligibility check error', e);
       return null;
     }
@@ -268,7 +268,7 @@ class ReviewService {
       // Rating stats are updated server-side by the onReviewChanged
       // Cloud Function. No client-side aggregation needed.
       return docId;
-    } catch (e) {
+    } on Exception catch (e) {
       AppLog.e('[ReviewService] createReview write error', e);
       return null;
     }

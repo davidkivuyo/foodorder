@@ -82,7 +82,7 @@ class Review {
       if (value is DateTime) return value;
       try {
         return (value as dynamic).toDate() as DateTime;
-      } catch (_) {}
+      } on Exception catch (_) {}
       return null;
     }
 
