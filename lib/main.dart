@@ -23,7 +23,6 @@ import 'package:campusbite/services/notification_service.dart';
 import 'package:campusbite/services/sync_queue_service.dart';
 import 'package:campusbite/services/update_background.dart';
 import 'package:campusbite/services/update_service.dart';
-import 'package:campusbite/widgets/offline_banner.dart';
 import 'package:campusbite/widgets/update_gate.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
@@ -301,16 +300,7 @@ class _MyAppState extends State<MyApp> {
       // Phase 14: the update gate sits above the navigator so mandatory
       // updates can block the whole app, and optional ones can prompt over
       // any screen.
-      // Phase 12: OfflineBanner is added inside UpdateGate so it appears on
-      // every screen as a slim status banner below the page content.
-      builder: (context, child) => UpdateGate(
-        child: Column(
-          children: [
-            Expanded(child: child ?? const SizedBox()),
-            const OfflineBanner(),
-          ],
-        ),
-      ),
+      builder: (context, child) => UpdateGate(child: child ?? const SizedBox()),
     );
   }
 

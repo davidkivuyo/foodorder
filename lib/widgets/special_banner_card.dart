@@ -49,6 +49,7 @@ class _SpecialBannerCardState extends State<SpecialBannerCard> {
   late final PageController _pageController;
   late final Timer _timer;
   int _currentPage = 0;
+  bool _disposed = false;
 
   @override
   void initState() {
@@ -57,7 +58,7 @@ class _SpecialBannerCardState extends State<SpecialBannerCard> {
 
     // Set up an automatic timer to slide to the next banner every 4 seconds
     _timer = Timer.periodic(const Duration(seconds: 4), (timer) {
-      if (widget.imageUrls.isEmpty) return;
+      if (_disposed || widget.imageUrls.isEmpty) return;
 
       if (_currentPage < widget.imageUrls.length - 1) {
         _currentPage++;
@@ -77,6 +78,7 @@ class _SpecialBannerCardState extends State<SpecialBannerCard> {
 
   @override
   void dispose() {
+    _disposed = true;
     _timer.cancel(); // Cancel the timer to prevent memory leaks
     _pageController.dispose(); // Dispose the controller safely
     super.dispose();

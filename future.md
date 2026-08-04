@@ -1,6 +1,8 @@
 # future implementation plans
 
 # NOT FULLFILLED
+1. migrate CI to blacksmith- "runs-on: blacksmith-4vcpu-ubuntu-2404" 
+
 2. prepaire updating code to automatically fetch and update app with ease
 Preserves all of your current signing and build logic.
 Builds both the universal APK and split-per-ABI APKs.

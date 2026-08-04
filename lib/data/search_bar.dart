@@ -359,7 +359,10 @@ class _SearchBarScreenState extends State<SearchBarScreen> {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => FoodDetailsScreen(item: item),
+                    builder: (_) => FoodDetailsScreen(
+                      item: item,
+                      heroTagPrefix: 'search_',
+                    ),
                   ),
                 );
               },
@@ -376,7 +379,7 @@ class _SearchBarScreenState extends State<SearchBarScreen> {
                       ),
                       child: Hero(
                         tag:
-                            'home_${item.displayCafe}_${item.title}_${item.image}',
+                            'search_${item.displayCafe}_${item.title}_${item.image}',
                         child: item.buildImage(
                           width: 100,
                           height: 100,

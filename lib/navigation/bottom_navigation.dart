@@ -25,6 +25,7 @@ import '../services/connectivity_service.dart';
 import '../services/notification_service.dart';
 import '../widgets/cart_bottom_sheet.dart';
 import '../widgets/cart_fab.dart';
+import '../widgets/offline_banner.dart';
 
 // home screen
 class MainScreen extends StatefulWidget {
@@ -460,7 +461,17 @@ class _NavigationExampleState extends State<MainScreen> {
                   ),
                 ],
               )
-            : _pages[currentPageIndex],
+            : Stack(
+                children: [
+                  _pages[currentPageIndex],
+                  const Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    child: OfflineBanner(),
+                  ),
+                ],
+              ),
 
         // Bottom Navigation Bar — Visible only on mobile
         bottomNavigationBar: isDesktop

@@ -35,7 +35,7 @@ class CategoryScreen extends StatefulWidget {
 }
 
 class _CategoryScreenState extends State<CategoryScreen> {
-  String _selectedCategory = 'All';
+  final ValueNotifier<String> _selectedCategory = ValueNotifier('All');
 
   static const List<_Category> _categories = [
     _Category('🍽️ All', 'All'),
@@ -45,6 +45,12 @@ class _CategoryScreenState extends State<CategoryScreen> {
     _Category('🍕 Teasers', 'Teasers'),
     _Category('🥂 Drinks', 'Drinks'),
   ];
+
+  @override
+  void dispose() {
+    _selectedCategory.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -72,15 +78,6 @@ class _CategoryScreenState extends State<CategoryScreen> {
         }
 
         final allItems = snapshot.data ?? [];
-        final filteredItems = _selectedCategory == 'All'
-            ? allItems
-            : allItems
-                  .where(
-                    (item) =>
-                        item.category.toLowerCase() ==
-                        _selectedCategory.toLowerCase(),
-                  )
-                  .toList();
 
         return SingleChildScrollView(
           child: Padding(
@@ -103,22 +100,37 @@ class _CategoryScreenState extends State<CategoryScreen> {
                 const SizedBox(height: 18),
                 _buildCategoryChips(),
                 const SizedBox(height: 18),
-                filteredItems.isEmpty
-                    ? Center(
+                // Only this subtree rebuilds when the chip changes.
+                ValueListenableBuilder<String>(
+                  valueListenable: _selectedCategory,
+                  builder: (context, selected, _) {
+                    final filteredItems = selected == 'All'
+                        ? allItems
+                        : allItems
+                            .where(
+                              (item) =>
+                                  item.category.toLowerCase() ==
+                                  selected.toLowerCase(),
+                            )
+                            .toList();
+
+                    if (filteredItems.isEmpty) {
+                      return Center(
                         child: Padding(
                           padding: const EdgeInsets.all(32),
                           child: Text(
-                            'No items found for $_selectedCategory',
+                            'No items found for $selected',
                             style: const TextStyle(
                               fontSize: 16,
                               color: Colors.grey,
                             ),
                           ),
                         ),
-                      )
-                    : Cards(items: filteredItems),
-                //const SizedBox(height: 10),
-                //BottomBanner(),
+                      );
+                    }
+                    return Cards(items: filteredItems);
+                  },
+                ),
               ],
             ),
           ),
@@ -130,52 +142,53 @@ class _CategoryScreenState extends State<CategoryScreen> {
   Widget _buildCategoryChips() {
     return SizedBox(
       height: 45,
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        itemCount: _categories.length,
-        itemBuilder: (context, index) {
-          final category = _categories[index];
-          final isSelected = category.value == _selectedCategory;
+      child: ValueListenableBuilder<String>(
+        valueListenable: _selectedCategory,
+        builder: (context, selected, _) {
+          return ListView.builder(
+            scrollDirection: Axis.horizontal,
+            itemCount: _categories.length,
+            itemBuilder: (context, index) {
+              final category = _categories[index];
+              final isSelected = category.value == selected;
 
-          return Padding(
-            padding: const EdgeInsets.only(right: 8.0),
-            child: GestureDetector(
-              onTap: () {
-                setState(() {
-                  _selectedCategory = category.value;
-                });
-              },
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 5,
-                ),
-                decoration: BoxDecoration(
-                  color: isSelected ? const Color(0xFFF5820D) : Colors.white,
-                  borderRadius: BorderRadius.circular(25),
-                  border: isSelected
-                      ? null
-                      : Border.all(
-                          color: const Color.fromARGB(255, 237, 237, 237),
-                          width: 1.5,
+              return Padding(
+                padding: const EdgeInsets.only(right: 8.0),
+                child: GestureDetector(
+                  onTap: () => _selectedCategory.value = category.value,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 5,
+                    ),
+                    decoration: BoxDecoration(
+                      color: isSelected ? const Color(0xFFF5820D) : Colors.white,
+                      borderRadius: BorderRadius.circular(25),
+                      border: isSelected
+                          ? null
+                          : Border.all(
+                              color: const Color.fromARGB(255, 237, 237, 237),
+                              width: 1.5,
+                            ),
+                    ),
+                    child: Center(
+                      child: Text(
+                        category.display,
+                        style: TextStyle(
+                          color: isSelected
+                              ? Colors.white
+                              : const Color.fromARGB(255, 61, 61, 61),
+                          fontWeight: isSelected
+                              ? FontWeight.bold
+                              : FontWeight.w500,
+                          fontSize: 16,
                         ),
-                ),
-                child: Center(
-                  child: Text(
-                    category.display,
-                    style: TextStyle(
-                      color: isSelected
-                          ? Colors.white
-                          : const Color.fromARGB(255, 61, 61, 61),
-                      fontWeight: isSelected
-                          ? FontWeight.bold
-                          : FontWeight.w500,
-                      fontSize: 16,
+                      ),
                     ),
                   ),
                 ),
-              ),
-            ),
+              );
+            },
           );
         },
       ),

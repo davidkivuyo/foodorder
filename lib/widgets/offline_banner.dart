@@ -102,53 +102,56 @@ class _OfflineBannerState extends State<OfflineBanner> {
           padding: EdgeInsets.only(
             bottom: MediaQuery.viewInsetsOf(context).bottom,
           ),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 300),
-            color: bgColor,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: SafeArea(
-              bottom: true,
-              top: false,
-              child: Row(
-                children: [
-                  icon,
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      message,
-                      softWrap: true,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
+          child: Material(
+            type: MaterialType.transparency,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              color: bgColor,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: SafeArea(
+                bottom: true,
+                top: false,
+                child: Row(
+                  children: [
+                    icon,
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        message,
+                        softWrap: true,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
                     ),
-                  ),
-                  if (vm.canSyncNow)
-                    GestureDetector(
-                      onTap: () => vm.syncNow(),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.2),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: const Text(
-                          'Sync Now',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
+                    if (vm.canSyncNow)
+                      GestureDetector(
+                        onTap: () => vm.syncNow(),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Text(
+                            'Sync Now',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),

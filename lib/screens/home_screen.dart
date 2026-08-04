@@ -42,6 +42,14 @@ class HomeScreen extends StatelessWidget {
 
   static void _precacheImages(List<FoodItem> items, BuildContext context) {
     if (items.isEmpty) return;
+    final hasNewUrls = items.take(12).any((item) {
+      final url = item.image;
+      return url.isNotEmpty &&
+          (url.startsWith('http://') || url.startsWith('https://')) &&
+          !_precachedUrls.contains(url);
+    });
+    if (!hasNewUrls) return;
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       // Guard against using a context whose widget was disposed before the
       // post-frame callback ran (e.g. navigating away while the frame was
@@ -217,6 +225,7 @@ class HomeScreen extends StatelessWidget {
                             CardRowItems(
                               title: _formatTitle(section.name),
                               items: sectionItems,
+                              heroTagPrefix: 'section_${section.name}_',
                             ),
                             const Divider(),
                           ];
@@ -307,6 +316,7 @@ class CardRowItems extends StatelessWidget {
                           builder: (_) => CategoriesTitles(
                             title: title,
                             items: flipItems ? items.reversed.toList() : items,
+                            heroTagPrefix: heroTagPrefix,
                           ),
                         ),
                       );
@@ -334,7 +344,7 @@ class CardRowItems extends StatelessWidget {
               final item = displayedItems[index];
               return HoverCardScale(
                 child: Container(
-                  width: 260,
+                  width: 230,
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(16),
                   ),
@@ -529,8 +539,14 @@ class _YourFavouritesSection extends StatelessWidget {
 class CategoriesTitles extends StatelessWidget {
   final String title;
   final List<FoodItem> items;
+  final String heroTagPrefix;
 
-  const CategoriesTitles({super.key, required this.title, required this.items});
+  const CategoriesTitles({
+    super.key,
+    required this.title,
+    required this.items,
+    this.heroTagPrefix = 'cat_title_',
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -568,13 +584,16 @@ class CategoriesTitles extends StatelessWidget {
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (_) => FoodDetailsScreen(item: item),
+                                  builder: (_) => FoodDetailsScreen(
+                                    item: item,
+                                    heroTagPrefix: heroTagPrefix,
+                                  ),
                                 ),
                               );
                             },
                             child: Hero(
                               tag:
-                                  'home_${item.displayCafe}_${item.title}_${item.image}',
+                                  '${heroTagPrefix}${item.displayCafe}_${item.title}_${item.image}',
                               child: item.buildImage(
                                 height: 100,
                                 width: double.infinity,
