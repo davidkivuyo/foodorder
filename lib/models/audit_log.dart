@@ -92,7 +92,7 @@ class AuditLogEntry {
       }
       try {
         return (value as dynamic).toDate() as DateTime;
-      } catch (_) {
+      } on Exception catch (_) {
         throw ArgumentError.value(
           value,
           'timestamp',

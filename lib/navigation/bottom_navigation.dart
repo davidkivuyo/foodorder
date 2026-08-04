@@ -150,15 +150,16 @@ class _NavigationExampleState extends State<MainScreen> {
         elevation: 4,
         backgroundColor: Colors.orange,
       ),
-      // Notify ConnectivityService so SyncQueueService triggers queue processing.
+      // Re-verify connectivity so SyncQueueService triggers queue processing
+      // with the real platform result, not a UI-asserted value.
       onInternetAvailable: () {
-        ConnectivityService().setOnline(true);
+        ConnectivityService().checkConnectivity();
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(const SnackBar(content: Text("Internet connected!")));
       },
       onRetryFailed: () {
-        ConnectivityService().setOnline(false);
+        ConnectivityService().checkConnectivity();
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(

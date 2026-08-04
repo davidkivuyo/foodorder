@@ -137,7 +137,7 @@ class FavoriteService {
               foods.add(item);
             }
           }
-        } catch (_) {
+        } on Exception catch (_) {
           // Skip on error — graceful degradation.
         }
       }
@@ -218,7 +218,7 @@ class FavoriteService {
     try {
       final foodIds = await _calculateFavoriteIds(uid);
       await _cacheFavoriteIds(uid, foodIds);
-    } catch (e) {
+    } on Exception catch (e) {
       AppLog.e('[FavoriteService] Recalculation error', e);
     }
   }
@@ -375,7 +375,7 @@ class FavoriteService {
     if (value is DateTime) return value;
     try {
       return (value as dynamic).toDate() as DateTime;
-    } catch (_) {}
+    } on Exception catch (_) {}
     return null;
   }
 }

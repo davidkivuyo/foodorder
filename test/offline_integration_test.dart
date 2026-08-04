@@ -76,6 +76,7 @@ void main() {
       final op = SyncOperation(
         id: 'sync-101',
         type: 'place_order',
+        ownerUserId: 'student-42',
         payload: {'orderId': 'CB-1001', 'totalAmount': 45.0},
         timestamp: 1700000000000,
         retryCount: 2,
@@ -88,7 +89,9 @@ void main() {
 
       expect(decoded.id, equals(op.id));
       expect(decoded.type, equals(op.type));
+      expect(decoded.ownerUserId, equals('student-42'));
       expect(decoded.payload['orderId'], equals('CB-1001'));
+      expect(decoded.timestamp, equals(1700000000000));
       expect(decoded.retryCount, equals(2));
       expect(decoded.status, equals(SyncOperationStatus.pending));
       expect(decoded.lastError, equals('Timeout'));

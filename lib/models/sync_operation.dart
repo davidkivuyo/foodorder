@@ -23,11 +23,22 @@ enum SyncOperationStatus {
 }
 
 /// Represents a queued write operation to be executed when back online.
+///
+/// Every operation is owned by the user who enqueued it (via [ownerUserId]).
+/// Replay must never mutate another user's data, so [SyncQueueService] skips
+/// operations whose owner does not match the currently authenticated user.
 class SyncOperation {
   final String id;
   final String type;
   final Map<String, dynamic> payload;
   final int timestamp;
+
+  /// UID of the user who created this operation.
+  ///
+  /// Null only for operations persisted by an older app version — those are
+  /// never replayed because their owner cannot be verified.
+  final String? ownerUserId;
+
   final int retryCount;
   final SyncOperationStatus status;
   final String? lastError;
@@ -37,6 +48,7 @@ class SyncOperation {
     required this.type,
     required this.payload,
     required this.timestamp,
+    this.ownerUserId,
     this.retryCount = 0,
     this.status = SyncOperationStatus.pending,
     this.lastError,
@@ -47,6 +59,7 @@ class SyncOperation {
     String? type,
     Map<String, dynamic>? payload,
     int? timestamp,
+    String? ownerUserId,
     int? retryCount,
     SyncOperationStatus? status,
     String? lastError,
@@ -56,6 +69,7 @@ class SyncOperation {
       type: type ?? this.type,
       payload: payload ?? this.payload,
       timestamp: timestamp ?? this.timestamp,
+      ownerUserId: ownerUserId ?? this.ownerUserId,
       retryCount: retryCount ?? this.retryCount,
       status: status ?? this.status,
       lastError: lastError ?? this.lastError,
@@ -68,6 +82,7 @@ class SyncOperation {
       'type': type,
       'payload': payload,
       'timestamp': timestamp,
+      'ownerUserId': ownerUserId,
       'retryCount': retryCount,
       'status': status.name,
       'lastError': lastError,
@@ -80,6 +95,7 @@ class SyncOperation {
       type: json['type'] as String,
       payload: Map<String, dynamic>.from(json['payload'] as Map),
       timestamp: json['timestamp'] as int,
+      ownerUserId: json['ownerUserId'] as String?,
       retryCount: (json['retryCount'] as int?) ?? 0,
       status: _statusFromString(json['status'] as String?),
       lastError: json['lastError'] as String?,
@@ -113,6 +129,7 @@ class SyncOperation {
           id == other.id &&
           type == other.type &&
           timestamp == other.timestamp &&
+          ownerUserId == other.ownerUserId &&
           retryCount == other.retryCount &&
           status == other.status;
 
@@ -121,6 +138,7 @@ class SyncOperation {
       id.hashCode ^
       type.hashCode ^
       timestamp.hashCode ^
+      ownerUserId.hashCode ^
       retryCount.hashCode ^
       status.hashCode;
 }

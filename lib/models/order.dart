@@ -186,7 +186,7 @@ class FoodOrder {
               selectedCafe: itemMap['selectedCafe'] as String?,
             );
           }).toList();
-        } catch (_) {}
+        } on Exception catch (_) {}
       }
       return [];
     }
@@ -197,7 +197,7 @@ class FoodOrder {
       if (value is DateTime) return value;
       try {
         return (value as dynamic).toDate() as DateTime;
-      } catch (_) {}
+      } on Exception catch (_) {}
       return null;
     }
 

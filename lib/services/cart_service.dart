@@ -122,7 +122,7 @@ class CartService extends ChangeNotifier {
         final data = doc.data();
         _cachedUserName = data?['fullName'] as String? ?? '';
       }
-    } catch (_) {}
+    } on Exception catch (_) {}
     if (_cachedUserName.isEmpty) {
       _cachedUserName = user.displayName ?? 'Student';
     }
@@ -170,7 +170,7 @@ class CartService extends ChangeNotifier {
           // Mutate the cart item's foodItem reference
           item.foodItem.available = freshItem.available;
         }
-      } catch (e) {
+      } on Exception catch (e) {
         AppLog.e('[CartService] Error refreshing food item ${item.foodItem.id}', e);
       }
     }
@@ -212,7 +212,7 @@ class CartService extends ChangeNotifier {
             foodItem = FoodItem.fromMap(foodDoc.data()!, id: foodDoc.id);
             _foodItemsCache[foodItemId] = foodItem;
           }
-        } catch (e) {
+        } on Exception catch (e) {
           AppLog.e('[CartService] Error fetching food item $foodItemId', e);
         }
       }
@@ -244,27 +244,36 @@ class CartService extends ChangeNotifier {
 
   void _initSyncHandlers() {
     final queue = SyncQueueService();
-    queue.registerHandler('cart_add', (op) async {
-      final itemId = op.payload['foodItemId'] as String?;
-      final qty = (op.payload['quantity'] as num?)?.toInt() ?? 1;
-      final selectedCafe = op.payload['selectedCafe'] as String?;
-      if (itemId == null) return true;
+    queue.registerHandler('cart_add', handleCartAddOp);
+  }
 
-      FoodItem? foodItem = _foodItemsCache[itemId];
-      if (foodItem == null) {
-        try {
-          final doc = await _firestore.collection('food_items').doc(itemId).get();
-          if (doc.exists && doc.data() != null) {
-            foodItem = FoodItem.fromMap(doc.data()!, id: doc.id);
-            _foodItemsCache[itemId] = foodItem;
-          }
-        } catch (_) {}
+  /// Executes a queued `cart_add` operation.
+  ///
+  /// Returns `true` when the operation was applied, or when it can never be
+  /// applied because the item was permanently removed or is unavailable, so
+  /// the queue can drop it. Transient failures are NOT swallowed: a failed
+  /// FoodItem fetch propagates so [SyncQueueService] marks the operation for
+  /// retry instead of treating it as a successful replay.
+  @visibleForTesting
+  Future<bool> handleCartAddOp(SyncOperation op) async {
+    final itemId = op.payload['foodItemId'] as String?;
+    final qty = (op.payload['quantity'] as num?)?.toInt() ?? 1;
+    final selectedCafe = op.payload['selectedCafe'] as String?;
+    if (itemId == null || itemId.isEmpty) return true;
+
+    FoodItem? foodItem = _foodItemsCache[itemId];
+    if (foodItem == null) {
+      final doc = await _firestore.collection('food_items').doc(itemId).get();
+      if (doc.exists && doc.data() != null) {
+        foodItem = FoodItem.fromMap(doc.data()!, id: doc.id);
+        _foodItemsCache[itemId] = foodItem;
       }
-      if (foodItem == null || !foodItem.available) {
-        return true; // Skip deleted or out-of-stock items gracefully
-      }
-      return await _directAddToCart(foodItem, selectedCafe: selectedCafe, quantity: qty);
-    });
+    }
+
+    // Skip deleted or out-of-stock items gracefully.
+    if (foodItem == null || !foodItem.available) return true;
+
+    return await _directAddToCart(foodItem, selectedCafe: selectedCafe, quantity: qty);
   }
 
   // ---------- Cart Operations ----------
@@ -314,6 +323,7 @@ class CartService extends ChangeNotifier {
         SyncOperation(
           id: 'cart_add_${DateTime.now().millisecondsSinceEpoch}',
           type: 'cart_add',
+          ownerUserId: userId,
           payload: {
             'foodItemId': item.id,
             'quantity': quantity,
@@ -385,7 +395,7 @@ class CartService extends ChangeNotifier {
         }, SetOptions(merge: true));
       }
       return true;
-    } catch (e) {
+    } on Exception catch (e) {
       AppLog.e('[CartService] Error adding to cart', e);
       return false;
     }
@@ -417,7 +427,7 @@ class CartService extends ChangeNotifier {
           await cartCollection.doc(existingItem.id).delete();
         }
       }
-    } catch (e) {
+    } on Exception catch (e) {
       AppLog.e('[CartService] Error removing from cart', e);
     }
   }
@@ -442,7 +452,7 @@ class CartService extends ChangeNotifier {
         final existingItem = _cartItems[existingIndex];
         await cartCollection.doc(existingItem.id).delete();
       }
-    } catch (e) {
+    } on Exception catch (e) {
       AppLog.e('[CartService] Error deleting from cart', e);
     }
   }
@@ -464,7 +474,7 @@ class CartService extends ChangeNotifier {
         batch.delete(doc.reference);
       }
       await batch.commit();
-    } catch (e) {
+    } on Exception catch (e) {
       AppLog.e('[CartService] Error clearing cart', e);
     }
   }
@@ -495,7 +505,7 @@ class CartService extends ChangeNotifier {
           (data['strikeCount'] as num?)?.toInt() ?? 0;
 
       return accountStatus == 'SUSPENDED' || strikeCount >= 2;
-    } catch (_) {
+    } on Exception catch (_) {
       return false;
     }
   }
@@ -616,7 +626,7 @@ class CartService extends ChangeNotifier {
         AppLog.e('[CartService] Error placing order', e);
       }
       return null;
-    } catch (e) {
+    } on Exception catch (e) {
       AppLog.e('[CartService] Error placing order', e);
       return null;
     }

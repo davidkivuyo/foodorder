@@ -172,7 +172,7 @@ class NotificationService {
     required String message,
     Map<String, String>? data,
   }) async {
-    // TODO: Phase 8 — Firebase Cloud Messaging integration
+    // Phase 8 — Firebase Cloud Messaging integration planned
     // This method will:
     // 1. Fetch the recipient's FCM token from Firestore
     // 2. Send push notification via Firebase Admin SDK / Cloud Function

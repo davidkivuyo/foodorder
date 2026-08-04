@@ -150,7 +150,7 @@ class FcmService {
 
       AppLog.d('[FcmService] Initialized successfully');
       return true;
-    } catch (e, stack) {
+    } on Exception catch (e, stack) {
       AppLog.e('[FcmService] Initialization error', e, stack);
       return false;
     }
@@ -195,7 +195,7 @@ class FcmService {
           '- keeping userId for potential retry',
         );
       }
-    } catch (e) {
+    } on Exception catch (e) {
       AppLog.e(
         '[FcmService] Token deactivation error '
         '- keeping userId for potential retry',
@@ -222,7 +222,7 @@ class FcmService {
       } else {
         AppLog.e('[FcmService] Token refresh registration failed');
       }
-    } catch (e) {
+    } on Exception catch (e) {
       AppLog.e('[FcmService] Token refresh registration error', e);
     }
   }
@@ -251,7 +251,7 @@ class FcmService {
         title: notification.title ?? '',
         body: notification.body ?? '',
       );
-    } catch (e) {
+    } on Exception catch (e) {
       AppLog.e('[FcmService] Foreground message handling error', e);
     }
   }
@@ -266,7 +266,7 @@ class FcmService {
         AppLog.d('[FcmService] Notification tap — navigating to: $deepLink');
         onDeepLinkNavigation?.call(deepLink);
       }
-    } catch (e) {
+    } on Exception catch (e) {
       AppLog.e('[FcmService] Notification tap handling error', e);
     }
   }

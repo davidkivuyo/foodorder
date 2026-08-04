@@ -127,7 +127,7 @@ class DeviceTokenRepository {
       await prefs.setString(userKey, docRef.id);
 
       return true;
-    } catch (e) {
+    } on Exception catch (e) {
       AppLog.e('[DeviceTokenRepository] registerToken error: type=${e.runtimeType}');
       return false;
     }
@@ -157,7 +157,7 @@ class DeviceTokenRepository {
       }
 
       return true;
-    } catch (e) {
+    } on Exception catch (e) {
       AppLog.e('[DeviceTokenRepository] deactivateToken error: type=${e.runtimeType}');
       return false;
     }
@@ -228,7 +228,7 @@ class DeviceTokenRepository {
       if (defaultTargetPlatform == TargetPlatform.macOS) return 'macos';
       if (defaultTargetPlatform == TargetPlatform.linux) return 'linux';
       return 'web';
-    } catch (_) {
+    } on Exception catch (_) {
       return 'unknown';
     }
   }

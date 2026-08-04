@@ -187,7 +187,7 @@ class _OrdersScreenState extends State<OrdersScreen>
           backgroundColor: Colors.orange.shade800,
         ),
       );
-    } catch (e) {
+    } on Exception catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -208,7 +208,7 @@ class _OrdersScreenState extends State<OrdersScreen>
           .collection('plans')
           .doc(docId)
           .delete();
-    } catch (e) {
+    } on Exception catch (e) {
       AppLog.e('[OrdersScreen] Delete planned order error', e);
     }
   }
@@ -264,7 +264,7 @@ class _OrdersScreenState extends State<OrdersScreen>
               .map((doc) {
                 try {
                   return FoodOrder.fromFirestore(doc);
-                } catch (e) {
+                } on Exception catch (_) {
                   return null;
                 }
               })
