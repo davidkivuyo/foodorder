@@ -24,6 +24,7 @@ import '../models/update_info.dart';
 import 'app_log.dart';
 import 'http_headers.dart';
 import 'update_platform.dart';
+import 'version_comparator.dart';
 
 /// Lifecycle of the in-app update flow.
 enum UpdateState {
@@ -235,15 +236,19 @@ class UpdateService extends ChangeNotifier {
     final pkg = await PackageInfo.fromPlatform();
     final current = pkg.version;
 
-    final versionDiff = compareVersions(current, info.version);
-    final minDiff = compareVersions(current, info.minimumVersion);
+    final decision = decideState(
+      current: current,
+      remoteVersion: info.version,
+      minimumVersion: info.minimumVersion,
+      forceUpdate: info.forceUpdate,
+    );
 
-    if (info.forceUpdate || minDiff < 0) {
+    if (decision == UpdateState.updateRequired) {
       _setState(UpdateState.updateRequired);
       return;
     }
 
-    if (versionDiff < 0) {
+    if (decision == UpdateState.updateAvailable) {
       final dismissedVersion = await _readDismissedVersion();
       _dismissed = dismissedVersion == info.version;
       if (_dismissed) {
@@ -258,6 +263,41 @@ class UpdateService extends ChangeNotifier {
     // superseded. Storage hygiene: drop it and any leftover `.part` files.
     await _cleanupSupersededInstallers();
     _setState(UpdateState.current);
+  }
+
+  /// Decides the base update state for [current] against the remote metadata.
+  ///
+  /// This is the only place in the app that turns version strings into an
+  /// update decision. It uses [VersionComparator] (semver-aware) and treats a
+  /// malformed version as fail-safe-neutral — same as an update-check network
+  /// failure: continue on the current version, debug-log only, never throw.
+  /// The optional-update dismissal and installer cleanup that branch off this
+  /// base decision live in [_applyInfo].
+  @visibleForTesting
+  static UpdateState decideState({
+    required String current,
+    required String remoteVersion,
+    required String minimumVersion,
+    required bool forceUpdate,
+  }) {
+    try {
+      final isBelowMinimum = VersionComparator.isBelowMinimum(
+        local: current,
+        minimum: minimumVersion,
+      );
+      final isNewer = VersionComparator.isNewer(
+        local: current,
+        remote: remoteVersion,
+      );
+
+      if (forceUpdate || isBelowMinimum) return UpdateState.updateRequired;
+      if (isNewer) return UpdateState.updateAvailable;
+      return UpdateState.current;
+    } on VersionParseException catch (e) {
+      AppLog.d('[Update] unparseable version metadata — staying on current '
+          'version (${e.runtimeType})');
+      return UpdateState.current;
+    }
   }
 
   Future<String?> _readDismissedVersion() async {

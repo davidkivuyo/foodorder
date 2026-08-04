@@ -136,631 +136,157 @@ After completing a feature:
 
 ---
 
+# Rule 6
+
+Limit the amount of comments you put in the code to a strict minimum. You should almost never add comments, except sometimes on non-trivial code, function definitions if the arguments aren't self-explanatory, and class definitions and their members.
+Do not remove existing comments unless they are directly related to what you are changing.
+
+---
+
 # Current Phase
 
-# PHASE 15 — SECURITY HARDENING
+# PHASE 16
 
-## OBJECTIVE
+# TASK
 
-Implement comprehensive production-grade security for Campus Bite.
+Implement semver-aware version comparison in the CampusBite update system, replacing any implicit/string-based comparison, without regressing the update path that has already been manually verified to work (`v1.0.0-dev → v1.1.0-dev`).
 
-This phase must strengthen the existing implementation without changing business logic or UI behaviour.
-
-The objective is to protect:
-
-- student accounts
-- admin accounts
-- Firestore data
-- Cloud Functions
-- Cloudinary resources
-- notification system
-- review system
-- update system
-- authentication system
-
-The implementation must remain scalable, maintainable and cost-effective.
-
-Do NOT rewrite existing features.
-
-Do NOT modify application workflows.
-
-Only harden the existing implementation.
+This is a **refactor of comparison logic only**. It must not change the Worker's routing, caching, metadata contract, or the download/verify/install pipeline.
 
 ---
 
-# EXISTING SYSTEM
+# CONTEXT — READ BEFORE STARTING
 
-Already implemented:
+The update system currently in place:
 
-✓ Firebase Authentication
+- Worker (`cloudflare-worker/src/index.js`) resolves `/latest`, `/release/{tag}`, and asset routes, rewrites GitHub URLs to `dl.larason.space`, and validates no disallowed host leaks through.
+- Flutter client fetches metadata, selects ABI, downloads, verifies SHA-256, and installs.
+- `release.json` (built from `.github/release-template.json`) contains `version` and `minimumVersion` as **plain strings**, e.g. `"1.0.0-dev"`.
+- A manual test has already confirmed `v1.0.0-dev → v1.1.0-dev` correctly triggers an update prompt. **Do not assume this means comparison logic is already correct** — MAJOR/MINOR differing (`1.0.0` vs `1.1.0`) is the case where naive string comparison and semver comparison happen to agree. This is exactly the kind of case that hides bugs; do not use it as evidence the current logic is safe for other inputs (e.g. `1.0.9-dev` vs `1.0.10-dev`, or same-version different-channel comparisons).
 
-✓ Student registration
+## Known gap this task closes
 
-✓ Admin application
-
-✓ Firestore database
-
-✓ Orders
-
-✓ Notifications
-
-✓ Strike Engine
-
-✓ Favourite Engine
-
-✓ Reviews
-
-✓ Cloudinary
-
-✓ Cloud Functions
-
-✓ GitHub Release Update System
-
-✓ Cloudflare Worker update proxy
-
-Your responsibility is ONLY to secure these systems.
+There is currently no dedicated version-comparison module. Comparison logic (if present at all) is either inline and string-based, or does not exist yet and must be added. Locate whatever currently decides "is this an update" before writing anything new — do not assume a blank slate without checking.
 
 ---
 
-# PART 1 — FIREBASE APP CHECK
+# OBJECTIVE
 
-Implement Firebase App Check.
+Introduce a single, tested `VersionComparator` module that:
 
-Enable App Check for:
-
-• Firestore
-
-• Cloud Functions
-
-• Cloud Storage (if used)
-
-Use:
-
-Android
-
-Play Integrity API
-
-Development mode only for debug builds.
-
-Never disable App Check in release builds.
-
-App Check failures should be logged without crashing the app.
+1. Correctly implements semver precedence rules (numeric core comparison, pre-release identifier comparison, numeric-vs-alphanumeric identifier rules, bare-release-beats-prerelease rule).
+2. Is a **drop-in replacement** for whatever currently decides update eligibility — same inputs available (`localVersion`, `remoteVersion`, `minimumVersion`), same decision outputs (`upToDate` / `optional` / `mandatory`).
+3. Does not change `release.json`'s schema, the Worker, the download flow, or the verification flow.
 
 ---
 
-# PART 2 — FIRESTORE SECURITY REVIEW
+# NON-GOALS — DO NOT DO THESE
 
-Review every Firestore rule.
-
-Apply least-privilege access.
-
-Students must never be able to:
-
-• modify menu items
-
-• modify strikes
-
-• modify reviews written by others
-
-• modify admin data
-
-• modify notification status belonging to another user
-
-Admins must never receive unrestricted database access.
-
-Every permission must be role-based.
-
-Do not use:
-
-allow read, write: if true;
-
-except for public menu data where intentionally required.
+- Do not modify `cloudflare-worker/src/index.js`.
+- Do not modify `.github/workflows/release-apk.yml`.
+- Do not change the `release.json` / `release-template.json` schema (no new required fields). If you believe a `channel` field is needed for a *future* task, note it in your deliverables as a recommendation — do not implement it now.
+- Do not change tagging conventions currently in use in CI.
+- Do not touch download, ABI-selection, checksum verification, or install code paths except where they call into the comparison logic.
+- Do not remove or rewrite the existing manual test that passed (`v1.0.0-dev → v1.1.0-dev`) — it must remain part of the suite and must still pass after your change.
 
 ---
 
-# PART 3 — ROLE VERIFICATION
+# IMPLEMENTATION REQUIREMENTS
 
-Never trust the Flutter application.
+## 1. Dependency
 
-Every privileged operation must verify:
+Add `pub_semver` to `pubspec.yaml`. Do not hand-roll a semver parser — use the maintained package.
 
-request.auth.uid
+## 2. New file: `lib/services/version_comparator.dart`
 
-and
+Must expose, at minimum:
 
-user role
+```dart
+class VersionComparator {
+  static bool isNewer({required String local, required String remote});
+  static bool isBelowMinimum({required String local, required String minimum});
+}
+```
 
-inside Firestore Rules or Cloud Functions.
+Requirements:
+- Strip a leading `v` from any input before parsing (tags are `v1.0.0-dev`; semver parsing expects `1.0.0-dev`).
+- Throw a clear, typed exception (e.g. `VersionParseException`) on malformed input — do not silently fall back to string comparison or treat unparseable input as "no update." A parse failure must be treated as **fail-safe-neutral**: the calling code should treat it the same as an update-check network failure (continue on current version, log in debug only, do not crash, do not block the user).
+- No other behavior. This module does semver comparison only — it must not know about channels, force-update flags, or UI state.
 
-Never trust local variables.
+## 3. Locate and refactor the existing decision point
 
-Never trust hidden buttons.
+Before writing new decision logic:
+- Search the codebase for wherever `minimumVersion`, `forceUpdate`, or version strings are currently compared (likely in `lib/services/update_service.dart` or equivalent).
+- Replace only the comparison calls with `VersionComparator`. Do not restructure surrounding logic (state emission, UI triggers, download triggering) unless the comparison change requires it.
+- If comparison logic does not exist yet (i.e. the update-eligibility decision was never actually implemented and the "working" test passed only on other grounds — e.g. a hardcoded flag, or `version != remote.version`), stop and report this in your deliverables rather than guessing at what was intended. Do not paper over an undiscovered gap.
 
-Never trust route protection.
+## 4. Backward compatibility check
 
-Backend validation is mandatory.
+Before finalizing, verify with actual parsed comparisons (not assumptions) that these all still produce the same *decision* as before your change:
+- `1.0.0-dev` (local) vs `1.1.0-dev` (remote) → still "update available" (the already-verified case)
+- Any other version pairs currently covered by existing tests
 
----
-
-# PART 4 — ADMIN AUTHORIZATION
-
-Every admin operation must verify:
-
-Admin account exists
-
-Admin role
-
-Account active
-
-Account not suspended
-
-Only then allow:
-
-Food creation
-
-Food deletion
-
-Food editing
-
-Strike issuing
-
-Strike removal
-
-Notification broadcasting
-
-Image deletion
-
-Review moderation
+If any previously-passing case would now produce a different result, stop and flag it — do not silently "fix" it as part of this task without calling it out explicitly in deliverables, since it may indicate the old behavior was relied upon elsewhere.
 
 ---
 
-# PART 5 — CLOUD FUNCTIONS SECURITY
+# EDGE CASES TO HANDLE EXPLICITLY
 
-Review every Cloud Function.
+Write a test for each of these (see Testing section):
 
-Validate:
-
-Authentication
-
-Authorization
-
-Input
-
-Document existence
-
-Ownership
-
-Prevent:
-
-Null values
-
-Unexpected fields
-
-Oversized payloads
-
-Invalid document IDs
-
-Invalid timestamps
-
-Malformed requests
-
-Reject invalid requests using HttpsError.
-
-Never expose stack traces.
-
-Never expose secrets.
+| Local | Remote | Expected | Reason |
+|---|---|---|---|
+| `1.0.0-dev` | `1.1.0-dev` | update | MINOR differs (the known-working case) |
+| `1.0.9-dev` | `1.0.10-dev` | update | numeric identifier comparison, not string comparison |
+| `1.0.10-dev` | `1.0.9-dev` | no update | same as above, reversed |
+| `1.0.0-dev` | `1.0.0` | update | bare release beats pre-release at same core version |
+| `1.0.0` | `1.0.0-dev` | no update | remote pre-release is not newer than local release |
+| `1.0.0-dev` | `1.0.0-dev` | no update | identical |
+| `1.0.0-dev.1` | `1.0.0-dev.2` | update | numeric sub-identifier |
+| `1.0.0-alpha` | `1.0.0-beta` | update | alphabetic identifier comparison |
+| `v1.0.0-dev` | `v1.1.0-dev` | update | leading "v" must be stripped correctly |
+| `not-a-version` | `1.0.0` | no crash | malformed local input must fail safe, not throw uncaught |
+| `1.0.0` | `garbage` | no crash | malformed remote input must fail safe, not throw uncaught |
 
 ---
 
-# PART 6 — INPUT VALIDATION
-
-Validate every user input.
-
-Examples:
-
-Registration
-
-Login
-
-Forgot password
-
-Food search
-
-Reviews
-
-Orders
-
-Notifications
-
-Reject:
-
-Negative values
-
-Extremely long strings
-
-Empty required fields
-
-Malformed phone numbers
-
-Malformed emails
-
-Duplicate separators
-
-Unexpected Unicode control characters
-
-Sanitize user text before saving.
-
----
-
-# PART 7 — REVIEW SECURITY
-
-Review system must prevent:
-
-Review spam
-
-Duplicate reviews
-
-Review flooding
-
-Review abuse
-
-Only users with COLLECTED orders may review.
-
-Users may edit only their own reviews.
-
-Users may delete only their own reviews.
-
-Users cannot modify ratings belonging to others.
-
-Template reviews remain enforced.
-
----
-
-# PART 8 — STRIKE ENGINE SECURITY
-
-Students must never:
-
-Issue strikes
-
-Remove strikes
-
-Modify strike counters
-
-Modify suspension status
-
-Only authorized admin operations and backend automation may update strike data.
-
-Every strike action should create an audit log.
-
----
-
-# PART 9 — NOTIFICATION SECURITY
-
-Students may:
-
-Read their notifications
-
-Mark their own notifications as read
-
-Students may NOT:
-
-Create notifications
-
-Broadcast notifications
-
-Delete notifications belonging to others
-
-Admins may only create approved notification types.
-
----
-
-# PART 10 — ORDER SECURITY
-
-Validate every order transition.
-
-Prevent illegal transitions.
-
-Example:
-
-Collected
-
-↓
-
-Preparing
-
-must never occur.
-
-Valid transitions only.
-
-Verify ownership before allowing order cancellation or viewing.
-
----
-
-# PART 11 — UPDATE SECURITY
-
-Update system communicates only with:
-
-https://dl.larason.space
-
-Reject:
-
-HTTP
-
-Unknown hosts
-
-Redirects to unknown domains
-
-Verify SHA-256 checksum before installation if provided.
-
-Never install an unverified APK.
-
----
-
-# PART 12 — CLOUDINARY SECURITY
-
-The admin app(adminview) uploads food images to cloudinary.
-
-Store:
-
-public_id
-
-secure_url
-
-Delete operations must use Cloud Function.
-
-Flutter must never possess Cloudinary API Secret.
-
-Cloudinary credentials remain only inside Firebase Secret Manager.
-
----
-
-# PART 13 — SECRET MANAGEMENT
-
-Verify no secrets exist inside:
-
-Flutter source
-
-Git repository
-
-GitHub workflow logs
-
-Never commit:
-
-API Secret
-
-Private Keys
-
-Service Accounts
-
-Signing Keys
-
-Cloudinary Secret
-
-Firebase Secret Manager remains the only storage location for sensitive backend secrets.
-
----
-
-# PART 14 — AUTHENTICATION HARDENING
-
-Require:
-
-Verified email
-
-Before allowing ordering.
-
-Reject unverified accounts.
-
-Limit login attempts where feasible.
-
-Do not reveal:
-
-whether an email exists
-
-whether an account is suspended
-
-whether a password was correct
-
-Use generic authentication error messages.
-
----
-
-# PART 15 — PRIVACY PROTECTION
-
-Do not log:
-
-Email
-
-Phone
-
-Exact location
-
-UID
-
-Notification tokens
-
-Order contents
-
-Review text
-
-Payment information
-
-Production logs should contain only diagnostic information.
-
----
-
-# PART 16 — TOKEN SECURITY
-
-Never store:
-
-Firebase ID Token
-
-Refresh Token
-
-FCM Token
-
-inside SharedPreferences.
-
-Use secure storage where persistence is required.
-
-Refresh tokens automatically.
-
-Handle expired sessions gracefully.
-
----
-
-# PART 17 — LOCAL STORAGE SECURITY
-
-Review every locally stored value.
-
-Do not cache:
-
-Passwords
-
-OTP codes
-
-Sensitive admin data
-
-Strike decisions
-
-Cache only non-sensitive data.
-
----
-
-# PART 18 — DEPENDENCY REVIEW
-
-Audit pubspec.yaml.
-
-Remove unused packages.
-
-Update outdated packages.
-
-Replace abandoned packages.
-
-Prefer actively maintained libraries.
-
----
-
-# PART 19 — ERROR HANDLING
-
-Replace technical errors with user-friendly messages.
-
-Example:
-
-Instead of:
-
-FirebaseException
-
-Display:
-
-"Something went wrong. Please try again."
-
-Log technical details only in debug mode.
-
----
-
-# PART 20 — AUDIT LOGGING
-
-Create immutable audit logs for:
-
-Food creation
-
-Food deletion
-
-Food edits
-
-Strike issued
-
-Strike removed
-
-Account suspension
-
-Review deletion
-
-Cloudinary deletion
-
-Notification broadcasts
-
-Each log records:
-
-timestamp
-
-admin UID
-
-action
-
-target document
-
-No personal content beyond identifiers required for auditing.
-
----
-
-# PART 21 — SECURITY TESTING
-
-Verify:
-
-✓ Student cannot become admin
-
-✓ Student cannot modify menu
-
-✓ Student cannot modify another cart
-
-✓ Student cannot modify another review
-
-✓ Student cannot modify strikes
-
-✓ Student cannot broadcast notifications
-
-✓ Invalid Cloud Function requests rejected
-
-✓ Cloudinary secret never exposed
-
-✓ App Check enabled
-
-✓ Firestore Rules enforced
-
-✓ Update checksum validation works
-
-✓ Review ownership enforced
-
-✓ Audit logs created
-
-✓ No secrets committed
-
-✓ Release build functions correctly
+# TESTING
+
+## Required
+- Unit tests for `VersionComparator` covering every row in the edge-case table above, plus `isBelowMinimum` equivalents.
+- Re-run (or confirm still passing) the existing manual/integration check for `v1.0.0-dev → v1.1.0-dev` end to end through the actual update flow, not just the comparator in isolation.
+- Confirm no other file in `lib/` does its own ad-hoc version string comparison (`grep -rn "compareTo\|split('.')\|split(\".\")" lib/` as a starting point) — if found, flag it, don't silently leave a second, inconsistent comparison path in the app.
+
+## Regression guard
+- Do not mark this task complete if the previously-working `1.0.0-dev → 1.1.0-dev` case is not re-verified after the change.
 
 ---
 
 # DELIVERABLES
 
-Provide:
+1. Files created / modified (full list, with the specific diff for the comparison call site — not just "updated update_service.dart").
+2. Confirmation of where the previous comparison logic lived (or explicit statement that none existed, if that's what's found).
+3. Full table of edge-case test results (pass/fail) from the table above.
+4. Explicit confirmation that `v1.0.0-dev → v1.1.0-dev` still passes after the change.
+5. Any case where new behavior differs from old behavior, called out separately and not silently folded in.
+6. A short note (not implemented, just noted) on whether a `channel` field would still be worth adding later for force-migrating between channels — this task does not implement that, only flags it as a known follow-up.
 
-1. Files modified
+---
 
-2. Firestore Rules changes
+# SCOPE — FILES YOU MAY TOUCH
 
-3. Cloud Function security improvements
+- `pubspec.yaml` (add dependency only)
+- `lib/services/version_comparator.dart` (new)
+- `lib/services/version_comparator_test.dart` or equivalent test file (new)
+- The single existing file where update-eligibility decisions are made (identify it first; modify only the comparison calls)
 
-4. App Check implementation summary
-
-5. Authentication improvements
-
-6. Cloudinary security summary
-
-7. Update security summary
-
-8. Audit logging implementation
-
-9. Security test checklist
-
-10. Remaining security recommendations
-
-Stop after Phase 15.
+Do not touch: Worker code, CI workflow, `release-template.json`, download/verify/install code, UI widgets, unrelated services.
 
 ---
 
 # Phase Completion Criteria
 
-Phase 15 is complete when:
+Phase 16 is complete when:
 
 * The new features works well with past features.
 * App runs successfully.

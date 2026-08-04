@@ -50,7 +50,8 @@ const String kRecaptchaSiteKey = String.fromEnvironment('RECAPTCHA_SITE_KEY');
 /// Firebase Console > Project Settings > Cloud Messaging > Web Push certificates
 final FcmService fcmService = FcmService(
   role: NotificationService.roleStudent,
-  vapidKey: 'BH_URF31cImwh5AXlb4gLqWuIgeQ6m8KYovL48DyGYsvBl9rArOr90vbetUVPQDEUD09JBzuMffO6zTlfjN-J2g',
+  vapidKey:
+      'BH_URF31cImwh5AXlb4gLqWuIgeQ6m8KYovL48DyGYsvBl9rArOr90vbetUVPQDEUD09JBzuMffO6zTlfjN-J2g',
 );
 
 Future<void> main() async {
@@ -62,8 +63,10 @@ Future<void> main() async {
   // Only debug builds keep the no-provider path (attestation is not enforced
   // in development) and log a warning.
   if (kIsWeb && !kDebugMode && kRecaptchaSiteKey.isEmpty) {
-    AppLog.e('[AppCheck] Web release build missing RECAPTCHA_SITE_KEY — '
-        'refusing to start without attestation');
+    AppLog.e(
+      '[AppCheck] Web release build missing RECAPTCHA_SITE_KEY — '
+      'refusing to start without attestation',
+    );
     runApp(const _AppCheckMisconfiguredApp());
     return;
   }
@@ -103,8 +106,10 @@ Future<void> main() async {
           ? ReCaptchaV3Provider(kRecaptchaSiteKey)
           : null;
       if (kIsWeb && webProvider == null) {
-        AppLog.w('[AppCheck] Web build running without a reCAPTCHA site key — '
-            'App Check attestation disabled (debug builds only)');
+        AppLog.w(
+          '[AppCheck] Web build running without a reCAPTCHA site key — '
+          'App Check attestation disabled (debug builds only)',
+        );
       }
       await FirebaseAppCheck.instance.activate(
         providerAndroid: kDebugMode
@@ -115,8 +120,11 @@ Future<void> main() async {
       await FirebaseAppCheck.instance.setTokenAutoRefreshEnabled(true);
       AppLog.d('Firebase App Check activated');
     } on Exception catch (e, stack) {
-      AppLog.e('App Check activation failed — continuing without attestation',
-          e, stack);
+      AppLog.e(
+        'App Check activation failed — continuing without attestation',
+        e,
+        stack,
+      );
     }
   }
 
@@ -305,7 +313,7 @@ class _MyAppState extends State<MyApp> {
       ),
     );
   }
-  
+
   Object? deepLinkToTabIndex(String deepLink) {
     return null;
   }
