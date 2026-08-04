@@ -2,9 +2,9 @@
 
 Thank you for downloading Campus Bite.
 
-## new inner workings
+## Bug fixes
 
-- changed the update compare version logic to use semver instead of numeric comparison, this will allow for better versioning and update management.
+- Fixed hero tags mismatch issue on the home screen, category and search screens.
 
 ## special thanks
 To all app contributors, the app is open source under Apache 2.0 License.
