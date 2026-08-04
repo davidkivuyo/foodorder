@@ -306,8 +306,8 @@ class _MyAppState extends State<MyApp> {
       builder: (context, child) => UpdateGate(
         child: Column(
           children: [
-            const OfflineBanner(),
             Expanded(child: child ?? const SizedBox()),
+            const OfflineBanner(),
           ],
         ),
       ),

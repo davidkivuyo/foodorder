@@ -102,7 +102,7 @@ class _OfflineBannerState extends State<OfflineBanner> {
           color: bgColor,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: SafeArea(
-            bottom: false,
+            bottom: true,
             top: false,
             child: Row(
               children: [

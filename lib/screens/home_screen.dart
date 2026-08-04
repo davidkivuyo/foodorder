@@ -334,7 +334,7 @@ class CardRowItems extends StatelessWidget {
               final item = displayedItems[index];
               return HoverCardScale(
                 child: Container(
-                  width: 220,
+                  width: 260,
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(16),
                   ),
