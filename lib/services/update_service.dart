@@ -242,6 +242,9 @@ class UpdateService extends ChangeNotifier {
       minimumVersion: info.minimumVersion,
       forceUpdate: info.forceUpdate,
     );
+    AppLog.d('[Update] local=$current remote=${info.version} '
+        'minimum=${info.minimumVersion} forceUpdate=${info.forceUpdate} → '
+        '$decision');
 
     if (decision == UpdateState.updateRequired) {
       _setState(UpdateState.updateRequired);
