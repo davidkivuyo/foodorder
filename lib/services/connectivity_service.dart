@@ -14,28 +14,38 @@
 
 import 'dart:async';
 import 'package:flutter/widgets.dart';
-import 'app_log.dart';
+import '../state/connectivity_state.dart';
 
-/// Service that monitors and broadcasts network connectivity status.
+/// Stateless facade over [ConnectivityState].
 ///
-/// Provides a reactive stream [onConnectivityChanged] and boolean property [isOnline].
-/// Supports dependency injection and testing overrides.
+/// Exposes the same public API as before but owns no mutable state itself:
+/// the online status, broadcast stream and polling timer all live in
+/// [ConnectivityState], outside `lib/services/`.
 class ConnectivityService {
   static ConnectivityService _instance = ConnectivityService._internal();
   factory ConnectivityService() => _instance;
 
-  final StreamController<bool> _controller = StreamController<bool>.broadcast();
-  bool _isOnline = true;
-  Timer? _pollingTimer;
+  final ConnectivityState _state;
 
-  bool get isOnline => _isOnline;
-  Stream<bool> get onConnectivityChanged => _controller.stream;
+  ConnectivityService._internal() : _state = ConnectivityState();
 
-  ConnectivityService._internal({bool autoPoll = true}) {
-    if (autoPoll && !isTesting) {
-      _initPolling();
-    }
-  }
+  /// Constructor for unit testing with controllable initial state and stream.
+  @visibleForTesting
+  ConnectivityService.testing({
+    bool initialOnline = true,
+    Stream<bool>? connectivityStream,
+  }) : _state =
+          // ignore: invalid_use_of_visible_for_testing_member
+          ConnectivityState.testing(
+            initialOnline: initialOnline,
+            connectivityStream: connectivityStream,
+          );
+
+  /// The mutable state this facade delegates to.
+  ///
+  /// Shared across the app so a single connectivity source of truth drives
+  /// every consumer (widgets, cart, and the sync queue).
+  ConnectivityState get delegate => _state;
 
   /// Override the singleton instance (useful in tests).
   @visibleForTesting
@@ -43,45 +53,14 @@ class ConnectivityService {
     _instance = mock;
   }
 
-  /// Constructor for unit testing with controllable initial state and stream.
-  @visibleForTesting
-  ConnectivityService.testing({
-    bool initialOnline = true,
-    Stream<bool>? connectivityStream,
-  }) : _isOnline = initialOnline {
-    if (connectivityStream != null) {
-      connectivityStream.listen((online) {
-        setOnline(online);
-      });
-    }
-  }
-
-  static bool get isTesting =>
-      WidgetsBinding.instance.runtimeType.toString().contains('TestWidgetsFlutterBinding');
-
-  void _initPolling() {
-    checkConnectivity();
-    _pollingTimer = Timer.periodic(const Duration(seconds: 10), (_) {
-      checkConnectivity();
-    });
-  }
+  bool get isOnline => _state.isOnline;
+  Stream<bool> get onConnectivityChanged => _state.onConnectivityChanged;
 
   /// Forces network check and updates online status.
-  Future<bool> checkConnectivity() async {
-    return _isOnline;
-  }
+  Future<bool> checkConnectivity() => _state.checkConnectivity();
 
   /// Manually update online status (used by test setup or network listeners).
-  void setOnline(bool online) {
-    if (_isOnline != online) {
-      _isOnline = online;
-      AppLog.d('[ConnectivityService] Connectivity state changed: online=$online');
-      _controller.add(online);
-    }
-  }
+  void setOnline(bool online) => _state.setOnline(online);
 
-  void dispose() {
-    _pollingTimer?.cancel();
-    _controller.close();
-  }
+  void dispose() => _state.dispose();
 }

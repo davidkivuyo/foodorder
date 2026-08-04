@@ -91,7 +91,7 @@ class NotificationRepository {
     try {
       final docRef = await _firestore.collection(_collection).add(data);
       return docRef.id;
-    } catch (e) {
+    } on Exception catch (e) {
       AppLog.e('[NotificationRepository] create error', e);
       return null;
     }
@@ -105,7 +105,7 @@ class NotificationRepository {
         'readAt': FieldValue.serverTimestamp(),
       });
       return true;
-    } catch (e) {
+    } on Exception catch (e) {
       AppLog.e('[NotificationRepository] markAsRead error', e);
       return false;
     }
@@ -136,7 +136,7 @@ class NotificationRepository {
       }
       await batch.commit();
       return true;
-    } catch (e) {
+    } on Exception catch (e) {
       AppLog.e('[NotificationRepository] markAllAsRead error', e);
       return false;
     }
@@ -150,7 +150,7 @@ class NotificationRepository {
         'deletedAt': FieldValue.serverTimestamp(),
       });
       return true;
-    } catch (e) {
+    } on Exception catch (e) {
       AppLog.e('[NotificationRepository] softDelete error', e);
       return false;
     }
@@ -180,7 +180,7 @@ class NotificationRepository {
       }
       await batch.commit();
       return true;
-    } catch (e) {
+    } on Exception catch (e) {
       AppLog.e('[NotificationRepository] clearAll error', e);
       return false;
     }

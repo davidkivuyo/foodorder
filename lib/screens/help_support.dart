@@ -162,7 +162,7 @@ class ContactScreen extends StatelessWidget {
       } else {
         AppLog.d('WhatsApp is not installed on this device.');
       }
-    } catch (e) {
+    } on Exception catch (e) {
       AppLog.e('Error launching WhatsApp', e);
     }
   }

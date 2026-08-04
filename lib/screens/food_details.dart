@@ -116,7 +116,7 @@ class _FoodDetailsScreenState extends State<FoodDetailsScreen> {
           _matchingOrderId = eligibility.matchingOrderId;
         });
       }
-    } catch (e) {
+    } on Exception catch (e) {
       AppLog.e('[FoodDetailsScreen] checkEligibility error', e);
       if (mounted) {
         setState(() {
@@ -171,7 +171,7 @@ class _FoodDetailsScreenState extends State<FoodDetailsScreen> {
 
         // Re-check eligibility only after a completed operation
         if (success) _checkReviewEligibility();
-      } catch (e) {
+      } on Exception catch (e) {
         AppLog.e('[FoodDetailsScreen] updateReview error', e);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -221,7 +221,7 @@ class _FoodDetailsScreenState extends State<FoodDetailsScreen> {
 
         // Re-check eligibility only after a completed operation
         if (docId != null) _checkReviewEligibility();
-      } catch (e) {
+      } on Exception catch (e) {
         AppLog.e('[FoodDetailsScreen] createReview error', e);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(

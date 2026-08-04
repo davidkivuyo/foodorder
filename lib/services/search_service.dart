@@ -53,7 +53,7 @@ class SearchService {
       _cache[cleanQuery] = results;
 
       return results;
-    } catch (e) {
+    } on Exception catch (_) {
       // Propagation of Firestore exception is handled by UI screen
       rethrow;
     }

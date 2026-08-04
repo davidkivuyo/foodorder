@@ -125,7 +125,7 @@ class EmailVerificationService {
         await prefs.setBool('show_welcome_${user.uid}', true);
       }
       return null; // success
-    } catch (e) {
+    } on Exception catch (e) {
       AppLog.e('[EmailVerificationService] createProfile error: type=${e.runtimeType}');
       return 'Could not create profile. Please try again.';
     }

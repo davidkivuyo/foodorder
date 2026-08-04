@@ -17,6 +17,8 @@ import 'package:campusbite/services/connectivity_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   group('ConnectivityService Tests', () {
     test('initial state defaults to online', () {
       final service = ConnectivityService.testing(initialOnline: true);
@@ -41,6 +43,19 @@ void main() {
       expect(events, equals([false, true]));
       expect(service.isOnline, isTrue);
       await sub.cancel();
+    });
+
+    test('checkConnectivity is safe without a platform and keeps current state', () async {
+      final service = ConnectivityService.testing(initialOnline: false);
+
+      // No platform channel is registered in tests; the real check must
+      // degrade to the last known state instead of throwing.
+      expect(await service.checkConnectivity(), isFalse);
+      expect(service.isOnline, isFalse);
+
+      service.setOnline(true);
+      expect(await service.checkConnectivity(), isTrue);
+      expect(service.isOnline, isTrue);
     });
 
     test('listens to injected stream in testing constructor', () async {

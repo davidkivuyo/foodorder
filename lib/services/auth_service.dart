@@ -74,7 +74,7 @@ class AuthService {
         await credential.user!.updateDisplayName(cleanName);
       }
       return null; // success — Firestore profile is NOT created yet
-    } catch (e, stack) {
+    } on Exception catch (e, stack) {
       AppLog.e('[AuthService] register error: type=${e.runtimeType}', e, stack);
       return _extractUserFriendlyError(e);
     }
@@ -103,7 +103,7 @@ class AuthService {
         password: password,
       );
       return null; // success
-    } catch (e, stack) {
+    } on Exception catch (e, stack) {
       AppLog.e('[AuthService] signIn error: type=${e.runtimeType}', e, stack);
       // Phase 15 — anti-enumeration: sign-in failures must not reveal
       // whether an email exists or whether the password was correct.
@@ -120,7 +120,7 @@ class AuthService {
       if (user == null) return 'No authenticated user found.';
       await user.sendEmailVerification();
       return null; // success
-    } catch (e) {
+    } on Exception catch (e) {
       AppLog.e('[AuthService] sendVerificationEmail error: type=${e.runtimeType}');
       return _extractUserFriendlyError(e);
     }
@@ -134,7 +134,7 @@ class AuthService {
       if (user == null) return 'No authenticated user found.';
       await user.reload();
       return null; // success
-    } catch (e) {
+    } on Exception catch (e) {
       AppLog.e('[AuthService] reloadUser error: type=${e.runtimeType}');
       return _extractUserFriendlyError(e);
     }
@@ -173,7 +173,7 @@ class AuthService {
     try {
       await _auth.sendPasswordResetEmail(email: email.trim());
       return null; // success — same response for all outcomes
-    } catch (e) {
+    } on Exception catch (e) {
       // Log the actual Firebase error code (safe for internal debugging).
       // The user-facing response stays the same for anti-enumeration.
       if (e is FirebaseAuthException) {
@@ -196,7 +196,7 @@ class AuthService {
       if (user == null) return 'No authenticated user found.';
       await user.verifyBeforeUpdateEmail(newEmail.trim());
       return null; // success — a new verification email is sent automatically
-    } catch (e) {
+    } on Exception catch (e) {
       AppLog.e('[AuthService] changeEmail error: type=${e.runtimeType}');
       return _extractUserFriendlyError(e);
     }
@@ -210,7 +210,7 @@ class AuthService {
       if (user == null) return 'No authenticated user found.';
       await user.delete();
       return null; // success
-    } catch (e) {
+    } on Exception catch (e) {
       AppLog.e('[AuthService] deleteAccount error: type=${e.runtimeType}');
       return _extractUserFriendlyError(e);
     }

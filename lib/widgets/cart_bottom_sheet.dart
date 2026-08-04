@@ -774,7 +774,7 @@ class _CartBottomSheetState extends State<CartBottomSheet> {
                                     );
                               }
                             }
-                          } catch (e) {
+                          } on Exception catch (e) {
                             // Location unavailable — fall back to default 20 min
                             AppLog.e('[CartSheet] Location error', e);
                           }

@@ -78,7 +78,7 @@ Future<void> main() async {
       options: DefaultFirebaseOptions.currentPlatform,
     );
     firebaseReady = true;
-  } catch (e, stack) {
+  } on Exception catch (e, stack) {
     AppLog.e('Firebase init error', e, stack);
     // Continue — app degrades gracefully if Firebase is unavailable.
   }
@@ -130,7 +130,7 @@ Future<void> main() async {
         persistenceEnabled: true,
       );
       AppLog.d('Firestore offline persistence enabled');
-    } catch (e) {
+    } on Exception catch (e) {
       AppLog.e('Failed to enable Firestore persistence', e);
     }
 
@@ -187,13 +187,13 @@ Future<void> initializeFcmForUser(User? user) async {
   if (user != null) {
     try {
       await fcmService.initialize(userId: user.uid);
-    } catch (e, stack) {
+    } on Exception catch (e, stack) {
       AppLog.e('[FCM] Initialization error', e, stack);
     }
   } else {
     try {
       await fcmService.onLogout();
-    } catch (e) {
+    } on Exception catch (e) {
       AppLog.e('[FCM] Logout error', e);
     }
   }
