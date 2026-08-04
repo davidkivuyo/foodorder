@@ -26,6 +26,7 @@ import 'package:campusbite/services/update_service.dart';
 import 'package:campusbite/widgets/offline_banner.dart';
 import 'package:campusbite/widgets/update_gate.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -34,6 +35,14 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'firebase_options.dart';
+
+/// Optional reCAPTCHA v3 site key for web App Check, injected at build time:
+/// `flutter build web --dart-define=RECAPTCHA_SITE_KEY=...`
+///
+/// Empty (default) is only acceptable for debug builds, which skip web App
+/// Check with a warning. Web RELEASE builds without a key fail closed at
+/// startup: without attestation the backend would reject every request.
+const String kRecaptchaSiteKey = String.fromEnvironment('RECAPTCHA_SITE_KEY');
 
 /// Global FCM service instance shared across the app.
 ///
@@ -46,6 +55,18 @@ final FcmService fcmService = FcmService(
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Phase 15 — fail closed: a web RELEASE build without a reCAPTCHA v3 site
+  // key cannot attest requests, so App Check-enforced backends would reject
+  // every call. Refuse to start instead of running a silently broken app.
+  // Only debug builds keep the no-provider path (attestation is not enforced
+  // in development) and log a warning.
+  if (kIsWeb && !kDebugMode && kRecaptchaSiteKey.isEmpty) {
+    AppLog.e('[AppCheck] Web release build missing RECAPTCHA_SITE_KEY — '
+        'refusing to start without attestation');
+    runApp(const _AppCheckMisconfiguredApp());
+    return;
+  }
 
   // Track whether Firebase initialized so every Firebase-dependent setup
   // below is gated behind this readiness flag. If init fails (e.g. no
@@ -60,6 +81,43 @@ Future<void> main() async {
   } on Exception catch (e, stack) {
     AppLog.e('Firebase init error', e, stack);
     // Continue — app degrades gracefully if Firebase is unavailable.
+  }
+
+  if (firebaseReady) {
+    // ── Phase 15: Firebase App Check ───────────────────────────────────
+    // Attest that requests come from the genuine app before any Firestore
+    // access. Provider selection:
+    //   • Android release — Play Integrity (hardware-backed attestation).
+    //   • Android debug   — debug provider (tokens must be registered in
+    //                       Firebase Console → App Check → Manage debug
+    //                       tokens).
+    //   • Web             — reCAPTCHA v3, when a site key is provided via
+    //                       --dart-define (see kRecaptchaSiteKey).
+    // App Check activation must NEVER crash the app: failures are logged
+    // (debug only) and the app continues without attestation tokens, which
+    // will surface as permission-denied if the backend enforces App Check.
+    try {
+      // Null on web without a reCAPTCHA key — allowed for debug builds only
+      // (release builds fail closed before Firebase initialization).
+      final webProvider = kIsWeb && kRecaptchaSiteKey.isNotEmpty
+          ? ReCaptchaV3Provider(kRecaptchaSiteKey)
+          : null;
+      if (kIsWeb && webProvider == null) {
+        AppLog.w('[AppCheck] Web build running without a reCAPTCHA site key — '
+            'App Check attestation disabled (debug builds only)');
+      }
+      await FirebaseAppCheck.instance.activate(
+        providerAndroid: kDebugMode
+            ? const AndroidDebugProvider()
+            : const AndroidPlayIntegrityProvider(),
+        providerWeb: webProvider,
+      );
+      await FirebaseAppCheck.instance.setTokenAutoRefreshEnabled(true);
+      AppLog.d('Firebase App Check activated');
+    } on Exception catch (e, stack) {
+      AppLog.e('App Check activation failed — continuing without attestation',
+          e, stack);
+    }
   }
 
   if (firebaseReady) {
@@ -250,5 +308,44 @@ class _MyAppState extends State<MyApp> {
   
   Object? deepLinkToTabIndex(String deepLink) {
     return null;
+  }
+}
+
+/// Shown when a web release build is missing `RECAPTCHA_SITE_KEY`.
+///
+/// The app cannot attest requests without it, so it refuses to start
+/// (fail closed) rather than run against App Check-enforced backends.
+class _AppCheckMisconfiguredApp extends StatelessWidget {
+  const _AppCheckMisconfiguredApp();
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: Scaffold(
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: const [
+                Icon(Icons.gpp_bad_outlined, size: 56, color: Colors.red),
+                SizedBox(height: 16),
+                Text(
+                  'App cannot start',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                SizedBox(height: 8),
+                Text(
+                  'This web build is missing the reCAPTCHA site key required '
+                  'for App Check. Please contact support.',
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }

@@ -10,6 +10,8 @@ This Project code changes must be reviewed by:
 * Qodo ai [qodo.ai](https://www.qodo.ai)
 * SonarCloud [sonarcloud.io](https://sonarcloud.io/project/overview?id=davidkivuyo_foodorder) 
 
+Scan the QR code to visit the web app
+![Qr code](designs/assets/qrcode.png "The Web app")
 ---
 
 ## Table of Contents
@@ -31,6 +33,11 @@ This Project code changes must be reviewed by:
 - [Firestore Security Rules](#firestore-security-rules)
 - [App Navigation](#app-navigation)
 - [Key Features](#key-features)
+- [Authentication & Hardening](#authentication--hardening)
+- [Your Favourites Section](#your-favourites-section)
+- [Review & Moderation System](#review--moderation-system)
+- [In-App Update System & Cloudflare Workers Proxy](#in-app-update-system--cloudflare-workers-proxy)
+- [GitHub Release APK Workflow](#github-release-apk-workflow)
 - [Search System](#search-system)
 - [Distance-Based Pickup Deadline & Location-Based Calculations](#distance-based-pickup-deadline--location-based-calculations)
 - [Order Lifecycle](#order-lifecycle)
@@ -552,7 +559,10 @@ The student app uses `go_router` with authentication-aware redirects:
 ## Key Features
 
 ### For Students
-- **Registration & Login** — Email/password authentication via Firebase Auth.
+- **Registration, Verification & Password Recovery** — Email/password authentication via Firebase Auth, complete with mandatory verification of email addresses before ordering and clean self-serve password recovery options.
+- **Your Favourites** — Personalized carousel of student's top favourite food items computed from order history.
+- **Reviews & Ratings** — Leave reviews for completed orders, view average food ratings, and view customer feedback.
+- **In-App Update System** — Automatic updates with resume-able downloads and SHA-256 checksum verification to guarantee authentic builds*.
 - **Browse Menu** — Real-time Firestore stream of available food items sorted by category.
 - **Categories** — Quick navigation to browse food items by categories (e.g. Breakfast, Lunch, Dinner, Teasers, Drinks).
 - **Search** — Fast, prefix-based Firestore search with 300ms debounce and in-memory caching.
@@ -760,6 +770,60 @@ Business Event (Order Placed, Marked Ready, Strike Issued, etc.)
   - **Soft Delete:** Sets `deleted = true` and `deletedAt = serverTimestamp()`. Soft-deleted notifications are immediately filtered out of app UI streams.
   - **Auto-Cleanup:** A scheduled Cloud Function (`cleanupDeletedNotifications`) runs once every 24 hours to permanently delete soft-deleted notifications older than 180 days.
 - **Deep Linking:** Notifications include a `deepLink` string (e.g. `/orders/{orderId}`, `/account`, `/notifications`, `/strike-history`). Clicking a notification navigates the user directly to the target screen.
+
+---
+
+## Authentication & Hardening
+
+CampusBite enforces strict rules on authentication and user accounts to ensure security and prevent abuse:
+1. **Email Verification:** Unverified accounts are barred from ordering meals. Upon registration, users must verify their email. A dedicated `VerifyEmailScreen` manages re-sending verification links and checking verification status.
+2. **Password Recovery:** Students and admins can securely reset forgotten passwords through the `ForgotPasswordScreen`, triggering a standard recovery flow via Firebase Auth.
+3. **Role Enforcement:** Account types (`student` vs `admin`) are verified on both backend (Firestore security rules, Cloud Functions) and frontend.
+
+---
+
+## Your Favourites Section
+
+CampusBite dynamically computes a student's top favorite food items to provide a personalized, frictionless ordering experience:
+1. **Recalculation Engine:** The `FavoriteService` listens to the user's order history. Whenever a new order transitions to the `"COLLECTED"` state, the service recalculates the most frequently ordered items.
+2. **Persistence & Caching:** The top 5 favorite food IDs are cached inside the student's Firestore user document (`favouriteFoodIds`) to minimize database queries.
+3. **Live Stream Integration:** The app builds a combined stream that watches the cached ID array and dynamically streams the corresponding `FoodItem` records, including real-time availability and pricing updates.
+4. **UI Presentation:** A dedicated `"Your Favourites"` horizontal feed is rendered on the home screen if any favourites exist. Tapping "See All" navigates to the `YourFavouritesScreen` where the full list is displayed vertically.
+
+---
+
+## Review & Moderation System
+
+To ensure genuine feedback and maintain quality standards, CampusBite features a structured review and rating system:
+1. **Eligibility Check:** Only students who have successfully ordered and collected a meal can write a review for that food item, preventing review spam and fake ratings.
+2. **Review Integrity:** Students can only edit or delete their own reviews. They cannot modify review data or ratings written by others.
+3. **Firestore Enforcement:** Rules explicitly prevent writing rating values outside the 1–5 range, or writing reviews for items the user has not collected.
+4. **Cafeteria Quality Control:** The average rating of each item is dynamically visible to help cafeteria staff maintain standard dining options.
+
+---
+
+## In-App Update System & Cloudflare Workers Proxy
+
+CampusBite includes a robust, production-grade in-app update framework to distribute updates securely:
+1. **Cloudflare Worker Proxy (`dl.larason.space`):** A custom worker caches release metadata and APK binaries from GitHub. It intercepts GitHub API rate limits and proxies downloads, supporting HTTP range requests so interrupted downloads can resume.
+2. **Update Metadata Verification:** The app periodically requests update data from `https://dl.larason.space/latest`.
+3. **Secure Installation Workflow:**
+   - **Update Check:** The `UpdateService` checks the current version against the edge metadata. If a new version exists, it prompts either an optional or mandatory update.
+   - **Resume-able Downloads:** If interrupted, downloads are resumed from the last byte using HTTP Range requests.
+   - **SHA-256 Checksum Validation:** Before launching the installer, the downloaded APK's SHA-256 hash is calculated and verified against the checksum provided in `release.json`. If verification fails, the installer is rejected.
+   - **Local Cache TTL:** Metadata responses are cached locally on the device for 12 hours to minimize unnecessary network traffic.
+
+---
+
+## GitHub Release APK Workflow
+
+The release compilation and deployment pipeline is automated via GitHub Actions (`.github/workflows/release-apk.yml`):
+1. **Trigger:** The workflow is automatically triggered when a new version tag (`v*.*.*`) is pushed, or manually run via `workflow_dispatch`.
+2. **Compilation & Obfuscation:** The runner compiles universal and split-per-abi APKs (for `arm64-v8a`, `armeabi-v7a`, and `x86_64`) using Dart obfuscation and split debug info.
+3. **Keystore Signing:** Builds are signed using a secure base64-encoded keystore passed via GitHub Actions secrets.
+4. **Artifact Checksums:** SHA-256 hashes are automatically generated for all built APK files.
+5. **Metadata Assembly (`release.json`):** A `release.json` file is compiled from a template and validated by a Python validation script to ensure all asset URLs conform to proxy specifications.
+6. **Publishing:** APKs, checksum files, and `release.json` are uploaded to the GitHub Release page, and the Cloudflare worker proxy is deployed automatically using Wrangler.
 
 ---
 

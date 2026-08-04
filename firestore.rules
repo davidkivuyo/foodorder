@@ -1,0 +1,723 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helper functions ─────────────────────────────────────────────────
+
+    function isAuth() {
+      return request.auth != null;
+    }
+    function isOwner(userId) {
+      return isAuth() && request.auth.uid == userId;
+    }
+    // Phase 15 — admin authorization (Part 4): an admin operation is only
+    // permitted when the caller's account exists AND carries the admin role
+    // AND is not SUSPENDED. A suspended admin is treated exactly like a
+    // regular caller, so an account that has been taken down loses all
+    // privileged rights immediately and cannot self-reactivate.
+    function isAdmin() {
+      return isAuth()
+        && callerDoc().data != null
+        && callerDoc().data.role == "admin"
+        && callerDoc().data.accountStatus != 'SUSPENDED';
+    }
+    function isStudent(userId) {
+      return isAuth()
+        && get(/databases/$(database)/documents/users/$(userId)).data.role == "student";
+    }
+    function callerDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+    function isStudentSuspended() {
+      let doc = callerDoc();
+      return doc.data == null
+        || doc.data.accountStatus == 'SUSPENDED'
+        || (doc.data.strikeCount is number && doc.data.strikeCount >= 2);
+    }
+
+    // Phase 15 — authentication hardening. Only email-verified accounts may
+    // place orders or write reviews. The claim comes from the Firebase ID
+    // token, so it cannot be forged by the client. The app forces an ID-token
+    // refresh immediately after verification so this never rejects a freshly
+    // verified user.
+    function hasVerifiedEmail() {
+      return isAuth() && request.auth.token.email_verified == true;
+    }
+
+    // ── Plan validation ─────────────────────────────────────────────────
+
+    function validMealPlanWrite() {
+      let allowed = ['title', 'plannedDate', 'note', 'totalAmount', 'createdAt', 'items'];
+      return request.resource.data.keys().hasOnly(allowed)
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && request.resource.data.title.size() < 100
+        && request.resource.data.plannedDate is timestamp
+        && (!('note' in request.resource.data)
+          || request.resource.data.note is string)
+        && (!('totalAmount' in request.resource.data)
+          || request.resource.data.totalAmount is number)
+        && request.resource.data.items is list;
+    }
+
+    // ── Cart item validation ──────────────────────────────────────────
+
+    function validCartItemWrite() {
+      let allowed = ['foodItemId', 'name', 'price', 'quantity',
+        'imageUrl', 'selectedCafe', 'cafeId', 'addedAt', 'specialInstructions'];
+      return request.resource.data.keys().hasOnly(allowed)
+        && request.resource.data.foodItemId is string
+        && request.resource.data.foodItemId.size() > 0
+        && (!('name' in request.resource.data)
+          || (request.resource.data.name is string
+            && request.resource.data.name.size() > 0))
+        && (!('price' in request.resource.data)
+          || (request.resource.data.price is number
+            && request.resource.data.price >= 0))
+        && request.resource.data.quantity is number
+        && request.resource.data.quantity > 0
+        && request.resource.data.quantity < 100
+        && (!('imageUrl' in request.resource.data)
+          || (request.resource.data.imageUrl is string
+            && request.resource.data.imageUrl.size() < 2000))
+        && (!('selectedCafe' in request.resource.data)
+          || request.resource.data.selectedCafe == null
+          || (request.resource.data.selectedCafe is string
+            && request.resource.data.selectedCafe.size() > 0))
+        && (!('cafeId' in request.resource.data)
+          || (request.resource.data.cafeId is string
+            && request.resource.data.cafeId.size() > 0))
+        && (!('addedAt' in request.resource.data)
+          || request.resource.data.addedAt is timestamp)
+        && (!('specialInstructions' in request.resource.data)
+          || (request.resource.data.specialInstructions is string
+            && request.resource.data.specialInstructions.size() < 300));
+    }
+
+    // ── Order validation ────────────────────────────────────────────────
+
+    function validOrderCreateRequest() {
+      let allowed = ['orderId', 'studentId', 'userName', 'items', 'price',
+        'cafeId', 'cafeLocation', 'status', 'createdAt',
+        'updatedAt', 'deadlineStatus', 'distanceMeters',
+        'distanceCalculated', 'pickupWindowMinutes',
+        'strikeProcessed', 'expiredAt', 'strikeIssuedAt', 'foodIds'];
+      return hasVerifiedEmail()
+        && request.resource.data.keys().hasOnly(allowed)
+        && request.resource.data.items is list
+        && request.resource.data.items.size() < 50
+        && request.resource.data.price is number
+        && request.resource.data.price >= 0
+        && request.resource.data.status == 'pending'
+        // Backend-protected fields must not be forgeable on create.
+        && request.resource.data.strikeProcessed == false
+        && request.resource.data.deadlineStatus == 'NOT_READY'
+        && (!('expiredAt' in request.resource.data)
+          || request.resource.data.expiredAt == null)
+        && (!('strikeIssuedAt' in request.resource.data)
+          || request.resource.data.strikeIssuedAt == null)
+        // foodIds is a denormalised list of purchased food IDs used by the
+        // review eligibility rule. Optional on create for backward
+        // compatibility (orders without it simply cannot be reviewed).
+        && (!('foodIds' in request.resource.data)
+          || (request.resource.data.foodIds is list
+            && request.resource.data.foodIds.size() < 50))
+        && request.resource.data.studentId == request.auth.uid
+        && request.resource.data.pickupWindowMinutes is int
+        && request.resource.data.pickupWindowMinutes >= 10
+        && request.resource.data.pickupWindowMinutes <= 25
+        && !isStudentSuspended();
+    }
+
+    function adminNotModifyingProtectedOrderFields() {
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+      return !('pickupWindowMinutes' in changed)
+        && !('distanceCalculated' in changed)
+        && !('distanceMeters' in changed)
+        && !('cafeLocation' in changed)
+        && !('strikeProcessed' in changed)
+        && !('strikeIssuedAt' in changed)
+        && !('expiredAt' in changed);
+    }
+
+    // Normalise legacy order status spellings to the app's canonical casing.
+    // Historical data may store uppercase 'COLLECTED'; the app and rules use
+    // lowercase 'collected'. Re-casing is not a transition.
+    function canonicalOrderStatus(status) {
+      return status == 'COLLECTED' ? 'collected' : status;
+    }
+
+    // Phase 10 — every order update must move through a valid status
+    // transition. Rejects arbitrary status values (typos, casing drift,
+    // invented states) and illegal/backwards transitions such as
+    // 'COLLECTED' → 'preparing'. A status that is unchanged (metadata-only
+    // admin update) is permitted.
+    function validOrderStatusTransition() {
+      let allowedStatuses = ['pending', 'accepted', 'rejected', 'preparing',
+        'ready', 'collected', 'no_show'];
+      let before = ('status' in resource.data)
+        ? canonicalOrderStatus(resource.data.status)
+        : 'pending';
+      let after = canonicalOrderStatus(request.resource.data.status);
+      return request.resource.data.status is string
+        && request.resource.data.status in allowedStatuses
+        && (before == after
+          || (before == 'pending'
+            && (after == 'accepted' || after == 'rejected'))
+          || (before == 'accepted' && after == 'preparing')
+          || (before == 'preparing' && after == 'ready')
+          || (before == 'ready'
+            && (after == 'collected' || after == 'no_show')));
+    }
+
+    // ── User validation ─────────────────────────────────────────────────
+
+    function studentNotModifyingProtectedFields() {
+      let allowed = ['fullName', 'email', 'phoneNumber', 'cafeName'];
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+      return changed.hasOnly(allowed)
+        && (!('fullName' in changed)
+          || (request.resource.data.fullName is string
+            && request.resource.data.fullName.size() > 0
+            && request.resource.data.fullName.size() < 100))
+        && (!('email' in changed)
+          || (request.resource.data.email is string
+            && request.resource.data.email.size() > 0
+            && request.resource.data.email.size() < 320
+            // A changed profile email must equal the verified ID-token email
+            // claim — a student cannot set a profile email that differs from
+            // the one on their authenticated account.
+            && request.resource.data.email == request.auth.token.email))
+        && (!('phoneNumber' in changed)
+          || (request.resource.data.phoneNumber is string
+            && request.resource.data.phoneNumber.size() < 20))
+        && (!('cafeName' in changed)
+          || (request.resource.data.cafeName is string
+            && request.resource.data.cafeName.size() < 100));
+    }
+
+    function validUserCreateRequest() {
+      let allowed = ['fullName', 'email', 'role', 'createdAt', 'cafeName', 'phoneNumber',
+        'strikePercentage', 'strikeCount', 'accountStatus',
+        'lastStrikeAt', 'lastPardonAt', 'updatedAt'];
+      let keys = request.resource.data.keys();
+      let isStudentRole = request.resource.data.role == 'student';
+      let isAdminRole = request.resource.data.role == 'admin';
+      return keys.hasOnly(allowed)
+        && request.resource.data.fullName is string
+        && request.resource.data.fullName.size() > 0
+        && request.resource.data.fullName.size() < 100
+        && request.resource.data.email is string
+        && request.resource.data.email.size() > 0
+        && request.resource.data.email.size() < 320
+        && (!('phoneNumber' in request.resource.data)
+          || (request.resource.data.phoneNumber is string
+            && request.resource.data.phoneNumber.size() < 20))
+        && (!('cafeName' in request.resource.data)
+          || (request.resource.data.cafeName is string
+            && request.resource.data.cafeName.size() < 100))
+        && (isStudentRole || isAdminRole)
+        // Phase 15 — a student may only create their profile with the email
+        // from their verified ID token. Forging a different email is denied.
+        // Admins are exempt: admin profile creation is gated separately by
+        // isAdmin(), so this claim requirement only applies to students.
+        && (!isStudentRole
+          || request.resource.data.email == request.auth.token.email)
+        && (!isStudentRole
+          || (request.resource.data.strikePercentage is int
+            && request.resource.data.strikeCount is int
+            && request.resource.data.strikePercentage == 0
+            && request.resource.data.strikeCount == 0
+            && request.resource.data.accountStatus == 'ACTIVE'))
+        && (!isAdminRole || isAdmin());
+    }
+
+    // The app persists the favourite list as `favoriteMenu` (a list of up
+    // to 5 food IDs) plus a `favoriteMenuUpdatedAt` timestamp.
+    function validFavoriteMenuUpdate() {
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+      let hasFavoriteMenu = 'favoriteMenu' in changed;
+      let hasTimestamp = 'favoriteMenuUpdatedAt' in changed;
+      return changed.hasOnly(['favoriteMenu', 'favoriteMenuUpdatedAt'])
+        && (!hasFavoriteMenu
+          || (request.resource.data.favoriteMenu is list
+            && request.resource.data.favoriteMenu.size() <= 5))
+        && (!hasTimestamp
+          || request.resource.data.favoriteMenuUpdatedAt is timestamp);
+    }
+
+    function validAdminStrikeUpdate() {
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+      let allowed = ['strikeCount', 'strikePercentage', 'accountStatus',
+        'lastStrikeAt', 'lastPardonAt', 'updatedAt'];
+      return changed.hasOnly(allowed)
+        && (!('strikeCount' in changed)
+          || (request.resource.data.strikeCount is int
+            && request.resource.data.strikeCount >= 0
+            && request.resource.data.strikeCount <= 2))
+        && (!('strikePercentage' in changed)
+          || (request.resource.data.strikePercentage is int
+            && (request.resource.data.strikePercentage == 0
+              || request.resource.data.strikePercentage == 50
+              || request.resource.data.strikePercentage == 100)))
+        && (!('accountStatus' in changed)
+          || (request.resource.data.accountStatus == 'ACTIVE'
+            || request.resource.data.accountStatus == 'SUSPENDED'))
+        && (!('lastStrikeAt' in changed)
+          || request.resource.data.lastStrikeAt is timestamp)
+        && (!('lastPardonAt' in changed)
+          || request.resource.data.lastPardonAt is timestamp);
+    }
+
+    // ── Review validation ───────────────────────────────────────────────
+
+    // Deterministic review document ID, mirroring the composite key
+    // used by ReviewRepository. Enforcing it in the create rule makes
+    // "one review per (user, order, food)" structurally impossible to
+    // bypass — even by a malicious client that picks its own doc ID.
+    //
+    // The rules language cannot convert int to string (no toString()) and
+    // has no list-iteration lambdas, so the ID is a plain ':'-separated
+    // concatenation of the three keys, exactly matching
+    // ReviewRepository._compositeReviewId. Firebase UIDs, order IDs
+    // (CB-xxxx) and food doc IDs never contain ':', so this encoding is
+    // collision-free in practice.
+    function reviewCompositeId(userId, orderId, foodId) {
+      return userId + ':' + orderId + ':' + foodId;
+    }
+
+    // Predefined review template tags — mirrors `reviewTemplateTags` in
+    // lib/models/review.dart. Enforced with hasOnly() because the rules
+    // language cannot iterate over list elements.
+    function reviewTemplateTags() {
+      return ['Great deal', 'Great value for money', 'Hot food', 'Served well',
+        'Fresh ingredients', 'Very delicious', 'Fast preparation', 'Large portion',
+        'Friendly service', 'Worth the price', 'Would order again',
+        'Not great as expected', 'Too salty', 'Too spicy', 'Too cold',
+        'Small portion', 'Late preparation', 'Not good at all'];
+    }
+
+    // A review may only be created for an order that:
+    //  - belongs to the caller,
+    //  - is COLLECTED (case-insensitive to match app/function casing),
+    //  - actually contains the reviewed food item.
+    //
+    // The `foodIds` array is REQUIRED (no legacy fallback). Orders created
+    // before the field existed are backfilled by the scheduled
+    // `migrateLegacyOrderFoodIds` Cloud Function once they reach COLLECTED,
+    // so a legacy order without `foodIds` is not reviewable until migrated.
+    //
+    // NOTE: `order.exists` is deliberately NOT used here. The result of
+    // `get()` is null for a missing/unreadable document in some rule
+    // evaluation environments, and reading `.exists` off null aborts the
+    // whole create as a non-deterministic evaluation error. Dereferencing
+    // `order.data` instead fails closed: a missing order yields null data
+    // and the rule evaluates to false (deny). This keeps create requests
+    // deterministic and identical across environments.
+    function validReviewOrderEligibility() {
+      let order = get(/databases/$(database)/documents/orders/$(request.resource.data.orderId));
+      return order.data != null
+        && (order.data.status == 'collected' || order.data.status == 'COLLECTED')
+        && order.data.studentId == request.auth.uid
+        && order.data.foodIds is list
+        && order.data.foodIds.size() < 50
+        && order.data.foodIds.size() > 0
+        && order.data.foodIds.hasAny([request.resource.data.foodId]);
+    }
+
+    // Binding a review's display name to the caller's own stored profile name
+    // prevents impersonation. A non-review-anonymous review must carry the
+    // caller's real fullName from their own users/{uid} document (never the
+    // name of another user); an anonymous review is forced to the fixed
+    // placeholder so it can't be used to attribute a false identity either.
+    function validReviewDisplayName() {
+      let profile = callerDoc();
+      return request.resource.data.anonymous == true
+        ? request.resource.data.displayName == 'CampusBite Customer'
+        : profile.data != null
+          && request.resource.data.displayName == profile.data.fullName;
+    }
+
+    function validReviewCreate() {
+      let allowed = ['foodId', 'orderId', 'userId', 'displayName', 'anonymous',
+        'rating', 'templateTags', 'comment', 'createdAt', 'updatedAt',
+        'deleted', 'deletedAt', 'verifiedPurchase'];
+      let keys = request.resource.data.keys();
+      return hasVerifiedEmail()
+        && keys.hasOnly(allowed)
+        && request.resource.data.foodId is string
+        && request.resource.data.foodId.size() > 0
+        && request.resource.data.orderId is string
+        && request.resource.data.orderId.size() > 0
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() > 0
+        && request.resource.data.displayName.size() < 100
+        && request.resource.data.anonymous is bool
+        && request.resource.data.rating is int
+        && request.resource.data.rating >= 1
+        && request.resource.data.rating <= 5
+        && request.resource.data.templateTags is list
+        && request.resource.data.templateTags.size() <= 5
+        && request.resource.data.templateTags.hasOnly(reviewTemplateTags())
+        && (!('comment' in request.resource.data)
+          || (request.resource.data.comment is string
+            && request.resource.data.comment.size() <= 120))
+        && request.resource.data.verifiedPurchase == true
+        && request.resource.data.deleted == false
+        && validReviewDisplayName();
+    }
+
+    function validReviewUpdate() {
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+      let allowed = ['rating', 'templateTags', 'comment', 'updatedAt',
+        'anonymous', 'displayName', 'deleted', 'deletedAt'];
+      return changed.hasOnly(allowed)
+        && (!('rating' in changed)
+          || (request.resource.data.rating is int
+            && request.resource.data.rating >= 1
+            && request.resource.data.rating <= 5))
+        && (!('templateTags' in changed)
+          || (request.resource.data.templateTags is list
+            && request.resource.data.templateTags.size() <= 5
+            && request.resource.data.templateTags.hasOnly(reviewTemplateTags())))
+        && (!('comment' in changed)
+          || (request.resource.data.comment is string
+            && request.resource.data.comment.size() <= 120))
+        && (!('displayName' in changed)
+          || (request.resource.data.displayName is string
+            && request.resource.data.displayName.size() > 0
+            && request.resource.data.displayName.size() < 100))
+        && (!('anonymous' in changed)
+          || request.resource.data.anonymous is bool)
+        // Soft-delete OR revive (deleted: false) — both are owner-only.
+        && (!('deleted' in changed)
+          || request.resource.data.deleted is bool)
+        && (!('deletedAt' in changed)
+          || request.resource.data.deletedAt == null
+          || request.resource.data.deletedAt is timestamp)
+        // Phase 15 — re-binding display name when the identity fields change.
+        && (!('displayName' in changed) && !('anonymous' in changed)
+          || validReviewDisplayName())
+        && !('verifiedPurchase' in changed)
+        && !('foodId' in changed)
+        && !('orderId' in changed)
+        && !('userId' in changed);
+    }
+
+    // ── Food item validation ────────────────────────────────────────────
+
+    // Rating statistics are updated by the onReviewChanged Cloud Function.
+    // The rating fields below allow admins to bootstrap or correct stats
+    // via the Firebase Console (Console operations respect Firestore rules).
+
+    function validFoodItemWrite() {
+      let allowed = ['id', 'image', 'title', 'titleLower', 'subtitle',
+        'description', 'price', 'rating', 'category',
+        'availableCafes', 'time', 'section',
+        'available', 'featured', 'quantity',
+        'dietaryTags', 'keywords', 'searchPrefixes',
+        'createdAt', 'updatedAt',
+        'averageRating', 'reviewCount', 'ratingDistribution'];
+      let keys = request.resource.data.keys();
+      return keys.hasOnly(allowed)
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && request.resource.data.title.size() < 200
+        && request.resource.data.price is number
+        && request.resource.data.price >= 0
+        && (!('image' in request.resource.data)
+          || (request.resource.data.image is string
+            && request.resource.data.image.size() < 2000))
+        && (!('available' in request.resource.data)
+          || request.resource.data.available is bool)
+        && (!('category' in request.resource.data)
+          || request.resource.data.category is string)
+        && (!('rating' in request.resource.data)
+          || request.resource.data.rating is number)
+        && (!('quantity' in request.resource.data)
+          || request.resource.data.quantity is number);
+    }
+
+    function validCategoryWrite() {
+      let allowed = ['name', 'order', 'imageUrl', 'createdAt'];
+      return request.resource.data.keys().hasOnly(allowed)
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() < 100
+        && (!('order' in request.resource.data)
+          || request.resource.data.order is number);
+    }
+
+    function validCafeWrite() {
+      let allowed = ['name', 'location', 'createdAt', 'createdBy',
+        'updatedAt', 'phone', 'email'];
+      return request.resource.data.keys().hasOnly(allowed)
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() < 200
+        && (!('location' in request.resource.data)
+          || request.resource.data.location is string);
+    }
+
+    function validDeviceTokenCreate() {
+      return request.resource.data.userId == request.auth.uid
+        && request.resource.data.token is string
+        && request.resource.data.token.size() > 0
+        && request.resource.data.role is string
+        // Phase 15 — never trust an arbitrary client-supplied role. The
+        // submitted role must equal the caller's stored role from
+        // users/{request.auth.uid}, so a student cannot register a device
+        // token claiming to be an admin.
+        && request.resource.data.role
+          == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
+        && request.resource.data.deviceId is string
+        && request.resource.data.deviceId.size() > 0
+        && request.resource.data.platform is string
+        && request.resource.data.appVersion is string
+        && request.resource.data.active == true
+        && request.resource.data.keys().hasOnly([
+          'userId', 'role', 'token', 'platform', 'deviceId',
+          'appVersion', 'active', 'createdAt', 'updatedAt', 'lastSeen'
+        ]);
+    }
+
+    function validDeviceTokenUpdate() {
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+      let ownsToken = resource.data.userId == request.auth.uid;
+      let noProtectedChanged = !('userId' in changed)
+        && !('role' in changed)
+        && !('createdAt' in changed);
+      let allowedChanged = changed.hasOnly([
+        'active', 'platform', 'appVersion', 'lastSeen', 'updatedAt',
+        'token', 'deviceId',
+      ]);
+      let tokenValid = !('token' in changed)
+        || (request.resource.data.token is string
+          && request.resource.data.token.size() > 0);
+      let deviceIdValid = !('deviceId' in changed)
+        || (request.resource.data.deviceId is string
+          && request.resource.data.deviceId.size() > 0);
+      return ownsToken && noProtectedChanged && allowedChanged
+        && tokenValid && deviceIdValid;
+    }
+
+    // Phase 9 — admins may only create approved notification types with the
+    // approved document schema. Every notification must name its recipient.
+    // Cloud Functions use the Admin SDK and are exempt from these rules.
+    function validNotificationCreate() {
+      let allowed = ['recipientId', 'recipientRole', 'type', 'title', 'message',
+        'orderId', 'eventId', 'deepLink', 'metadata',
+        'read', 'readAt', 'deleted', 'deletedAt', 'createdAt', 'createdBy'];
+      let allowedTypes = ['ORDER_ACCEPTED', 'ORDER_PREPARING', 'ORDER_READY',
+        'PICKUP_REMINDER', 'ORDER_NO_SHOW', 'STRIKE_ISSUED', 'STRIKE_REMOVED',
+        'ACCOUNT_SUSPENDED', 'ACCOUNT_REACTIVATED', 'NEW_ORDER'];
+      return request.resource.data.keys().hasOnly(allowed)
+        && request.resource.data.recipientId is string
+        && request.resource.data.recipientId.size() > 0
+        && request.resource.data.type in allowedTypes;
+    }
+
+    // Phase 9 — admin notification edits are field-allowlisted. An admin may
+    // correct mutable display fields or lifecycle flags, but can never
+    // re-target a notification (recipientId/recipientRole), change its
+    // creator (createdBy), or repurpose it with the context metadata. Types
+    // must remain in the approved schema.
+    function validNotificationAdminUpdate() {
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+      let allowed = ['type', 'title', 'message', 'orderId', 'eventId',
+        'deepLink', 'metadata', 'read', 'readAt', 'deleted', 'deletedAt'];
+      let allowedTypes = ['ORDER_ACCEPTED', 'ORDER_PREPARING', 'ORDER_READY',
+        'PICKUP_REMINDER', 'ORDER_NO_SHOW', 'STRIKE_ISSUED', 'STRIKE_REMOVED',
+        'ACCOUNT_SUSPENDED', 'ACCOUNT_REACTIVATED', 'NEW_ORDER'];
+      return changed.hasOnly(allowed)
+        && (!('type' in changed) || request.resource.data.type in allowedTypes);
+    }
+
+    function validAuditLogCreate() {
+      let allowed = ['studentId', 'adminId', 'action', 'previousStrike', 'newStrike',
+        'reason', 'timestamp',
+        'orderId', 'previousStrikeCount', 'newStrikeCount', 'performedBy'];      let allowedActions = ['ISSUE_STRIKE', 'PARDON', 'RESET', 'SUSPEND', 'REACTIVATE',
+        'automatic_no_show'];
+      return request.resource.data.keys().hasOnly(allowed)
+        && request.resource.data.action in allowedActions
+        && request.resource.data.reason is string
+        && request.resource.data.reason.size() < 500
+        // Phase 15 — an admin may only log actions as themself. Attributing a
+        // log entry to another admin or to the automation engine ("system") is
+        // forbidden; server-side automation writes via Admin SDK and is
+        // exempt from these rules.
+        && (!('adminId' in request.resource.data)
+          || request.resource.data.adminId == request.auth.uid)
+        && (!('performedBy' in request.resource.data)
+          || request.resource.data.performedBy == request.auth.uid);
+    }
+
+    // ── Rules ───────────────────────────────────────────────────────────
+
+    // Food menu
+    match /food_items/{docId} {
+      allow read: if isAuth();
+      allow create: if isAdmin() && validFoodItemWrite();
+      // Admin write only. Rating stats are updated by Cloud Function.
+      allow update: if isAdmin() && validFoodItemWrite();
+      allow delete: if isAdmin();
+    }
+
+    // Categories
+    match /categories/{docId} {
+      allow read: if isAuth();
+      allow create: if isAdmin() && validCategoryWrite();
+      allow update: if isAdmin() && validCategoryWrite();
+      allow delete: if isAdmin();
+    }
+
+    // Cafes
+    match /cafes/{docId} {
+      allow read: if isAuth();
+      allow create: if isAdmin() && validCafeWrite();
+      allow update: if isAdmin() && validCafeWrite();
+      allow delete: if isAdmin();
+    }
+
+    // Orders
+    match /orders/{docId} {
+      allow read: if isOwner(
+        ('studentId' in resource.data
+          ? resource.data.studentId
+          : resource.data.userId))
+        || isAdmin();
+      allow create: if isAuth() && validOrderCreateRequest();
+      allow update: if isAdmin()
+        && adminNotModifyingProtectedOrderFields()
+        && validOrderStatusTransition();
+      allow delete: if isAdmin();
+    }
+
+    // Sections
+    match /section/{sectionId} {
+      allow read: if isAuth();
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // Reviews
+    match /reviews/{docId} {
+      allow read: if isAuth();
+      // Create requires the deterministic composite doc ID (guarantees one
+      // review per user+order+food) AND a verified COLLECTED order that
+      // belongs to the caller and contains this food item.
+      allow create: if isAuth()
+        && docId == reviewCompositeId(
+             request.resource.data.userId,
+             request.resource.data.orderId,
+             request.resource.data.foodId)
+        && validReviewCreate()
+        && validReviewOrderEligibility();
+      // Allow a student to:
+      //  (a) edit their own non-deleted review, OR
+      //  (b) revive (un-delete) their own soft-deleted review
+      //      — the repository.update() path uses this when a student
+      //        re-submits after a soft-delete.
+      allow update: if isAuth()
+        && resource.data.userId == request.auth.uid
+        && validReviewUpdate();
+      allow delete: if false;
+      // Soft-delete via update
+    }
+
+    // Devices
+    match /device_tokens/{docId} {
+      allow read: if isAuth()
+        && (request.auth.uid == resource.data.userId || isAdmin());
+      allow create: if isAuth() && validDeviceTokenCreate();
+      allow update: if isAuth() && validDeviceTokenUpdate();
+      allow delete: if false;
+    }
+
+    // Notifications
+    match /notifications/{docId} {
+      // Legacy documents may predate the recipientId field; only grant
+      // ownership-based access when the field exists. Admin access always.
+      allow read: if (isAuth()
+        && 'recipientId' in resource.data
+        && isOwner(resource.data.recipientId))
+        || isAdmin();
+      allow create: if isAdmin() && validNotificationCreate();
+      allow update: if (isAuth()
+        && 'recipientId' in resource.data
+        && isOwner(resource.data.recipientId)
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['read', 'readAt', 'deleted', 'deletedAt']))
+        || (isAdmin() && validNotificationAdminUpdate());
+      allow delete: if false;
+    }
+
+    // Delivery records
+    match /delivery_records/{docId} {
+      allow read, write: if false;
+    }
+
+    // Audit logs — Phase 15: only role-verified admins may append logs.
+    // The custom-claims backdoor (request.auth.token.admin) is removed:
+    // the users/{uid}.role field is the single source of truth for
+    // authorization, mirroring every other privileged collection.
+    match /audit_logs/{docId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin() && validAuditLogCreate();
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // Users (plural path)
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId) && validUserCreateRequest();
+      allow update: if (isOwner(userId)
+        && (studentNotModifyingProtectedFields() || validFavoriteMenuUpdate()))
+        || (isAdmin() && validAdminStrikeUpdate());
+      // Phase 15 — user profiles are never deleted through Firestore rules.
+      // Admin account removal must go through the audited Admin SDK
+      // workflow so strike/suspension state cannot be simply cleared by
+      // deleting a profile document, and every removal is auditable.
+      allow delete: if false;
+
+      // Cart — student only. Validates item structure.
+      match /cart/{itemId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && validCartItemWrite();
+        allow update: if isOwner(userId) && validCartItemWrite();
+        allow delete: if isOwner(userId);
+      }
+
+      // Plans — student-only. No admin access.
+      match /plans/{planId} {
+        allow read: if isOwner(userId) && isStudent(userId);
+        allow create: if isOwner(userId) && isStudent(userId) && validMealPlanWrite();
+        allow update: if isOwner(userId) && isStudent(userId) && validMealPlanWrite();
+        allow delete: if isOwner(userId) && isStudent(userId);
+      }
+    }
+
+    // Users (singular path — backward compatibility)
+    match /user/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId) && validUserCreateRequest();
+      allow update: if (isOwner(userId)
+        && (studentNotModifyingProtectedFields() || validFavoriteMenuUpdate()))
+        || (isAdmin() && validAdminStrikeUpdate());
+      // Phase 15 — user profiles are never deleted through Firestore rules
+      // (see comment on the /users path). Admin account removal must use the
+      // audited Admin SDK workflow.
+      allow delete: if false;
+
+      match /plans/{planId} {
+        allow read: if isOwner(userId) && isStudent(userId);
+        allow create: if isOwner(userId) && isStudent(userId) && validMealPlanWrite();
+        allow update: if isOwner(userId) && isStudent(userId) && validMealPlanWrite();
+        allow delete: if isOwner(userId) && isStudent(userId);
+      }
+    }
+  }
+}

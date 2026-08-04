@@ -534,6 +534,16 @@ class CartService extends ChangeNotifier {
     final userId = _currentUserId;
     if (userId == null) return null;
 
+    // ── Phase 15: verified-email gate ───────────────────────────────────
+    // Only email-verified accounts may place orders. This mirrors the
+    // Firestore security-rule requirement (request.auth.token.email_verified)
+    // and the router-level redirect, so ordering is blocked even if a
+    // malicious client bypasses the UI.
+    if (!(FirebaseAuth.instance.currentUser?.emailVerified ?? false)) {
+      AppLog.w('[CartService] Order blocked — email not verified');
+      return null;
+    }
+
     // Build the serialised order data before the transaction — we need
     // a snapshot of _cartItems at this point; any stock changes that
     // happen during the transaction will be caught by the reads inside.

@@ -16,6 +16,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/services.dart';
 import '../data/food_data.dart';
 import 'app_log.dart';
+import 'input_validator.dart';
 
 /// Service that wraps Firebase Authentication for email/password auth.
 class AuthService {
@@ -36,14 +37,41 @@ class AuthService {
     required String password,
     required String fullName,
   }) async {
+    // Phase 15 — Part 6: validate the RAW inputs locally before they cross
+    // to Firebase Auth. Reject malformed, oversized, or Unicode
+    // control-character values here; the sanitized values below are produced
+    // ONLY after raw-input validation succeeds.
+    if (!InputValidator.isValidEmail(email)) {
+      return 'Please enter a valid email address.';
+    }
+    if (fullName.trim().isEmpty) return 'Please enter your full name.';
+    if (InputValidator.containsControlCharacters(fullName)) {
+      return 'Name contains invalid characters.';
+    }
+    if (fullName.trim().length > InputValidator.maxNameLength) {
+      return 'Name is too long. Use ${InputValidator.maxNameLength} characters or fewer.';
+    }
+    if (password.isEmpty) {
+      return 'Invalid email or password. Please try again.';
+    }
+    if (InputValidator.containsControlCharacters(password)) {
+      return 'Password contains invalid characters.';
+    }
+    if (password.length > InputValidator.maxPasswordLength) {
+      return 'Password is too long. Use ${InputValidator.maxPasswordLength} characters or fewer.';
+    }
+
+    final cleanEmail = InputValidator.sanitizeEmail(email);
+    final cleanName = InputValidator.sanitizeName(fullName);
+
     try {
       final UserCredential credential = await _auth
           .createUserWithEmailAndPassword(
-            email: email.trim(),
+            email: cleanEmail,
             password: password,
           );
       if (credential.user != null) {
-        await credential.user!.updateDisplayName(fullName.trim());
+        await credential.user!.updateDisplayName(cleanName);
       }
       return null; // success — Firestore profile is NOT created yet
     } on Exception catch (e, stack) {
@@ -58,15 +86,28 @@ class AuthService {
     required String email,
     required String password,
   }) async {
+    // Phase 15 — Part 6/14: validate locally BEFORE building the Firebase
+    // Auth request. Malformed emails (including control characters), empty
+    // passwords, and passwords with control characters are rejected with the
+    // same generic credential message — never revealing which field was
+    // invalid (anti-enumeration) — and Firebase Auth is not called.
+    if (!InputValidator.isValidEmail(email) ||
+        password.isEmpty ||
+        InputValidator.containsControlCharacters(password)) {
+      return 'Invalid email or password. Please try again.';
+    }
+
     try {
       await _auth.signInWithEmailAndPassword(
-        email: email.trim(),
+        email: InputValidator.sanitizeEmail(email),
         password: password,
       );
       return null; // success
     } on Exception catch (e, stack) {
       AppLog.e('[AuthService] signIn error: type=${e.runtimeType}', e, stack);
-      return _extractUserFriendlyError(e);
+      // Phase 15 — anti-enumeration: sign-in failures must not reveal
+      // whether an email exists or whether the password was correct.
+      return userFacingSignInError(e);
     }
   }
 
@@ -100,6 +141,27 @@ class AuthService {
   }
 
   bool get isEmailVerified => _auth.currentUser?.emailVerified ?? false;
+
+  /// Forces a fresh Firebase ID token so the `email_verified` claim (used by
+  /// Firestore security rules) reflects the latest server state.
+  ///
+  /// After the user verifies their email, the cached ID token may still carry
+  /// `email_verified: false` until it is refreshed. Rules that gate ordering
+  /// on `request.auth.token.email_verified` would reject the order in that
+  /// window, so this MUST be called once verification is confirmed.
+  ///
+  /// Returns `null` on success or a user-facing error message on failure.
+  Future<String?> refreshIdToken() async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) return 'No authenticated user found.';
+      await user.getIdToken(true);
+      return null; // success
+    } catch (e) {
+      AppLog.e('[AuthService] refreshIdToken error: type=${e.runtimeType}');
+      return 'Could not refresh session. Please try again.';
+    }
+  }
 
   // ── Password reset ─────────────────────────────────────────────────────────
 
@@ -165,6 +227,51 @@ class AuthService {
 
   // ── Error extraction ────────────────────────────────────────────────────────
 
+  /// Maps a sign-in failure to a user-facing string WITHOUT revealing whether
+  /// the email exists or the password was correct (Phase 15 — Part 14).
+  ///
+  /// All authentication-credential errors — unknown email, wrong password,
+  /// invalid credential, disabled account — collapse to one generic message.
+  /// Explicitly public and static so it can be unit-tested without Firebase.
+  static String userFacingSignInError(Object e) {
+    final code = _errorCodeOf(e);
+    switch (code) {
+      case 'user-not-found':
+      case 'wrong-password':
+      case 'invalid-credential':
+      case 'invalid-login-credentials':
+      case 'user-disabled':
+        // Generic message — identical for every outcome.
+        return 'Invalid email or password. Please try again.';
+      case 'too-many-requests':
+        return 'Too many failed attempts. Please wait a moment and try again.';
+      case 'network-request-failed':
+        return 'Network error. Please check your internet connection.';
+      case 'invalid-email':
+        return 'The email address is not valid.';
+      default:
+        // Fall back to the shared mapper for anything else.
+        return _mapErrorCode(code) ??
+            'Authentication failed. Please try again.';
+    }
+  }
+
+  /// Extracts a bare Firebase error code from [e], stripping any
+  /// `firebase_auth/` style prefix and handling pigeon bridge codes.
+  static String _errorCodeOf(Object e) {
+    String raw = '';
+    if (e is FirebaseAuthException) {
+      raw = e.code;
+    } else if (e is PlatformException) {
+      final details = e.details;
+      if (details is Map) {
+        raw = details['code']?.toString() ?? '';
+      }
+      if (raw.isEmpty) raw = e.code;
+    }
+    return raw.contains('/') ? raw.substring(raw.lastIndexOf('/') + 1) : raw;
+  }
+
   /// Single entry-point that handles every possible exception type thrown by
   /// firebase_auth and returns a clean, user-facing string.
   String _extractUserFriendlyError(Object e) {
@@ -220,7 +327,7 @@ class AuthService {
   /// Maps a Firebase Auth error code to a user-facing string.
   /// Handles both bare codes ("email-already-in-use") and prefixed codes
   /// ("firebase_auth/email-already-in-use").
-  String? _mapErrorCode(String rawCode) {
+  static String? _mapErrorCode(String rawCode) {
     // Strip any prefix like "firebase_auth/" so we compare bare codes.
     final code = rawCode.contains('/')
         ? rawCode.substring(rawCode.lastIndexOf('/') + 1)
@@ -240,8 +347,10 @@ class AuthService {
       case 'user-not-found':
         return 'No account found for this email. Please register first.';
       case 'wrong-password':
-        return 'Incorrect password. Please try again.';
       case 'invalid-credential':
+      case 'invalid-login-credentials':
+        // Single generic message — never discloses email existence or whether
+        // the password was correct (Part 14 anti-enumeration).
         return 'Invalid email or password. Please try again.';
       case 'too-many-requests':
         return 'Too many failed attempts. Please wait a moment and try again.';
