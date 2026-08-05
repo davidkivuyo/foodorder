@@ -302,7 +302,7 @@ class _MyAppState extends State<MyApp> {
       // updates can block the whole app, and optional ones can prompt over
       // any screen.
       // Phase 12: OfflineBanner is added inside UpdateGate so it appears on
-      // every screen as a slim status banner above the page content.
+      // every screen as a slim status banner below the page content.
       builder: (context, child) => UpdateGate(
         child: Column(
           children: [
