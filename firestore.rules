@@ -418,9 +418,21 @@ service cloud.firestore {
         'available', 'featured', 'quantity',
         'dietaryTags', 'keywords', 'searchPrefixes',
         'createdAt', 'updatedAt',
-        'averageRating', 'reviewCount', 'ratingDistribution'];
+        'averageRating', 'reviewCount', 'ratingDistribution',
+        // Written by the onReviewChanged Cloud Function (Admin SDK) to
+        // deduplicate rating-stat updates. It lives on food docs, so it
+        // must be allowed — otherwise any admin update() merges it into
+        // request.resource.data and hasOnly() rejects the whole write.
+        // The Cloud Function trims the list to 20 entries; the cap below
+        // only prevents a hostile admin from bloating the document.
+        'processedEventIds'];
       let keys = request.resource.data.keys();
       return keys.hasOnly(allowed)
+        // The Cloud Function trims the list to 20 entries; the cap below
+        // only prevents a hostile admin from bloating the document.
+        && (!('processedEventIds' in request.resource.data)
+          || (request.resource.data.processedEventIds is list
+            && request.resource.data.processedEventIds.size() <= 50))
         && request.resource.data.title is string
         && request.resource.data.title.size() > 0
         && request.resource.data.title.size() < 200
