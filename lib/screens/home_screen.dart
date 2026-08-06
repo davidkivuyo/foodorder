@@ -247,7 +247,10 @@ class HomeScreen extends StatelessWidget {
                               items: sectionItems,
                               heroTagPrefix: 'section_${section.name}_',
                             ),
-                            const Divider(),
+                            // Minimal gap between consecutive horizontal
+                            // section lists — the hairline separator stays,
+                            // but the default 16px Divider height is halved.
+                            const Divider(height: 8),
                           ];
                         }),
 
