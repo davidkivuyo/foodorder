@@ -1,7 +1,9 @@
 # future implementation plans
 
 # NOT FULLFILLED
-1. migrate CI to blacksmith- "runs-on: blacksmith-4vcpu-ubuntu-2404" when you start an organization on github
+1. REDUCE THE SPACE BETWEEN THE CARD ROWS ON THE HOME SCREEN
+
+1. migrate CI to blacksmith- "runs-on: blacksmith-4vcpu-ubuntu-2404" when you start an organization on Github
 
 2. modify account screen to add app appearance settings, your ratings and meal plans.
 

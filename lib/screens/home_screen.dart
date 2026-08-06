@@ -212,7 +212,7 @@ class HomeScreen extends StatelessWidget {
                           ),
                         ),
 
-                        const SizedBox(height: 18),
+                        const SizedBox(height: 8),
 
                         // Promotional banner carousel
                         SpecialBannerCard(
@@ -228,7 +228,7 @@ class HomeScreen extends StatelessWidget {
                           },
                         ),
 
-                        const SizedBox(height: 18),
+                        const SizedBox(height: 8),
 
                         // ── Your Favourites section ───────────────────
                         // Appears only when favourites exist, before all
@@ -248,9 +248,9 @@ class HomeScreen extends StatelessWidget {
                               heroTagPrefix: 'section_${section.name}_',
                             ),
                             // Minimal gap between consecutive horizontal
-                            // section lists — the hairline separator stays,
-                            // but the default 16px Divider height is halved.
-                            const Divider(height: 8),
+                            // section lists — thin hairline (4px) matching
+                            // Uber Eats / Deliveroo compact section spacing
+                            const Divider(height: 4, thickness: 0.5),
                           ];
                         }),
 
@@ -269,9 +269,9 @@ class HomeScreen extends StatelessWidget {
                             ],
                           ),
                         ),
-                        const SizedBox(height: 18),
+                        const SizedBox(height: 8),
                         const CommonFood(),
-                        const SizedBox(height: 24),
+                        const SizedBox(height: 12),
                       ],
                     ),
                   ),
@@ -311,10 +311,11 @@ class CardRowItems extends StatelessWidget {
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
       children: [
-        // Menu Header Row
+        // Menu Header Row — Uber Eats style title & action button
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8.0),
+          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -322,8 +323,10 @@ class CardRowItems extends StatelessWidget {
                 child: Text(
                   title,
                   style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.4,
+                    color: Colors.black,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -349,35 +352,37 @@ class CardRowItems extends StatelessWidget {
                   semanticLabel: 'more items',
                 ),
                 style: IconButton.styleFrom(
+                  backgroundColor: Colors.grey.shade100,
+                  foregroundColor: Colors.black,
                   padding: EdgeInsets.zero,
-                  iconSize: 19,
+                  iconSize: 18,
+                  // Compact visual footprint: the 48×48 tap target comes from
+                  // the padded tap-target size (which expands the hit area
+                  // without growing the visible circle), not from the visual
+                  // minimum.
+                  minimumSize: const Size.square(36),
+                  tapTargetSize: MaterialTapTargetSize.padded,
                 ),
               ),
             ],
           ),
         ),
 
-        // Horizontal Scrollable Cards List — with hover animation on desktop
+        const SizedBox(height: 8),
+
+        // Horizontal Cards List — Compact Uber Eats height (205px eliminates empty space)
         SizedBox(
-          height:
-              250, // Updated height to comfortably fit image, text, and rating
+          height: 205,
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
-            // Side spacing lives INSIDE the scroll view so the first card
-            // rests 8px from the phone screen edge (matching the
-            // SpecialBannerCard carousel) while cards still slide under the
-            // screen edge when the user scrolls — the list spans the full
-            // screen width and is never clipped at an inset boundary.
-            padding: const EdgeInsets.only(left: 8),
+            padding: const EdgeInsets.only(left: 16),
             itemCount: displayedItems.length,
             itemBuilder: (context, index) {
               final item = displayedItems[index];
               return HoverCardScale(
                 child: Container(
-                  width: 260, // Deliveroo-style wide card aspect ratio
-                  margin: const EdgeInsets.only(
-                    right: 12,
-                  ), // Standard spacing between cards
+                  width: 270, // Uber Eats horizontal card width aspect ratio
+                  margin: const EdgeInsets.only(right: 14),
                   child: Card(
                     elevation: 0,
                     color: Colors.transparent,
@@ -390,9 +395,7 @@ class CardRowItems extends StatelessWidget {
                         Stack(
                           children: [
                             ClipRRect(
-                              borderRadius: BorderRadius.circular(
-                                16,
-                              ), // Retained border radius
+                              borderRadius: BorderRadius.circular(12),
                               child: GestureDetector(
                                 onTap: () {
                                   Navigator.push(
@@ -410,7 +413,7 @@ class CardRowItems extends StatelessWidget {
                                       '$heroTagPrefix${item.displayCafe}_${item.title}_${item.image}',
                                   child: item.buildImage(
                                     height:
-                                        140, // Expanded image height for proportional fit
+                                        130, // Uber Eats proportioned image height
                                     width: double.infinity,
                                     fit: BoxFit.cover,
                                   ),
@@ -418,22 +421,22 @@ class CardRowItems extends StatelessWidget {
                               ),
                             ),
 
-                            // Delivery Time Badge (Bottom-Right Overlay as in Deliveroo)
+                            // Delivery Time Badge Overlay
                             Positioned(
                               bottom: 8,
                               right: 8,
                               child: Container(
                                 padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
+                                  horizontal: 8,
                                   vertical: 4,
                                 ),
                                 decoration: BoxDecoration(
                                   color: Colors.white,
-                                  borderRadius: BorderRadius.circular(20),
+                                  borderRadius: BorderRadius.circular(16),
                                   boxShadow: [
                                     BoxShadow(
                                       color: Colors.black.withValues(
-                                        alpha: 0.1,
+                                        alpha: 0.12,
                                       ),
                                       blurRadius: 4,
                                       offset: const Offset(0, 2),
@@ -443,8 +446,8 @@ class CardRowItems extends StatelessWidget {
                                 child: Text(
                                   item.time,
                                   style: const TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
                                     color: Colors.black87,
                                   ),
                                 ),
@@ -456,9 +459,9 @@ class CardRowItems extends StatelessWidget {
                           ],
                         ),
 
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 6),
 
-                        // Card Details
+                        // Card Text Details
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 2),
                           child: Column(
@@ -475,17 +478,13 @@ class CardRowItems extends StatelessWidget {
                                       overflow: TextOverflow.ellipsis,
                                       style: const TextStyle(
                                         color: Colors.black,
-                                        fontWeight: FontWeight.w800,
-                                        fontSize: 16,
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 15,
                                         letterSpacing: -0.2,
                                       ),
                                     ),
                                   ),
-                                  const SizedBox(width: 8),
-                                  // IconButton (not GestureDetector) so the
-                                  // quick-add control is focusable and
-                                  // keyboard-activatable, with a tooltip that
-                                  // doubles as its accessible label.
+                                  const SizedBox(width: 6),
                                   IconButton(
                                     onPressed: item.available
                                         ? () => addToCartWithCafeCheck(
@@ -503,50 +502,49 @@ class CardRowItems extends StatelessWidget {
                                       color: item.available
                                           ? Colors.white
                                           : Colors.grey.shade500,
-                                      size: 16,
-                                    ),
-                                    style: IconButton.styleFrom(
-                                      // Matches the previous circular badge:
-                                      // 16px icon inside 5px padding => 26px.
-                                      backgroundColor: item.available
-                                          ? Colors.orange
-                                          : Colors.grey.shade300,
-                                      disabledBackgroundColor:
-                                          Colors.grey.shade300,
-                                      shape: const CircleBorder(),
-                                      padding: const EdgeInsets.all(5),
-                                      iconSize: 16,
-                                      minimumSize: const Size.square(26),
-                                      tapTargetSize:
-                                          MaterialTapTargetSize.shrinkWrap,
-                                    ),
+                                      size: 15,
+                                    ),                    style: IconButton.styleFrom(
+                      backgroundColor: item.available
+                          ? Colors.black
+                          : Colors.grey.shade300,
+                      disabledBackgroundColor:
+                          Colors.grey.shade300,
+                      shape: const CircleBorder(),
+                      padding: const EdgeInsets.all(4),
+                      iconSize: 15,
+                      // Compact visual footprint: the 48×48 tap target comes
+                      // from the padded tap-target size (which expands the hit
+                      // area without growing the visible circle), not from the
+                      // visual minimum.
+                      minimumSize: const Size.square(24),
+                      tapTargetSize: MaterialTapTargetSize.padded,
+                    ),
                                   ),
                                 ],
                               ),
 
-                              const SizedBox(height: 4),
+                              const SizedBox(height: 2),
 
-                              // Rating Row (Star icon + Rate ONLY, no distance or review count)
+                              // Rating & Cafe Subtitle Row
                               Row(
                                 children: [
                                   const Icon(
                                     Icons.star_rounded,
-                                    color: Colors
-                                        .amber, // Deliveroo green star indicator
-                                    size: 16,
+                                    color: Colors.black87,
+                                    size: 15,
                                   ),
-                                  const SizedBox(width: 4),
+                                  const SizedBox(width: 3),
                                   Text(
                                     item.averageRating > 0
                                         ? item.averageRating.toStringAsFixed(1)
                                         : '0.0',
                                     style: const TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.black,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.black87,
                                     ),
                                   ),
-                                  const SizedBox(width: 6),
+                                  const SizedBox(width: 4),
                                   Expanded(
                                     child: Text(
                                       '• ${item.displayCafe}',
@@ -560,28 +558,6 @@ class CardRowItems extends StatelessWidget {
                                   ),
                                 ],
                               ),
-
-                              /*
-                              // PROMOTIONAL TEXT BADGE (Commented out for future use)
-                              const SizedBox(height: 6),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFFFECEB), // Light pink/red promo background
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: const Text(
-                                  'Spend £10, Get £0 delivery fee',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    color: Color(0xFFD9251A),
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                              */
                             ],
                           ),
                         ),

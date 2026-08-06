@@ -15,6 +15,7 @@
 // deepLinkToTabIndex
 import 'dart:async';
 
+import 'package:clock/clock.dart';
 import 'package:campusbite/navigation/router.dart';
 import 'package:campusbite/services/analytics_service.dart';
 import 'package:campusbite/services/app_log.dart';
@@ -289,7 +290,7 @@ class MyApp extends StatefulWidget {
   State<MyApp> createState() => _MyAppState();
 }
 
-class _MyAppState extends State<MyApp> {
+class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   // Deduplication: prevent handling the same deep link twice within 5 seconds.
   // This guards against redundant notification-tap processing (e.g., the same
   // FCM notification being delivered via both onMessageOpenedApp and
@@ -298,9 +299,22 @@ class _MyAppState extends State<MyApp> {
   DateTime? _lastHandledAt;
   StreamSubscription<User?>? _authSub;
 
+  /// When the last resume-triggered update check ran. Used to throttle
+  /// foreground checks to [UpdateService.resumeCheckMinInterval] (the
+  /// Worker's `/latest` edge TTL), so a quick background/resume cycle does
+  /// not hammer the endpoint with identical reads.
+  DateTime? _lastResumeCheckAt;
+
   @override
   void initState() {
     super.initState();
+
+    // Phase 14 — observe lifecycle so a returning user gets an update check
+    // without needing a cold start. The startup check in main() has already
+    // run by the time the widget tree builds, so the first resume event is
+    // throttled out; only a genuine return to the foreground later re-checks.
+    WidgetsBinding.instance.addObserver(this);
+    _lastResumeCheckAt = clock.now();
 
     // Initialize FCM when auth state changes — only when Firebase is ready,
     // otherwise FirebaseAuth.instance would throw.
@@ -313,6 +327,34 @@ class _MyAppState extends State<MyApp> {
         _onAuthChanged(user);
       });
     }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkForUpdateOnResume();
+    }
+  }
+
+  /// Re-runs the update check when the app returns to the foreground so a
+  /// release published while the app was backgrounded is surfaced on the
+  /// next resume instead of waiting for the next cold start or the periodic
+  /// background task.
+  ///
+  /// Throttled to [UpdateService.resumeCheckMinInterval]: the Worker
+  /// edge-caches `/latest` for 5 minutes, so a check sooner than that would
+  /// only re-read the same cached metadata. Fire-and-forget — every failure
+  /// path in [UpdateService.checkForUpdate] is swallowed internally, so a
+  /// resume check can never disrupt the app.
+  void _checkForUpdateOnResume() {
+    final now = clock.now();
+    final last = _lastResumeCheckAt;
+    if (last != null &&
+        now.difference(last) < UpdateService.resumeCheckMinInterval) {
+      return;
+    }
+    _lastResumeCheckAt = now;
+    unawaited(UpdateService.instance.checkForUpdate());
   }
 
   User? _previousAuthUser;
@@ -356,6 +398,7 @@ class _MyAppState extends State<MyApp> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _authSub?.cancel();
     super.dispose();
   }
