@@ -522,9 +522,8 @@ class CardRowItems extends StatelessWidget {
                                 children: [
                                   const Icon(
                                     Icons.star_rounded,
-                                    color: Color(
-                                      0xFF4D7C0F,
-                                    ), // Deliveroo green star indicator
+                                    color: Colors
+                                        .amber, // Deliveroo green star indicator
                                     size: 16,
                                   ),
                                   const SizedBox(width: 4),
@@ -535,7 +534,7 @@ class CardRowItems extends StatelessWidget {
                                     style: const TextStyle(
                                       fontSize: 13,
                                       fontWeight: FontWeight.bold,
-                                      color: Color(0xFF4D7C0F),
+                                      color: Colors.amber,
                                     ),
                                   ),
                                   const SizedBox(width: 6),
