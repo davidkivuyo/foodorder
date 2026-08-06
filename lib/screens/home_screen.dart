@@ -540,7 +540,7 @@ class CardRowItems extends StatelessWidget {
                                     style: const TextStyle(
                                       fontSize: 13,
                                       fontWeight: FontWeight.bold,
-                                      color: Colors.amber,
+                                      color: Colors.black,
                                     ),
                                   ),
                                   const SizedBox(width: 6),
