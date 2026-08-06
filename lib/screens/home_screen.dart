@@ -250,10 +250,10 @@ class HomeScreen extends StatelessWidget {
                             // Minimal gap between consecutive horizontal
                             // section lists — thin hairline (4px) matching
                             // Uber Eats / Deliveroo compact section spacing
-                            const Divider(height: 4, thickness: 0.5),
+                            const Divider(height: 24, thickness: 0.5),
                           ];
                         }),
-
+                        const SizedBox(height: 8),
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 8.0),
                           child: Row(
@@ -503,22 +503,24 @@ class CardRowItems extends StatelessWidget {
                                           ? Colors.white
                                           : Colors.grey.shade500,
                                       size: 15,
-                                    ),                    style: IconButton.styleFrom(
-                      backgroundColor: item.available
-                          ? Colors.black
-                          : Colors.grey.shade300,
-                      disabledBackgroundColor:
-                          Colors.grey.shade300,
-                      shape: const CircleBorder(),
-                      padding: const EdgeInsets.all(4),
-                      iconSize: 15,
-                      // Compact visual footprint: the 48×48 tap target comes
-                      // from the padded tap-target size (which expands the hit
-                      // area without growing the visible circle), not from the
-                      // visual minimum.
-                      minimumSize: const Size.square(24),
-                      tapTargetSize: MaterialTapTargetSize.padded,
-                    ),
+                                    ),
+                                    style: IconButton.styleFrom(
+                                      backgroundColor: item.available
+                                          ? Colors.orange
+                                          : Colors.grey.shade300,
+                                      disabledBackgroundColor:
+                                          Colors.grey.shade300,
+                                      shape: const CircleBorder(),
+                                      padding: const EdgeInsets.all(4),
+                                      iconSize: 15,
+                                      // Compact visual footprint: the 48×48 tap target comes
+                                      // from the padded tap-target size (which expands the hit
+                                      // area without growing the visible circle), not from the
+                                      // visual minimum.
+                                      minimumSize: const Size.square(24),
+                                      tapTargetSize:
+                                          MaterialTapTargetSize.padded,
+                                    ),
                                   ),
                                 ],
                               ),
@@ -530,7 +532,7 @@ class CardRowItems extends StatelessWidget {
                                 children: [
                                   const Icon(
                                     Icons.star_rounded,
-                                    color: Colors.black87,
+                                    color: Colors.amber,
                                     size: 15,
                                   ),
                                   const SizedBox(width: 3),
