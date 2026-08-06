@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:campusbite/services/app_log.dart';
+import 'package:campusbite/services/logger_service.dart';
 
 void main() {
   group('AppLog.sanitize — sensitive data categories', () {
@@ -97,6 +97,23 @@ void main() {
       final out = AppLog.sanitize('user $uid failed');
       expect(out, 'user [uid] failed');
     });
+
+    test('preserves static technical labels like firebase_crashlytics', () {
+      // 21 chars of lowercase + underscore: a single character class, so it
+      // must NOT be treated as an opaque UID.
+      final out = AppLog.sanitize('plugin firebase_crashlytics initialized');
+      expect(out, 'plugin firebase_crashlytics initialized');
+    });
+
+    test('preserves long lowercase technical identifiers', () {
+      // Lowercase + separators only — a single character class, so even at
+      // 60+ chars it must not be treated as an opaque token.
+      const label =
+          'com_example_flutter_application_phase_seventeen_monitoring_module';
+      expect(label.length, greaterThanOrEqualTo(60));
+      final out = AppLog.sanitize('module $label loaded');
+      expect(out, 'module $label loaded');
+    });
   });
 
   group('AppLog.sanitize — unsafe free-form input', () {
@@ -124,18 +141,16 @@ void main() {
 
   group('AppLog emission behavior', () {
     final captured = <String>[];
-    late DebugPrintCallback originalDebugPrint;
+    late void Function(String) originalSink;
 
     setUp(() {
-      originalDebugPrint = debugPrint;
+      originalSink = LoggerService.outputSink;
       captured.clear();
-      debugPrint = (String? message, {int? wrapWidth}) {
-        captured.add(message ?? '');
-      };
+      LoggerService.outputSink = captured.add;
     });
 
     tearDown(() {
-      debugPrint = originalDebugPrint;
+      LoggerService.outputSink = originalSink;
     });
 
     test(

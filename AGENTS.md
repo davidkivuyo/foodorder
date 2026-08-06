@@ -145,148 +145,801 @@ Do not remove existing comments unless they are directly related to what you are
 
 # Current Phase
 
-# PHASE 16
+# PHASE 17 — ERROR REPORTING & MONITORING
 
-# TASK
+## OBJECTIVE
 
-Implement semver-aware version comparison in the CampusBite update system, replacing any implicit/string-based comparison, without regressing the update path that has already been manually verified to work (`v1.0.0-dev → v1.1.0-dev`).
+Implement production-grade monitoring for CampusBite.
 
-This is a **refactor of comparison logic only**. It must not change the Worker's routing, caching, metadata contract, or the download/verify/install pipeline.
+This phase focuses only on:
+
+• crash reporting
+
+• error monitoring
+
+• performance monitoring
+
+• application health
+
+• analytics
+
+• audit logging
+
+Do NOT modify existing business logic.
+
+Do NOT redesign screens.
+
+Do NOT change application workflows.
+
+The implementation must be lightweight, privacy-first and production-ready.
+
+create dedicated services rather than scattering monitoring code throughout the app.
+
+lib/
+ ├── services/
+ │    ├── error_service.dart
+ │    ├── logger_service.dart
+ │    ├── analytics_service.dart
+ │    ├── performance_service.dart
+ │    ├── health_service.dart
+ │    ├── crash_reporting_service.dart
+ │    └── diagnostics_service.dart
+ 
+---
+
+# EXISTING SYSTEM
+
+The following systems already exist:
+
+✓ Firebase Authentication
+
+✓ Firestore
+
+✓ Cloud Functions
+
+✓ Notifications
+
+✓ Orders
+
+✓ Reviews
+
+✓ Favourite Engine
+
+✓ Strike Engine
+
+✓ Admin App
+
+✓ Cloudinary
+
+✓ In-App Updates
+
+This phase only monitors those systems.
 
 ---
 
-# CONTEXT — READ BEFORE STARTING
+# GENERAL REQUIREMENTS
 
-The update system currently in place:
+Monitoring must:
 
-- Worker (`cloudflare-worker/src/index.js`) resolves `/latest`, `/release/{tag}`, and asset routes, rewrites GitHub URLs to `dl.larason.space`, and validates no disallowed host leaks through.
-- Flutter client fetches metadata, selects ABI, downloads, verifies SHA-256, and installs.
-- `release.json` (built from `.github/release-template.json`) contains `version` and `minimumVersion` as **plain strings**, e.g. `"1.0.0-dev"`.
-- A manual test has already confirmed `v1.0.0-dev → v1.1.0-dev` correctly triggers an update prompt. **Do not assume this means comparison logic is already correct** — MAJOR/MINOR differing (`1.0.0` vs `1.1.0`) is the case where naive string comparison and semver comparison happen to agree. This is exactly the kind of case that hides bugs; do not use it as evidence the current logic is safe for other inputs (e.g. `1.0.9-dev` vs `1.0.10-dev`, or same-version different-channel comparisons).
+• never expose personal information
 
-## Known gap this task closes
+• avoid unnecessary Firestore writes
 
-There is currently no dedicated version-comparison module. Comparison logic (if present at all) is either inline and string-based, or does not exist yet and must be added. Locate whatever currently decides "is this an update" before writing anything new — do not assume a blank slate without checking.
+• work offline
 
----
+• recover automatically
 
-# OBJECTIVE
+• distinguish debug and release builds
 
-Introduce a single, tested `VersionComparator` module that:
-
-1. Correctly implements semver precedence rules (numeric core comparison, pre-release identifier comparison, numeric-vs-alphanumeric identifier rules, bare-release-beats-prerelease rule).
-2. Is a **drop-in replacement** for whatever currently decides update eligibility — same inputs available (`localVersion`, `remoteVersion`, `minimumVersion`), same decision outputs (`upToDate` / `optional` / `mandatory`).
-3. Does not change `release.json`'s schema, the Worker, the download flow, or the verification flow.
+Never interrupt normal application usage.
 
 ---
 
-# NON-GOALS — DO NOT DO THESE
+# PART 1 — FIREBASE CRASHLYTICS
 
-- Do not modify `cloudflare-worker/src/index.js`.
-- Do not modify `.github/workflows/release-apk.yml`.
-- Do not change the `release.json` / `release-template.json` schema (no new required fields). If you believe a `channel` field is needed for a *future* task, note it in your deliverables as a recommendation — do not implement it now.
-- Do not change tagging conventions currently in use in CI.
-- Do not touch download, ABI-selection, checksum verification, or install code paths except where they call into the comparison logic.
-- Do not remove or rewrite the existing manual test that passed (`v1.0.0-dev → v1.1.0-dev`) — it must remain part of the suite and must still pass after your change.
+Integrate Firebase Crashlytics.
 
----
+Enable automatic crash reporting.
 
-# IMPLEMENTATION REQUIREMENTS
+Capture:
 
-## 1. Dependency
+Unhandled Flutter exceptions
 
-Add `pub_semver` to `pubspec.yaml`. Do not hand-roll a semver parser — use the maintained package.
+Platform exceptions
 
-## 2. New file: `lib/services/version_comparator.dart`
+Dart asynchronous exceptions
 
-Must expose, at minimum:
+Cloud Function failures
 
-```dart
-class VersionComparator {
-  static bool isNewer({required String local, required String remote});
-  static bool isBelowMinimum({required String local, required String minimum});
-}
-```
+Fatal application crashes
 
-Requirements:
-- Strip a leading `v` from any input before parsing (tags are `v1.0.0-dev`; semver parsing expects `1.0.0-dev`).
-- Throw a clear, typed exception (e.g. `VersionParseException`) on malformed input — do not silently fall back to string comparison or treat unparseable input as "no update." A parse failure must be treated as **fail-safe-neutral**: the calling code should treat it the same as an update-check network failure (continue on current version, log in debug only, do not crash, do not block the user).
-- No other behavior. This module does semver comparison only — it must not know about channels, force-update flags, or UI state.
+Record custom keys including:
 
-## 3. Locate and refactor the existing decision point
+Application version
 
-Before writing new decision logic:
-- Search the codebase for wherever `minimumVersion`, `forceUpdate`, or version strings are currently compared (likely in `lib/services/update_service.dart` or equivalent).
-- Replace only the comparison calls with `VersionComparator`. Do not restructure surrounding logic (state emission, UI triggers, download triggering) unless the comparison change requires it.
-- If comparison logic does not exist yet (i.e. the update-eligibility decision was never actually implemented and the "working" test passed only on other grounds — e.g. a hardcoded flag, or `version != remote.version`), stop and report this in your deliverables rather than guessing at what was intended. Do not paper over an undiscovered gap.
+Build number
 
-## 4. Backward compatibility check
+Flutter version
 
-Before finalizing, verify with actual parsed comparisons (not assumptions) that these all still produce the same *decision* as before your change:
-- `1.0.0-dev` (local) vs `1.1.0-dev` (remote) → still "update available" (the already-verified case)
-- Any other version pairs currently covered by existing tests
+Platform
 
-If any previously-passing case would now produce a different result, stop and flag it — do not silently "fix" it as part of this task without calling it out explicitly in deliverables, since it may indicate the old behavior was relied upon elsewhere.
+Current screen
 
----
+Network status
 
-# EDGE CASES TO HANDLE EXPLICITLY
+User role
 
-Write a test for each of these (see Testing section):
+Do NOT record:
 
-| Local | Remote | Expected | Reason |
-|---|---|---|---|
-| `1.0.0-dev` | `1.1.0-dev` | update | MINOR differs (the known-working case) |
-| `1.0.9-dev` | `1.0.10-dev` | update | numeric identifier comparison, not string comparison |
-| `1.0.10-dev` | `1.0.9-dev` | no update | same as above, reversed |
-| `1.0.0-dev` | `1.0.0` | update | bare release beats pre-release at same core version |
-| `1.0.0` | `1.0.0-dev` | no update | remote pre-release is not newer than local release |
-| `1.0.0-dev` | `1.0.0-dev` | no update | identical |
-| `1.0.0-dev.1` | `1.0.0-dev.2` | update | numeric sub-identifier |
-| `1.0.0-alpha` | `1.0.0-beta` | update | alphabetic identifier comparison |
-| `v1.0.0-dev` | `v1.1.0-dev` | update | leading "v" must be stripped correctly |
-| `not-a-version` | `1.0.0` | no crash | malformed local input must fail safe, not throw uncaught |
-| `1.0.0` | `garbage` | no crash | malformed remote input must fail safe, not throw uncaught |
+Email
+
+UID (student or admin)
+
+Student registration number
+
+Phone number
+
+Notification token
+
+Review text
+
+Location
+
+Crash reports must remain anonymous.
+
+No UID of any kind — student or admin — may be attached to crash reports.
 
 ---
 
-# TESTING
+# PART 2 — GLOBAL ERROR HANDLER
 
-## Required
-- Unit tests for `VersionComparator` covering every row in the edge-case table above, plus `isBelowMinimum` equivalents.
-- Re-run (or confirm still passing) the existing manual/integration check for `v1.0.0-dev → v1.1.0-dev` end to end through the actual update flow, not just the comparator in isolation.
-- Confirm no other file in `lib/` does its own ad-hoc version string comparison (`grep -rn "compareTo\|split('.')\|split(\".\")" lib/` as a starting point) — if found, flag it, don't silently leave a second, inconsistent comparison path in the app.
+Create a centralized ErrorService.
 
-## Regression guard
-- Do not mark this task complete if the previously-working `1.0.0-dev → 1.1.0-dev` case is not re-verified after the change.
+All uncaught exceptions must pass through it.
+
+Responsibilities:
+
+Log locally
+
+Send to Crashlytics
+
+Display user-friendly messages
+
+Categorize errors
+
+Support:
+
+FlutterError
+
+PlatformDispatcher
+
+runZonedGuarded
+
+Future exceptions
+
+Stream exceptions
+
+Never allow uncaught exceptions to terminate the app unnecessarily.
+
+## Error-Routing Contract
+
+Errors fall into exactly four categories. Each category has a fixed path
+through the system; do not blur the boundaries.
+
+### 1. Client Dart/Flutter exceptions (routed through ErrorService)
+
+Handled and unhandled exceptions originating on the client (widget errors,
+async failures, stream errors, Future errors, platform exceptions).
+
+ErrorService: RECORDS (logs locally, sends anonymous data to Crashlytics),
+DISPLAYS a user-friendly message, CONSUMES the error (never rethrows), and
+never terminates the app.
+
+### 2. Native fatal crashes (captured automatically by Crashlytics)
+
+Crashes at the platform layer (Android/iOS native code, JVM/NDK/ObjC).
+
+ErrorService: does not see these. Crashlytics CAPTURES them automatically via
+the native SDK. No client code records, displays, or consumes them. Crash
+reports remain anonymous (no UID, email, phone, token, review text, or
+location).
+
+### 3. Client-side Cloud Function invocation failures
+
+Failures calling a callable/HTTP function from the client (network, timeout,
+invalid request, permission, function-unavailable).
+
+ErrorService: RECORDS (logs the failure locally, optionally sends an anonymous
+analytics/function-error event), DISPLAYS a user-friendly message, CONSUMES
+the error (does not rethrow), and retries only when a retry is safe. The
+failure is reported from the client; the server logs stay server-side.
+
+### 4. Server-side Cloud Function errors (handled on the server)
+
+Errors thrown inside a deployed Cloud Function (backend exception, quota,
+permission, dependency failure).
+
+ErrorService/client: does NOT record, display, consume, or rethrow these.
+The server handles its own logging and surfaces failures back to the client
+only through the normal invocation-failure path (category 3). Flutter must
+never attach UIDs, request payloads, or sensitive content to any of these.
+
+Applies to all categories: never terminate the app due to an error, and never
+expose raw exception text to the user.
+
+---
+
+# PART 3 — USER-FRIENDLY ERROR MESSAGES
+
+Replace technical errors.
+
+Instead of:
+
+FirebaseException
+
+Display:
+
+"Something went wrong."
+
+Examples:
+
+Network unavailable
+
+Server unavailable
+
+Permission denied
+
+Update failed
+
+Download interrupted
+
+Review failed
+
+Order failed
+
+Notification failed
+
+Cart failed
+
+Provide retry actions where appropriate.
+
+Never expose internal exception messages.
+
+---
+
+# PART 4 — STRUCTURED LOGGING
+
+Implement LoggerService.
+
+Support log levels:
+
+Debug
+
+Info
+
+Warning
+
+Error
+
+Critical
+
+Debug logs:
+
+Debug builds only.
+
+Release builds:
+
+Only Warning
+
+Error
+
+Critical
+
+Never use print() or debugPrint() throughout the application.
+
+Replace them with LoggerService.
+
+---
+
+# PART 5 — FIREBASE ANALYTICS
+
+Track meaningful application events.
+
+Examples:
+
+User registration
+
+Login
+
+Logout
+
+Food viewed
+
+Food searched
+
+Food favourited
+
+Added to cart
+
+Removed from cart
+
+Order placed
+
+Order cancelled
+
+Order collected
+
+Review submitted
+
+Notification opened
+
+Update installed
+
+Admin added menu item
+
+Admin removed menu item
+
+Strike issued
+
+Strike removed
+
+Never log:
+
+Email
+
+UID (student or admin)
+
+Food review text
+
+Location
+
+Notification content
+
+Search text
+
+Passwords
+
+Analytics must remain anonymous.
+
+UIDs of any kind, including admin UIDs, are never sent to Analytics. The only permitted UID usage is inside immutable audit records (Part 12).
+
+---
+
+# PART 6 — PERFORMANCE MONITORING
+
+Enable Firebase Performance Monitoring.
+
+Measure:
+
+App startup
+
+Authentication
+
+Menu loading
+
+Food details
+
+Search
+
+Cart loading
+
+Checkout
+
+Orders
+
+Notifications
+
+Reviews
+
+Cloud Function execution
+
+Cloudinary image loading
+
+Update check
+
+Record slow traces.
+
+Do not create unnecessary custom traces.
+
+---
+
+# PART 7 — NETWORK MONITORING
+
+Monitor:
+
+Internet connectivity
+
+Cloud Firestore availability
+
+Cloud Functions availability
+
+Cloudinary availability
+
+Worker update endpoint
+
+Detect:
+
+Offline
+
+Slow network
+
+High latency
+
+Timeouts
+
+Automatically recover.
+
+Never continuously poll servers.
+
+---
+
+# PART 8 — FIRESTORE HEALTH
+
+Monitor:
+
+Permission errors
+
+Quota errors
+
+Unavailable errors
+
+Offline cache usage
+
+Synchronization failures
+
+Log only summaries.
+
+Do not create Firestore documents for every error.
+
+---
+
+# PART 9 — CLOUD FUNCTION MONITORING
+
+Capture:
+
+Execution failures
+
+Permission failures
+
+Timeouts
+
+Invalid requests
+
+Retry attempts
+
+Cloud Functions themselves remain responsible for server logs.
+
+Flutter only records client failures.
+
+---
+
+# PART 10 — IMAGE MONITORING
+
+Track:
+
+Failed Cloudinary downloads
+
+Slow image loading
+
+Placeholder frequency
+
+Broken URLs
+
+Cache misses
+
+Do not repeatedly retry broken URLs.
+
+---
+
+# PART 11 — UPDATE MONITORING
+
+Monitor:
+
+Metadata download
+
+Version parsing
+
+Download failures
+
+Checksum validation
+
+Installation failures
+
+Cancellation rate
+
+Successful updates
+
+Never block application use due to monitoring failures.
+
+---
+
+# PART 12 — ADMIN AUDIT LOGS
+
+Maintain immutable audit logs.
+
+Record:
+
+Menu added
+
+Menu edited
+
+Menu deleted
+
+Strike issued
+
+Strike removed
+
+Account suspended
+
+Review removed
+
+Notification broadcast
+
+Cloudinary deletion
+
+Each log includes:
+
+Timestamp
+
+Admin UID
+
+Action
+
+Target document ID
+
+No personal content.
+
+Audit logs are append-only.
+
+## Audit data model and storage
+
+Audit records form a separate compliance data class, distinct from telemetry
+events, with an explicitly specified storage backend.
+
+Storage backend: a dedicated Firestore collection reserved exclusively for
+audit records (e.g. `audit_logs`). No other monitoring data is written there,
+and audit records are never written to any telemetry store.
+
+Records are IMMUTABLE once written: they are never updated in place, never
+edited, and never overwritten. The ONLY permitted deletion is the configured
+retention purge (records older than the retention window). No manual deletion,
+no client deletion, and no edit path exists.
+
+Admin UIDs are the ONLY identifiers permitted in monitoring data, and ONLY inside these immutable audit records. They must never be copied into Crashlytics, Analytics, Performance, or any other monitoring channel.
+
+## Telemetry exclusion
+
+Audit records are excluded from telemetry-cost rules (Part 15): the near-zero
+cost requirement applies to monitoring telemetry, not to the compliance audit
+store. However, audit records are NEVER exported or mirrored into Analytics,
+Crashlytics, Performance Monitoring, Cloud Logging, or any other telemetry
+channel.
+
+Audit log access is restricted to:
+
+Authorized administrators
+
+Backend operations
+
+Never expose audit records through client-facing Firestore rules.
+
+Retention policy:
+
+Retain audit records for at least 90 days
+
+Automatically purge records older than the configured retention window
+
+Never export or mirror audit records into monitoring or analytics tools
+
+---
+
+# PART 13 — APPLICATION HEALTH DASHBOARD
+
+Implement HealthService.
+
+Track:
+
+Firestore connected
+
+Authentication available
+
+Cloud Functions reachable
+
+Cloudinary reachable
+
+Notification service active
+
+Update service reachable
+
+Return overall status:
+
+Healthy
+
+Degraded
+
+Offline
+
+Unknown
+
+Use lightweight checks.
+
+Do not continuously ping services.
+
+---
+
+# PART 14 — DEBUG DIAGNOSTICS
+
+Create hidden diagnostics screen.
+
+## Visibility rule
+
+Visible only when `isDebugBuild OR isAdministrator`:
+
+* Debug builds — always visible (regardless of role)
+
+* Release + administrator accounts — visible
+
+* Release + non-administrator accounts — NEVER accessible
+
+This is an inclusive OR: a release administrator is allowed, while a release
+non-administrator account is denied. Both cases must be covered by tests.
+
+Display:
+
+Application version
+
+Build number
+
+Flutter version
+
+Firebase versions
+
+Firestore cache size
+
+Current user role
+
+Notification status
+
+Analytics status
+
+Crashlytics status
+
+Performance status
+
+Last synchronization
+
+Never expose secrets.
+
+---
+
+# PART 15 — COST OPTIMIZATION
+
+Do NOT store monitoring events in Firestore.
+
+Prefer:
+
+Crashlytics
+
+Analytics
+
+Performance Monitoring
+
+Cloud Logging
+
+Avoid:
+
+Firestore logging
+
+Repeated writes
+
+Heartbeat documents
+
+Polling every few seconds
+
+Monitoring must generate near-zero Firestore costs.
+
+## Audit-record exclusion
+
+The near-zero-cost rule applies to monitoring telemetry only. The compliance
+audit store (Part 12) is exempt from this limit, but audit records are NEVER
+exported or mirrored into Analytics, Crashlytics, Performance Monitoring,
+Cloud Logging, or any other telemetry channel.
+
+---
+
+# PART 16 — PRIVACY
+
+Comply with privacy-first principles.
+
+Never collect:
+
+Email
+
+Phone
+
+Location
+
+Review text
+
+Notification text
+
+Payment information
+
+Authentication tokens
+
+Passwords
+
+Student ID
+
+Logs must contain technical diagnostics only.
+
+The sole exception to identifier prohibitions is the Admin UID inside immutable audit records (Part 12). Admin UIDs remain prohibited in Crashlytics, Analytics, Performance, and all other monitoring data.
+
+---
+
+# PART 17 — TESTING
+
+Verify:
+
+✓ Crash reports reach Crashlytics
+
+✓ Analytics events recorded
+
+✓ Performance traces visible
+
+✓ Structured logging works
+
+✓ User-friendly messages displayed
+
+✓ No sensitive data logged
+
+✓ Health service detects offline state
+
+✓ Monitoring survives app restart
+
+✓ No Firestore monitoring writes
+
+✓ Update monitoring works
+
+✓ Cloudinary monitoring works
+
+✓ Debug diagnostics screen hidden in release
+
+✓ Existing features unchanged
 
 ---
 
 # DELIVERABLES
 
-1. Files created / modified (full list, with the specific diff for the comparison call site — not just "updated update_service.dart").
-2. Confirmation of where the previous comparison logic lived (or explicit statement that none existed, if that's what's found).
-3. Full table of edge-case test results (pass/fail) from the table above.
-4. Explicit confirmation that `v1.0.0-dev → v1.1.0-dev` still passes after the change.
-5. Any case where new behavior differs from old behavior, called out separately and not silently folded in.
-6. A short note (not implemented, just noted) on whether a `channel` field would still be worth adding later for force-migrating between channels — this task does not implement that, only flags it as a known follow-up.
+Provide:
 
----
+1. Files created
 
-# SCOPE — FILES YOU MAY TOUCH
+2. Files modified
 
-- `pubspec.yaml` (add dependency only)
-- `lib/services/version_comparator.dart` (new)
-- `lib/services/version_comparator_test.dart` or equivalent test file (new)
-- The single existing file where update-eligibility decisions are made (identify it first; modify only the comparison calls)
+3. Crashlytics implementation summary
 
-Do not touch: Worker code, CI workflow, `release-template.json`, download/verify/install code, UI widgets, unrelated services.
+4. Analytics events list
+
+5. Performance traces implemented
+
+6. LoggerService architecture
+
+7. HealthService architecture
+
+8. Audit logging summary
+
+9. Privacy compliance summary
+
+10. Testing checklist
+
+Stop after Phase 17
 
 ---
 
 # Phase Completion Criteria
 
-Phase 16 is complete when:
+Phase 17 is complete when:
 
 * The new features works well with past features.
 * App runs successfully.

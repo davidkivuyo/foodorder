@@ -21,8 +21,10 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/update_info.dart';
+import 'analytics_service.dart';
 import 'app_log.dart';
 import 'http_headers.dart';
+import 'performance_service.dart';
 import 'update_platform.dart';
 import 'version_comparator.dart';
 
@@ -158,6 +160,8 @@ class UpdateService extends ChangeNotifier {
     if (!updatePlatform.supported) return;
 
     _busy = true;
+    final checkTrace =
+        PerformanceService.instance.startTrace(kTraceUpdateCheck);
     _setState(UpdateState.checking);
     try {
       final cached = await _readCachedInfo();
@@ -187,6 +191,7 @@ class UpdateService extends ChangeNotifier {
       await _cleanupSupersededInstallers();
       _setState(UpdateState.current);
     } finally {
+      checkTrace?.stop();
       _busy = false;
     }
   }
@@ -247,6 +252,10 @@ class UpdateService extends ChangeNotifier {
         '$decision');
 
     if (decision == UpdateState.updateRequired) {
+      AnalyticsService.instance.logEvent(
+        AnalyticsEvent.updateAvailable,
+        params: {'result': 'required'},
+      );
       _setState(UpdateState.updateRequired);
       return;
     }
@@ -257,6 +266,10 @@ class UpdateService extends ChangeNotifier {
       if (_dismissed) {
         _setState(UpdateState.current);
       } else {
+        AnalyticsService.instance.logEvent(
+          AnalyticsEvent.updateAvailable,
+          params: {'result': 'optional'},
+        );
         _setState(UpdateState.updateAvailable);
       }
       return;
@@ -420,6 +433,10 @@ class UpdateService extends ChangeNotifier {
     _errorMessage = null;
     _errorRetryable = false;
 
+    void downloadFailed() {
+      AnalyticsService.instance.logEvent(AnalyticsEvent.updateDownloadFailed);
+    }
+
     // A retry re-enters here while a previous attempt's client may still be
     // alive — drop it before creating the next one.
     _closeDownloadClient();
@@ -447,6 +464,7 @@ class UpdateService extends ChangeNotifier {
       _streamedResponse = await _sendNoRedirect(client, request, url);
       if (_streamedResponse == null) {
         _closeDownloadClient();
+        downloadFailed();
         _fail('Could not start download.');
         return;
       }
@@ -454,6 +472,7 @@ class UpdateService extends ChangeNotifier {
       final status = _streamedResponse!.statusCode;
       if (status != 200 && status != 206) {
         _closeDownloadClient();
+        downloadFailed();
         _fail('Could not start download ($status).');
         return;
       }
@@ -478,6 +497,7 @@ class UpdateService extends ChangeNotifier {
       _fileHandle = await updatePlatform.openFile(partPath, append: append);
       if (_fileHandle == null) {
         _closeDownloadClient();
+        downloadFailed();
         _fail('Could not open download file.');
         return;
       }
@@ -525,6 +545,7 @@ class UpdateService extends ChangeNotifier {
             }
           } else {
             _closeDownloadClient();
+            downloadFailed();
             _fail('Download failed.');
           }
         },
@@ -534,6 +555,7 @@ class UpdateService extends ChangeNotifier {
           if (_paused) return;
           final ok = await updatePlatform.renameFile(partPath, target);
           if (!ok) {
+            downloadFailed();
             _fail('Could not finalize download.');
             return;
           }
@@ -552,6 +574,7 @@ class UpdateService extends ChangeNotifier {
           _setState(UpdateState.paused);
         }
       } else {
+        downloadFailed();
         _fail('Download failed.');
       }
     }
@@ -565,10 +588,16 @@ class UpdateService extends ChangeNotifier {
       return;
     }
 
+    void verificationFailed() {
+      AnalyticsService.instance
+          .logEvent(AnalyticsEvent.updateVerificationFailed);
+    }
+
     final checksumUrl = _pickChecksumUrl(info);
     if (checksumUrl == null) {
       // No checksum to compare — fail closed rather than install unverified.
       await updatePlatform.deleteFile(path);
+      verificationFailed();
       _fail('Could not verify the update.');
       return;
     }
@@ -581,6 +610,7 @@ class UpdateService extends ChangeNotifier {
         final response = await _sendNoRedirect(client, request, checksumUrl);
         if (response == null) {
           await updatePlatform.deleteFile(path);
+          verificationFailed();
           _fail('Could not verify the update.');
           return;
         }
@@ -589,6 +619,7 @@ class UpdateService extends ChangeNotifier {
             );
         if (res.statusCode != 200) {
           await updatePlatform.deleteFile(path);
+          verificationFailed();
           _fail('Could not verify the update.');
           return;
         }
@@ -600,6 +631,7 @@ class UpdateService extends ChangeNotifier {
             expected != actual) {
           AppLog.w('[Update] checksum mismatch — installer discarded');
           await updatePlatform.deleteFile(path);
+          verificationFailed();
           _fail('Could not verify the update.');
           return;
         }
@@ -610,6 +642,7 @@ class UpdateService extends ChangeNotifier {
       }
     } on Exception catch (_) {
       await updatePlatform.deleteFile(path);
+      verificationFailed();
       _fail('Could not verify the update.');
       return;
     }
@@ -671,10 +704,12 @@ class UpdateService extends ChangeNotifier {
 
     final launched = await updatePlatform.launchInstaller(path);
     if (!launched) {
+      AnalyticsService.instance.logEvent(AnalyticsEvent.updateInstallFailed);
       _fail('Could not launch the installer.');
       return;
     }
 
+    AnalyticsService.instance.logEvent(AnalyticsEvent.updateStarted);
     _setState(UpdateState.installing);
 
     // The installer owns the file once ACTION_VIEW hands it off. Stay pinned

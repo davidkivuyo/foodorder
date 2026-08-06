@@ -16,6 +16,7 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../data/food_data.dart';
+import 'analytics_service.dart';
 import 'app_log.dart';
 
 /// Maximum number of favourite food IDs to cache.
@@ -352,6 +353,7 @@ class FavoriteService {
           }
 
           if (hasNewCollection) {
+            AnalyticsService.instance.logEvent(AnalyticsEvent.orderCollected);
             recalculateFavorites(userId: userId);
           }
         });

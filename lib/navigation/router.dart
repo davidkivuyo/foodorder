@@ -14,6 +14,7 @@
 
 import 'package:go_router/go_router.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:campusbite/navigation/auth_wrapper.dart';
 import 'package:campusbite/navigation/bottom_navigation.dart'; // MainScreen
 import 'package:campusbite/screens/help_support.dart';
@@ -23,6 +24,8 @@ import 'package:campusbite/screens/login_screen.dart';
 import 'package:campusbite/screens/welcome_screen.dart';
 import 'package:campusbite/screens/verify_email_screen.dart';
 import 'package:campusbite/screens/forgot_password_screen.dart';
+import 'package:campusbite/screens/diagnostics_screen.dart';
+import 'package:campusbite/services/diagnostics_service.dart';
 
 final AuthNotifier _authNotifier = AuthNotifier();
 
@@ -105,6 +108,30 @@ final GoRouter router = GoRouter(
     GoRoute(
       path: '/forgot-password',
       builder: (context, state) => const ForgotPasswordScreen(),
+    ),
+    GoRoute(
+      path: '/diagnostics',
+      redirect: (context, state) async {
+        // Hidden screen: debug builds or admin accounts only — same
+        // visibility condition as DiagnosticsEntryTile. In release builds a
+        // non-admin is redirected away instead of reaching the screen.
+        if (kDebugMode) return null;
+        try {
+          final role = await DiagnosticsService.instance.fetchUserRole();
+          if (DiagnosticsEntryTile.shouldShowDiagnostics(
+            debugMode: false,
+            role: role,
+          )) {
+            return null;
+          }
+        } catch (_) {
+          // Role lookup failed — fail closed and deny access to the
+          // diagnostics route. (fetchUserRole bounds its own Firestore
+          // read with a 5s timeout, so no separate timeout is needed here.)
+        }
+        return '/main';
+      },
+      builder: (context, state) => const DiagnosticsScreen(),
     ),
   ],
 );

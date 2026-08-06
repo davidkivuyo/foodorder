@@ -25,3 +25,9 @@
 -keep class **.Database_Impl {
     <init>();
 }
+
+# Firebase Crashlytics (Phase 17): keep source file + line numbers so stack
+# traces remain readable after R8 minification, and keep Crashlytics classes
+# intact for its reflective internal wiring.
+-keepattributes SourceFile,LineNumberTable
+-keep class com.google.firebase.crashlytics.** { *; }

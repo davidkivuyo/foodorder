@@ -14,6 +14,8 @@
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../data/food_data.dart';
+import 'analytics_service.dart';
+import 'performance_service.dart';
 
 class SearchService {
   // Cache to store previous search results in memory
@@ -33,11 +35,15 @@ class SearchService {
       return [];
     }
 
+    // Phase 17 — anonymous search event (no query text is ever collected).
+    AnalyticsService.instance.logEvent(AnalyticsEvent.foodSearched);
+
     // Check memory cache first to avoid duplicate Firestore requests
     if (_cache.containsKey(cleanQuery)) {
       return _cache[cleanQuery]!;
     }
 
+    final trace = PerformanceService.instance.startTrace(kTraceSearch);
     try {
       final snapshot = await FirebaseFirestore.instance
           .collection('food_items')
@@ -56,6 +62,8 @@ class SearchService {
     } on Exception catch (_) {
       // Propagation of Firestore exception is handled by UI screen
       rethrow;
+    } finally {
+      trace?.stop();
     }
   }
 
