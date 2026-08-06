@@ -83,9 +83,9 @@ class HomeScreen extends StatelessWidget {
   // THE SECTIONS COMES FROM FIRESTORE "section" COLLECTION
   static const Map<String, String> _sectionTitles = {
     'campus_favourite': 'Favourite on campus',
-    'todays_deals': "Today's Deals",
-    'drinks': 'Drinks Deals!',
-    'other': 'Other meal deals',
+    'todays_deals': "Today's menu",
+    'drinks': 'Drinks Deals',
+    'other': 'Hot spots',
   };
 
   String _formatTitle(String name) {
@@ -149,7 +149,7 @@ class HomeScreen extends StatelessWidget {
                       children: [
                         // Search bar
                         Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                          padding: const EdgeInsets.symmetric(horizontal: 8.0),
                           child: Material(
                             color: Colors.transparent,
                             child: InkWell(
@@ -250,7 +250,7 @@ class HomeScreen extends StatelessWidget {
                             // Minimal gap between consecutive horizontal
                             // section lists — thin hairline (4px) matching
                             // Uber Eats / Deliveroo compact section spacing
-                            const Divider(height: 24, thickness: 0.5),
+                            const Divider(height: 12, thickness: 0.5),
                           ];
                         }),
                         const SizedBox(height: 8),
@@ -315,7 +315,7 @@ class CardRowItems extends StatelessWidget {
       children: [
         // Menu Header Row — Uber Eats style title & action button
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+          padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -368,14 +368,14 @@ class CardRowItems extends StatelessWidget {
           ),
         ),
 
-        const SizedBox(height: 8),
+        const SizedBox(height: 4),
 
         // Horizontal Cards List — Compact Uber Eats height (205px eliminates empty space)
         SizedBox(
           height: 205,
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.only(left: 16),
+            padding: const EdgeInsets.symmetric(horizontal: 8),
             itemCount: displayedItems.length,
             itemBuilder: (context, index) {
               final item = displayedItems[index];
@@ -459,7 +459,7 @@ class CardRowItems extends StatelessWidget {
                           ],
                         ),
 
-                        const SizedBox(height: 6),
+                        const SizedBox(height: 1),
 
                         // Card Text Details
                         Padding(
@@ -502,7 +502,7 @@ class CardRowItems extends StatelessWidget {
                                       color: item.available
                                           ? Colors.white
                                           : Colors.grey.shade500,
-                                      size: 15,
+                                      size: 20,
                                     ),
                                     style: IconButton.styleFrom(
                                       backgroundColor: item.available
@@ -525,7 +525,7 @@ class CardRowItems extends StatelessWidget {
                                 ],
                               ),
 
-                              const SizedBox(height: 2),
+                              const SizedBox(height: 1),
 
                               // Rating & Cafe Subtitle Row
                               Row(

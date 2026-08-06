@@ -2,9 +2,9 @@
 
 Thank you for downloading Campus Bite.
 
-## Bug fixes
+## UI refinements
 
-- Fixed hero tags mismatch issue on the home screen, category and search screens.
+- Improved layout and spacing for better visual hierarchy in home screen and menu sections.
 
 ## special thanks
 To all app contributors, the app is open source under Apache 2.0 License.
