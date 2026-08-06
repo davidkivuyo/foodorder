@@ -31,6 +31,9 @@ dependencies:
   workmanager: ^0.9.0+3
   flutter_markdown: ^0.7.7+1
   pub_semver: ^2.2.0
+  firebase_crashlytics: ^5.2.4
+  firebase_analytics: ^12.4.3
+  firebase_performance: ^0.11.4+3
 
 dev_dependencies:
   flutter_test:

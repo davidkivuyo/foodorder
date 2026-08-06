@@ -14,7 +14,7 @@
 
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter/foundation.dart';
+import 'package:campusbite/services/app_log.dart';
 
 class FirebaseMsg {
   final FirebaseMessaging msgService = FirebaseMessaging.instance;
@@ -26,7 +26,7 @@ class FirebaseMsg {
     FirebaseMessaging.onBackgroundMessage(handleNotification);
 
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      debugPrint('Foreground message received');
+      AppLog.d('[FCM] Foreground message received');
       handleNotification(message);
     });
   }
@@ -36,6 +36,6 @@ class FirebaseMsg {
 Future<void> handleNotification(RemoteMessage message) async {
   await Firebase.initializeApp();
 
-  debugPrint('Title: ${message.notification?.title}');
-  debugPrint('Body: ${message.notification?.body}');
+  // Notification content is never logged (privacy) — diagnostic only.
+  AppLog.d('[FCM] Notification received');
 }

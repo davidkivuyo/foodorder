@@ -20,6 +20,7 @@ import '../services/auth_service.dart';
 import '../services/strike_service.dart';
 import '../models/strike_model.dart';
 import '../widgets/logout_confirmation_dialog.dart';
+import 'diagnostics_screen.dart';
 import 'notification_screen.dart';
 import 'order_screen.dart';
 
@@ -442,6 +443,9 @@ class AccountSettings extends StatelessWidget {
               ),
 
               const Divider(height: 1),
+
+              // Phase 17 — hidden diagnostics entry (debug builds or admins).
+              const DiagnosticsEntryTile(),
 
               _settingTile(
                 icon: Icons.logout,

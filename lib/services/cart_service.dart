@@ -20,8 +20,10 @@ import '../models/cart_item.dart';
 import '../models/order.dart';
 import '../models/sync_operation.dart';
 import '../data/food_data.dart';
+import 'analytics_service.dart';
 import 'app_log.dart';
 import 'connectivity_service.dart';
+import 'performance_service.dart';
 import 'sync_queue_service.dart';
 
 class CartService extends ChangeNotifier {
@@ -332,10 +334,27 @@ class CartService extends ChangeNotifier {
           timestamp: DateTime.now().millisecondsSinceEpoch,
         ),
       );
+      AnalyticsService.instance.logEvent(
+        AnalyticsEvent.addedToCart,
+        params: {'item_count': quantity},
+      );
       return true;
     }
 
-    return await _directAddToCart(item, selectedCafe: selectedCafe, quantity: quantity);
+    // The analytics event is emitted at the public entry point only — the
+    // sync-queue replay path (_directAddToCart) must not double-count.
+    final added = await _directAddToCart(
+      item,
+      selectedCafe: selectedCafe,
+      quantity: quantity,
+    );
+    if (added) {
+      AnalyticsService.instance.logEvent(
+        AnalyticsEvent.addedToCart,
+        params: {'item_count': quantity},
+      );
+    }
+    return added;
   }
 
   Future<bool> _directAddToCart(FoodItem item, {String? selectedCafe, int quantity = 1}) async {
@@ -426,6 +445,7 @@ class CartService extends ChangeNotifier {
         } else {
           await cartCollection.doc(existingItem.id).delete();
         }
+        AnalyticsService.instance.logEvent(AnalyticsEvent.removedFromCart);
       }
     } on Exception catch (e) {
       AppLog.e('[CartService] Error removing from cart', e);
@@ -577,6 +597,8 @@ class CartService extends ChangeNotifier {
 
     final orderData = newOrder.toFirestore();
 
+    // Phase 17 — checkout performance trace (stopped on every exit path).
+    final checkoutTrace = PerformanceService.instance.startTrace(kTraceCheckout);
     try {
       await _firestore.runTransaction((transaction) async {
         // ── 1. Re-read every food item's availability inside the transaction ──
@@ -626,6 +648,10 @@ class CartService extends ChangeNotifier {
       await clearCart();
 
       AppLog.d('[CartService] Order placed successfully: $newOrderId');
+      AnalyticsService.instance.logEvent(
+        AnalyticsEvent.orderPlaced,
+        params: {'item_count': itemsSnapshot.length},
+      );
       return newOrderId;
     } on FirebaseException catch (e) {
       if (e.code == 'failed-precondition') {
@@ -639,6 +665,8 @@ class CartService extends ChangeNotifier {
     } on Exception catch (e) {
       AppLog.e('[CartService] Error placing order', e);
       return null;
+    } finally {
+      checkoutTrace?.stop();
     }
   }
 

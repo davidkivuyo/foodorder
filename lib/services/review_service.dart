@@ -17,6 +17,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/review.dart';
 import '../repositories/review_repository.dart';
+import 'analytics_service.dart';
 import 'app_log.dart';
 
 /// Business-logic layer for the Reviews & Feedback system.
@@ -260,6 +261,9 @@ class ReviewService {
         final revived = await _repository.update(softDeleted.id, reviveData);
         // Rating stats are updated server-side by the onReviewChanged
         // Cloud Function. No client-side aggregation needed.
+        if (revived) {
+          AnalyticsService.instance.logEvent(AnalyticsEvent.reviewSubmitted);
+        }
         return revived ? softDeleted.id : null;
       }
 
@@ -267,6 +271,9 @@ class ReviewService {
       final docId = await _repository.create(review.toFirestore());
       // Rating stats are updated server-side by the onReviewChanged
       // Cloud Function. No client-side aggregation needed.
+      if (docId != null) {
+        AnalyticsService.instance.logEvent(AnalyticsEvent.reviewSubmitted);
+      }
       return docId;
     } on Exception catch (e) {
       AppLog.e('[ReviewService] createReview write error', e);

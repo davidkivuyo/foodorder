@@ -31,6 +31,14 @@ import 'device_token_repository.dart';
 /// Phase 8: Business logic stays in NotificationService.
 /// FCM service only handles token and push delivery — no business logic.
 class FcmService {
+  /// Most recently constructed instance — lets monitoring/diagnostics query
+  /// push-activation state without holding a reference to the app-level
+  /// singleton (Phase 17 — Part 13/14).
+  static FcmService? _active;
+
+  /// Whether the notification service is currently activated for a user.
+  static bool get isActive => _active?._currentUserId != null;
+
   final DeviceTokenRepository _tokenRepository;
   final String _role;
 
@@ -67,7 +75,9 @@ class FcmService {
     required this._role,
     DeviceTokenRepository? tokenRepository,
     this._vapidKey,
-  })  : _tokenRepository = tokenRepository ?? DeviceTokenRepository();
+  }) : _tokenRepository = tokenRepository ?? DeviceTokenRepository() {
+    _active = this;
+  }
 
   // ── Initialization ─────────────────────────────────────────────────────────
 

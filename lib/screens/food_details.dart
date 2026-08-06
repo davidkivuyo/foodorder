@@ -19,7 +19,9 @@ import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../data/food_data.dart';
 import '../models/review.dart';
+import '../services/analytics_service.dart';
 import '../services/app_log.dart';
+import '../services/crash_reporting_service.dart';
 import '../services/review_service.dart';
 import '../widgets/cafe_selection_dialog.dart';
 import '../widgets/stock_badge.dart';
@@ -67,6 +69,13 @@ class _FoodDetailsScreenState extends State<FoodDetailsScreen> {
   @override
   void initState() {
     super.initState();
+    // Phase 17 — anonymous analytics (category only, never the item id) and
+    // crash-report screen context.
+    AnalyticsService.instance.logEvent(
+      AnalyticsEvent.foodViewed,
+      params: {'category': widget.item.category},
+    );
+    CrashReportingService.instance.setCurrentScreen('food_details');
     _checkReviewEligibility();
     _listenToFoodStats();
   }
