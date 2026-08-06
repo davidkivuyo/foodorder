@@ -21,6 +21,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 
+import 'package:campusbite/navigation/router.dart';
 import 'package:campusbite/screens/diagnostics_screen.dart';
 import 'package:campusbite/services/analytics_service.dart';
 import 'package:campusbite/services/app_log.dart';
@@ -31,6 +32,8 @@ import 'package:campusbite/services/logger_service.dart';
 import 'package:campusbite/services/performance_service.dart';
 import 'package:campusbite/services/update_service.dart';
 import 'package:campusbite/widgets/monitored_network_image.dart';
+
+import 'firebase_test_helper.dart';
 
 void main() {
   group('LoggerService — structured logging (Part 4)', () {
@@ -173,10 +176,18 @@ void main() {
 
     test('recordFirestoreError and recordFunctionError never throw', () {
       // Crashlytics/Analytics are unavailable in tests — must be safe no-ops.
-      ErrorService.instance.recordFirestoreError(
-        FirebaseException(plugin: 'firestore', code: 'unavailable'),
+      expect(
+        () => ErrorService.instance.recordFirestoreError(
+          FirebaseException(plugin: 'firestore', code: 'unavailable'),
+        ),
+        returnsNormally,
       );
-      ErrorService.instance.recordFunctionError(http.ClientException('down'));
+      expect(
+        () => ErrorService.instance.recordFunctionError(
+          http.ClientException('down'),
+        ),
+        returnsNormally,
+      );
     });
   });
 
@@ -969,9 +980,10 @@ void main() {
     });
 
     test('diagnostics entry is gated on debug builds or admin role', () {
-      final screen = readRepoFile('lib/screens/diagnostics_screen.dart');
-      expect(screen, contains('kDebugMode'));
-      expect(screen, contains("role == 'admin'"));
+      final viewModel =
+          readRepoFile('lib/viewmodels/diagnostics_view_model.dart');
+      expect(viewModel, contains('kDebugMode'));
+      expect(viewModel, contains("role == 'admin'"));
     });
 
     test('update service reports monitoring events', () {
@@ -994,6 +1006,29 @@ void main() {
       );
       expect(reset, contains('_menuLoadTrace?.stop()'));
       expect(reset, contains('_menuLoadTrace = null'));
+    });
+
+    test('router handles unmatched routes with an explicit errorBuilder', () {
+      final routerSource = readRepoFile('lib/navigation/router.dart');
+      expect(routerSource, contains('errorBuilder:'));
+      expect(routerSource, contains('NotFoundScreen'));
+    });
+
+    testWidgets('unknown routes render the not-found screen', (tester) async {
+      await setupFirebaseForTest();
+      await tester.pumpWidget(
+        MaterialApp.router(
+          routerConfig: router,
+        ),
+      );
+      await tester.pumpAndSettle();
+      // Navigate to a route that does not exist — the errorBuilder must render
+      // the friendly NotFoundScreen instead of throwing.
+      router.go('/definitely-not-a-route');
+      await tester.pumpAndSettle();
+      expect(find.text('The page you are looking for does not exist.'),
+          findsOneWidget);
+      expect(find.text('Go Home'), findsOneWidget);
     });
   });
 }

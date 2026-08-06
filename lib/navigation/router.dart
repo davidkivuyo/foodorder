@@ -25,6 +25,7 @@ import 'package:campusbite/screens/welcome_screen.dart';
 import 'package:campusbite/screens/verify_email_screen.dart';
 import 'package:campusbite/screens/forgot_password_screen.dart';
 import 'package:campusbite/screens/diagnostics_screen.dart';
+import 'package:campusbite/screens/not_found_screen.dart';
 import 'package:campusbite/services/diagnostics_service.dart';
 
 final AuthNotifier _authNotifier = AuthNotifier();
@@ -51,6 +52,7 @@ bool _isOnboardingPath(String location) {
 final GoRouter router = GoRouter(
   initialLocation: '/',
   refreshListenable: _authNotifier,
+  errorBuilder: (context, state) => const NotFoundScreen(),
   redirect: (context, state) {
     final user = FirebaseAuth.instance.currentUser;
     final loggedIn = user != null;

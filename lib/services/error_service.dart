@@ -200,7 +200,9 @@ class ErrorService {
     }
     if (error is PlatformException) {
       final code = _bareCode(error);
-      if (code == 'network-request-failed' || code == 'channel-error') {
+      if (code == 'network-request-failed' ||
+          code == 'channel-error' ||
+          code == 'connection-error') {
         return 'Network error. Please check your internet connection.';
       }
       if (code == 'permission-denied') {

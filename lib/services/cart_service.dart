@@ -648,7 +648,6 @@ class CartService extends ChangeNotifier {
       await clearCart();
 
       AppLog.d('[CartService] Order placed successfully: $newOrderId');
-      checkoutTrace?.stop();
       AnalyticsService.instance.logEvent(
         AnalyticsEvent.orderPlaced,
         params: {'item_count': itemsSnapshot.length},
@@ -662,12 +661,12 @@ class CartService extends ChangeNotifier {
       } else {
         AppLog.e('[CartService] Error placing order', e);
       }
-      checkoutTrace?.stop();
       return null;
     } on Exception catch (e) {
       AppLog.e('[CartService] Error placing order', e);
-      checkoutTrace?.stop();
       return null;
+    } finally {
+      checkoutTrace?.stop();
     }
   }
 

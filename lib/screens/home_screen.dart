@@ -360,6 +360,12 @@ class CardRowItems extends StatelessWidget {
               250, // Updated height to comfortably fit image, text, and rating
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
+            // Side spacing lives INSIDE the scroll view so the first card
+            // rests 8px from the phone screen edge (matching the
+            // SpecialBannerCard carousel) while cards still slide under the
+            // screen edge when the user scrolls — the list spans the full
+            // screen width and is never clipped at an inset boundary.
+            padding: const EdgeInsets.only(left: 8),
             itemCount: displayedItems.length,
             itemBuilder: (context, index) {
               final item = displayedItems[index];

@@ -16,6 +16,7 @@ import 'dart:async';
 
 import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:flutter/foundation.dart';
+import 'analytics_runtime.dart';
 import 'logger_service.dart';
 
 /// Application analytics events (Phase 17 — Part 5).
@@ -94,8 +95,7 @@ const Set<String> kAnalyticsScreenNames = {
   'terms',
 };
 
-/// Analytics backend — swapped for a recording fake in tests.
-@visibleForTesting
+/// Analytics backend abstraction — swapped for a recording fake in tests.
 abstract class AnalyticsBackend {
   Future<void> setCollectionEnabled(bool enabled);
 
@@ -134,68 +134,43 @@ class _FirebaseAnalyticsBackend implements AnalyticsBackend {
 /// All calls are fire-and-forget and internally guarded: when Analytics is
 /// unavailable (not initialized, platform error) events are silently dropped
 /// so monitoring never interrupts application usage.
+///
+/// The service itself is stateless: it holds no retained mutable fields.
+/// Availability state and bounded re-initialization retry behavior live in
+/// [AnalyticsRuntime], a dedicated state holder owned by the service.
 class AnalyticsService {
   AnalyticsService._([AnalyticsBackend? backend])
-      : _backend = backend ?? const _FirebaseAnalyticsBackend();
+      : _runtime = AnalyticsRuntime(
+          backend ?? const _FirebaseAnalyticsBackend(),
+        ) {
+    _runtime.bindRetry(initialize);
+  }
 
   static final AnalyticsService instance = AnalyticsService._();
 
-  AnalyticsBackend _backend;
-  bool _available = false;
-  bool _initialized = false;
-  Timer? _retryTimer;
-  int _retryAttempts = 0;
+  final AnalyticsRuntime _runtime;
 
-  /// Upper bound on re-initialization attempts so recovery never becomes
-  /// continuous polling. Once exceeded, analytics stays unavailable until the
-  /// next app launch.
-  static const int _maxRetryAttempts = 3;
-  static const Duration _retryDelay = Duration(seconds: 30);
-
-  bool get isAvailable => _available;
+  bool get isAvailable => _runtime.isAvailable;
 
   /// Test seam: installs a recording fake backend (or restores the Firebase
-  /// backend when `null`). Resets availability so the next [initialize]
-  /// uses the new backend.
+  /// backend when `null`). Resets the runtime so the next [initialize] uses
+  /// the new backend.
   @visibleForTesting
   void debugSetBackend(AnalyticsBackend? backend) {
-    _backend = backend ?? const _FirebaseAnalyticsBackend();
-    _available = false;
-    _initialized = false;
-    _retryTimer?.cancel();
-    _retryTimer = null;
-    _retryAttempts = 0;
+    _runtime.setBackend(backend ?? const _FirebaseAnalyticsBackend());
   }
 
   Future<void> initialize() async {
-    _initialized = true;
+    _runtime.markInitializing();
     try {
-      await _backend.setCollectionEnabled(true);
-      _available = true;
-      _retryTimer?.cancel();
-      _retryTimer = null;
-      _retryAttempts = 0;
+      await _runtime.backend.setCollectionEnabled(true);
+      _runtime.markAvailable();
     } catch (e) {
       // Swallow every failure (including non-Exception errors when Firebase
       // is uninitialized) — analytics must never break the app.
       LoggerService.instance.debug('Analytics unavailable (${e.runtimeType})');
-      _scheduleRetry();
+      _runtime.scheduleRetryIfBootstrapped();
     }
-  }
-
-  /// Schedules a single bounded re-initialization attempt. Guarded so at most
-  /// one timer is ever pending and the total number of attempts is capped —
-  /// no continuous polling or unbounded scheduling. Called from [initialize]
-  /// on failure and again when a later analytics call finds the service
-  /// unavailable.
-  void _scheduleRetry() {
-    if (_available || _retryTimer != null) return;
-    if (_retryAttempts >= _maxRetryAttempts) return;
-    _retryAttempts++;
-    _retryTimer = Timer(_retryDelay, () {
-      _retryTimer = null;
-      initialize();
-    });
   }
 
   /// Logs an allow-listed event with allow-listed, sanitized parameters.
@@ -203,13 +178,13 @@ class AnalyticsService {
     AnalyticsEvent event, {
     Map<String, Object> params = const {},
   }) {
-    if (!_available) {
+    if (!_runtime.isAvailable) {
       // A later analytics call triggers a bounded re-initialization attempt,
       // but only once initialize() has actually run — otherwise the retry
       // timer would be scheduled spuriously on every call in environments
       // where analytics was never bootstrapped (e.g. widget tests), leaving
       // a pending timer that fails the fake-async invariants.
-      if (_initialized) _scheduleRetry();
+      _runtime.scheduleRetryIfBootstrapped();
       return;
     }
     try {
@@ -217,17 +192,19 @@ class AnalyticsService {
       // failure is a swallowed no-op, never an unhandled zone error. The
       // try/catch still covers synchronous throws.
       unawaited(
-        _backend.logEvent(event.name, _sanitizeParams(params)).catchError((_) {
+        _runtime.backend
+            .logEvent(event.name, _sanitizeParams(params))
+            .catchError((_) {
           // A backend logging failure means analytics is no longer usable;
           // mark it unavailable and schedule a bounded recovery attempt.
-          _available = false;
-          _scheduleRetry();
+          _runtime.markUnavailable();
+          _runtime.scheduleRetryIfBootstrapped();
         }),
       );
     } catch (_) {
       // Synchronous throw — same behavior as the async path.
-      _available = false;
-      _scheduleRetry();
+      _runtime.markUnavailable();
+      _runtime.scheduleRetryIfBootstrapped();
     }
   }
 
@@ -235,24 +212,24 @@ class AnalyticsService {
   /// all other input is dropped so dynamic routes, route parameters and any
   /// other caller-supplied identifiers can never reach Analytics.
   void logScreenView(String screenName) {
-    if (!_available) {
+    if (!_runtime.isAvailable) {
       // Same gating as logEvent — only re-init if bootstrapping was attempted.
-      if (_initialized) _scheduleRetry();
+      _runtime.scheduleRetryIfBootstrapped();
       return;
     }
     if (!kAnalyticsScreenNames.contains(screenName)) return;
     try {
       unawaited(
-        _backend.logScreenView(screenName).catchError((_) {
+        _runtime.backend.logScreenView(screenName).catchError((_) {
           // Backend logging failure — mark unavailable and schedule recovery.
-          _available = false;
-          _scheduleRetry();
+          _runtime.markUnavailable();
+          _runtime.scheduleRetryIfBootstrapped();
         }),
       );
     } catch (_) {
       // Synchronous throw — same behavior as the async path.
-      _available = false;
-      _scheduleRetry();
+      _runtime.markUnavailable();
+      _runtime.scheduleRetryIfBootstrapped();
     }
   }
 

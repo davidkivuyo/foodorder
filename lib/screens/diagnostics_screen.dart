@@ -12,16 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../services/diagnostics_service.dart';
 import '../services/health_service.dart';
+import '../viewmodels/diagnostics_view_model.dart';
 
 /// Hidden developer diagnostics screen (Phase 17 — Part 14).
 ///
 /// Visible only in debug builds or for administrator accounts. Renders
 /// technical state only — no emails, UIDs, tokens or personal content.
+///
+/// This widget is a pure View: it renders state from
+/// [DiagnosticsViewModel] and triggers its actions. All business logic
+/// (access resolution, role lookup, snapshot collection) lives in the
+/// ViewModel.
 class DiagnosticsScreen extends StatefulWidget {
   const DiagnosticsScreen({super.key});
 
@@ -30,74 +35,36 @@ class DiagnosticsScreen extends StatefulWidget {
 }
 
 class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
-  DiagnosticsSnapshot? _snapshot;
-  bool _hasError = false;
-
-  /// Whether this screen is permitted to render. Null while the access check
-  /// is still resolving (release builds fetch the role first).
-  bool? _allowed;
+  late final DiagnosticsViewModel _viewModel;
 
   @override
   void initState() {
     super.initState();
-    _resolveAccess();
+    _viewModel = DiagnosticsViewModel();
+    _viewModel.addListener(_onViewModelChanged);
+    _viewModel.resolveAccess();
   }
 
-  /// Self-enforces the same visibility rule as [DiagnosticsEntryTile] and the
-  /// router guard (defense-in-depth): debug builds are always allowed;
-  /// otherwise only administrator accounts may view the screen. The screen
-  /// renders nothing when access is denied.
-  Future<void> _resolveAccess() async {
-    if (kDebugMode) {
-      if (mounted) {
-        setState(() => _allowed = true);
-        _load();
-      }
-      return;
-    }
-    try {
-      final role = await DiagnosticsService.instance.fetchUserRole();
-      if (mounted) {
-        setState(() {
-          _allowed = DiagnosticsEntryTile.shouldShowDiagnostics(
-            debugMode: false,
-            role: role,
-          );
-        });
-        if (_allowed == true) _load();
-      }
-    } catch (_) {
-      // Role resolution failed — deny access rather than letting the
-      // exception escape the async callback.
-      if (mounted) setState(() => _allowed = false);
-    }
+  @override
+  void dispose() {
+    _viewModel.removeListener(_onViewModelChanged);
+    _viewModel.dispose();
+    super.dispose();
   }
 
-  Future<void> _load() async {
-    setState(() => _hasError = false);
-    try {
-      final snapshot = await DiagnosticsService.instance.collect();
-      if (mounted) setState(() => _snapshot = snapshot);
-    } on Object catch (_) {
-      // Both Exceptions and Errors (e.g. platform-channel failures) clear
-      // the loading state and surface the retry UI.
-      if (mounted) setState(() => _hasError = true);
-    }
-  }
-
-  Future<void> _refresh() async {
-    setState(() => _snapshot = null);
-    await _load();
+  void _onViewModelChanged() {
+    if (!mounted) return;
+    setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_allowed != true) {
+    if (_viewModel.allowed != true) {
       // Access denied (or still being checked) — render nothing rather than
       // leaking diagnostics data.
       return const Scaffold(body: SizedBox.shrink());
     }
-    final snapshot = _snapshot;
+    final snapshot = _viewModel.snapshot;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Developer Diagnostics'),
@@ -105,7 +72,7 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
           IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: 'Refresh',
-            onPressed: _snapshot == null ? null : _refresh,
+            onPressed: _viewModel.snapshot == null ? null : _viewModel.refresh,
           ),
         ],
       ),
@@ -114,7 +81,7 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
   }
 
   Widget _buildBody(DiagnosticsSnapshot? snapshot) {
-    if (_hasError) {
+    if (_viewModel.hasError) {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
@@ -123,7 +90,10 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
             children: [
               const Text('Could not load diagnostics.'),
               const SizedBox(height: 12),
-              FilledButton(onPressed: _load, child: const Text('Retry')),
+              FilledButton(
+                onPressed: _viewModel.load,
+                child: const Text('Retry'),
+              ),
             ],
           ),
         ),
@@ -328,40 +298,31 @@ class DiagnosticsEntryTile extends StatefulWidget {
 }
 
 class _DiagnosticsEntryTileState extends State<DiagnosticsEntryTile> {
-  bool? _visible;
+  late final DiagnosticsViewModel _viewModel;
 
   @override
   void initState() {
     super.initState();
-    _resolveVisibility();
+    _viewModel = DiagnosticsViewModel();
+    _viewModel.addListener(_onViewModelChanged);
+    _viewModel.resolveAccess();
   }
 
-  Future<void> _resolveVisibility() async {
-    if (kDebugMode) {
-      if (mounted) setState(() => _visible = true);
-      return;
-    }
-    try {
-      final role = await DiagnosticsService.instance.fetchUserRole();
-      if (mounted) {
-        setState(
-          () => _visible = DiagnosticsEntryTile.shouldShowDiagnostics(
-            debugMode: false,
-            role: role,
-          ),
-        );
-      }
-    } catch (_) {
-      // Role resolution failed — hide the entry rather than letting the
-      // exception escape the async callback.
-      if (mounted) setState(() => _visible = false);
-    }
+  @override
+  void dispose() {
+    _viewModel.removeListener(_onViewModelChanged);
+    _viewModel.dispose();
+    super.dispose();
+  }
+
+  void _onViewModelChanged() {
+    if (!mounted) return;
+    setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
-    final visible = _visible;
-    if (visible != true) return const SizedBox.shrink();
+    if (_viewModel.allowed != true) return const SizedBox.shrink();
     return Column(
       children: [
         const Divider(height: 1),
