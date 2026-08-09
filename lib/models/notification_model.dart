@@ -24,11 +24,13 @@ enum NotificationType {
   orderReady,
   pickupReminder,
   orderNoShow,
-  strikeIssued,
-  strikeRemoved,
   accountSuspended,
   accountReactivated,
-  newOrder;
+  newOrder,
+  /// Fallback for notification types this app no longer handles (e.g.
+  /// STRIKE_ISSUED/STRIKE_REMOVED produced by the admin app's strike
+  /// engine). Kept parseable so the notification feed never breaks.
+  notice;
 
   String get value {
     switch (this) {
@@ -42,16 +44,14 @@ enum NotificationType {
         return 'PICKUP_REMINDER';
       case NotificationType.orderNoShow:
         return 'ORDER_NO_SHOW';
-      case NotificationType.strikeIssued:
-        return 'STRIKE_ISSUED';
-      case NotificationType.strikeRemoved:
-        return 'STRIKE_REMOVED';
       case NotificationType.accountSuspended:
         return 'ACCOUNT_SUSPENDED';
       case NotificationType.accountReactivated:
         return 'ACCOUNT_REACTIVATED';
       case NotificationType.newOrder:
         return 'NEW_ORDER';
+      case NotificationType.notice:
+        return 'NOTICE';
     }
   }
 
@@ -67,10 +67,6 @@ enum NotificationType {
         return NotificationType.pickupReminder;
       case 'ORDER_NO_SHOW':
         return NotificationType.orderNoShow;
-      case 'STRIKE_ISSUED':
-        return NotificationType.strikeIssued;
-      case 'STRIKE_REMOVED':
-        return NotificationType.strikeRemoved;
       case 'ACCOUNT_SUSPENDED':
         return NotificationType.accountSuspended;
       case 'ACCOUNT_REACTIVATED':
@@ -78,11 +74,10 @@ enum NotificationType {
       case 'NEW_ORDER':
         return NotificationType.newOrder;
       default:
-        throw ArgumentError.value(
-          value,
-          'type',
-          'Unknown NotificationType value.',
-        );
+        // Unknown/legacy types (e.g. STRIKE_ISSUED/STRIKE_REMOVED from the
+        // admin app) fall back to a generic notice instead of crashing the
+        // notification feed.
+        return NotificationType.notice;
     }
   }
 
@@ -99,16 +94,14 @@ enum NotificationType {
         return 'Pickup Reminder';
       case NotificationType.orderNoShow:
         return 'Order No Show';
-      case NotificationType.strikeIssued:
-        return 'Strike Issued';
-      case NotificationType.strikeRemoved:
-        return 'Strike Removed';
       case NotificationType.accountSuspended:
         return 'Account Suspended';
       case NotificationType.accountReactivated:
         return 'Account Reactivated';
       case NotificationType.newOrder:
         return 'New Order';
+      case NotificationType.notice:
+        return 'Notice';
     }
   }
 }

@@ -35,16 +35,14 @@ class NotificationVisuals {
         return (icon: Icons.access_time, color: const Color(0xFFE65100));
       case NotificationType.orderNoShow:
         return (icon: Icons.cancel_outlined, color: const Color(0xFFC62828));
-      case NotificationType.strikeIssued:
-        return (icon: Icons.gavel, color: const Color(0xFFD50000));
-      case NotificationType.strikeRemoved:
-        return (icon: Icons.healing_outlined, color: const Color(0xFF2E7D32));
       case NotificationType.accountSuspended:
         return (icon: Icons.block, color: const Color(0xFFC62828));
       case NotificationType.accountReactivated:
         return (icon: Icons.check_circle, color: const Color(0xFF2E7D32));
       case NotificationType.newOrder:
         return (icon: Icons.shopping_bag_outlined, color: const Color(0xFF1565C0));
+      case NotificationType.notice:
+        return (icon: Icons.notifications_none, color: const Color(0xFF546E7A));
     }
   }
 }

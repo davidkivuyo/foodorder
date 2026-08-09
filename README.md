@@ -749,7 +749,7 @@ CampusBite features a scalable, production-ready notification platform that deco
 Business Event (Order Placed, Marked Ready, Order Missed, etc.)
                    │
                    ▼
-      NotificationService.dart
+   Cloud Functions — createNotification (Admin SDK)
                    │
         (Checks Event ID for Dupes)
                    │
@@ -767,8 +767,10 @@ Business Event (Order Placed, Marked Ready, Order Missed, etc.)
   (Future) FCM Push Delivery
 ```
 
+> **Where notifications are created:** In production, notification documents are written **server-side** by Cloud Functions (`createNotification` in `functions/index.js`) using the Admin SDK, which bypasses Firestore client rules. `NotificationService.dart` is the **client-side helper** — it mirrors the same idempotent creation logic for parity/future use and powers all read, unread-count, and read/delete operations in the apps. The client never writes notifications directly in the current flows.
+
 ### 2. Key Features
-- **Duplicate Prevention (Idempotency):** Every business event generates a unique `eventId` (e.g., `ORDER_READY_order123`, `ORDER_NO_SHOW_order123`). The `NotificationService` queries for existing notifications with this event ID and skips creation if found, ensuring notifications are written exactly once.
+- **Duplicate Prevention (Idempotency):** Every business event generates a unique `eventId` (e.g., `ORDER_READY_order123`, `ORDER_NO_SHOW_order123`). The server-side `createNotification` (mirrored by the client `NotificationService` helper) queries for existing notifications with this event ID and skips creation if found, and each notification is written under a document ID deterministically derived from its `eventId`. Concurrent deliveries of the same event therefore target the same document, so at most one notification ever exists per event — notifications are written exactly once even under retries or overlapping invocations.
 - **Decoupled Logic:** The notification layer only reacts to business events. It never drives, modifies, or blocks core business logic.
 - **Future-Proof FCM Abstraction:** The delivery interface is fully abstracted within `NotificationService` so that Firebase Cloud Messaging (FCM) can be added in a future phase without modifying widgets or business service files.
 - **Real-Time Streams:** The client apps subscribe only to documents where `recipientId == currentUser.uid` AND `recipientRole == "student" | "admin"` AND `deleted == false` ordered by `createdAt DESC` with a query limit of 50. This avoids collection scans.
