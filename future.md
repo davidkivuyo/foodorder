@@ -31,7 +31,38 @@ Mark as Expired
       ├── Notify cafe
       └── Allow cafe to mark food as rescued, donated, discounted, or discarded
 
+                  ORDER
+                    │
+                    ▼
+             ┌──────────────┐
+             │   COLLECTED  │
+             └──────┬───────┘
+                    │
+             Reliability ↑
+                    │
+                    ▼
+             Normal ordering
 
+
+                  NO-SHOW
+                    │
+                    ▼
+             Reliability ↓
+                    │
+                    ▼
+       ┌────────────────────────┐
+       │ Evaluate recent +      │
+       │ lifetime performance   │
+       └───────────┬────────────┘
+                   │
+        ┌──────────┼──────────┐
+        ▼          ▼          ▼
+      Good       Warning    Restricted
+        │          │          │
+        ▼          ▼          ▼
+     Normal     Reminder   Limited orders
+
+     
 2. migrate CI to blacksmith- "runs-on: blacksmith-4vcpu-ubuntu-2404" when you start an organization on Github
 
 3. modify account screen to add app appearance settings, your ratings and meal plans.
