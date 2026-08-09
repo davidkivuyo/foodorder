@@ -4,18 +4,23 @@
  *
  * Combined deployment of all CampusBite Cloud Functions:
  *
- * 1) processExpiredPickups — Scheduled (every 5 min) automatic strike engine.
- * 2) onOrderStatusChanged — Firestore trigger on orders/{orderId}.
- * 3) onNewOrder — Firestore trigger on orders/{orderId} (document created).
- * 4) onNewNotification — Firestore trigger on notifications/{notificationId} (FCM push).
- * 5) deleteCloudinaryImage — Callable function (admin only, secrets-protected).
- * 6) cleanupDeletedNotifications — Scheduled (every 24h) cleanup.
- * 7) cleanupInactiveTokens — Scheduled (weekly) cleanup of stale device tokens.
- * 8) onReviewChanged — Firestore trigger on reviews/{reviewId} — recalculates
+ * 1) processExpiredPickups — Scheduled (every 5 min) pickup-expiry processor:
+ *    marks expired orders as no_show and notifies the student. The automatic
+ *    strike engine has been removed; no strikes are issued.
+ * 2) extendPickupDeadline — Callable (student) — extends an order's pickup
+ *    deadline by 10 minutes, once per order, before the deadline passes.
+ * 3) onOrderStatusChanged — Firestore trigger on orders/{orderId}.
+ * 4) onNewOrder — Firestore trigger on orders/{orderId} (document created).
+ * 5) onNewNotification — Firestore trigger on notifications/{notificationId} (FCM push).
+ * 6) deleteCloudinaryImage — Callable function (admin only, secrets-protected).
+ * 7) cleanupDeletedNotifications — Scheduled (every 24h) cleanup.
+ * 8) cleanupInactiveTokens — Scheduled (weekly) cleanup of stale device tokens.
+ * 9) onReviewChanged — Firestore trigger on reviews/{reviewId} — recalculates
  *    food item rating statistics when a review is created, updated, or deleted.
- * 9) migrateLegacyOrderFoodIds — Scheduled (every 5 min) one-time backfill of
+ * 10) migrateLegacyOrderFoodIds — Scheduled (every 5 min) one-time backfill of
  *    the denormalised `foodIds` array on legacy COLLECTED orders so they become
  *    reviewable; bounded batch, resumable via a persisted cursor, self-completing.
+ * 11) auditReviewCreationRate — Scheduled (every 24h) review-rate guardrail.
  */
 
 // ── Imports ────────────────────────────────────────────────────────────────
@@ -59,17 +64,8 @@ const CLAIM_LEASE_SECONDS = 120;
 // ── Shared helpers ─────────────────────────────────────────────────────────
 
 /**
- * Derive the account status string from a strike count.
- * @param {number} strikeCount
- * @return {string} 'ACTIVE' or 'SUSPENDED'
- */
-function deriveAccountStatus(strikeCount) {
-  return strikeCount >= 2 ? "SUSPENDED" : "ACTIVE";
-}
-
-/**
  * Build a unique eventId for a notification to enable duplicate prevention.
- * @param {string} action — e.g. 'STRIKE_ISSUED', 'ORDER_NO_SHOW'
+ * @param {string} action — e.g. 'ORDER_READY', 'ORDER_NO_SHOW'
  * @param {string} orderId
  * @param {string} [suffix] — optional extra uniqueness
  * @return {string}
@@ -78,6 +74,25 @@ function notificationEventId(action, orderId, suffix) {
   const parts = [action, orderId];
   if (suffix) parts.push(suffix);
   return parts.join("_");
+}
+
+/**
+ * Whether a Firestore write was rejected because the target document already
+ * exists (create() on an existing doc). The Admin SDK surfaces the gRPC
+ * ALREADY_EXISTS status (numeric code 6); the string forms are accepted too
+ * for robustness across SDK versions.
+ * @param {*} err
+ * @return {boolean}
+ */
+function isAlreadyExistsError(err) {
+  if (!err) return false;
+  return (
+    err.code === 6 ||
+    String(err.code) === "6" ||
+    err.code === "ALREADY_EXISTS" ||
+    err.code === "already-exists" ||
+    /already exists/i.test(String(err.message || ""))
+  );
 }
 
 /**
@@ -99,6 +114,9 @@ function notificationEventId(action, orderId, suffix) {
  * @param {Object} [params.metadata]
  * @param {string} [params.createdBy='system']
  * @return {Promise<string|null>} — notification ID or null
+ * @throws {Error} on unexpected write/query failures. An ALREADY_EXISTS
+ *   conflict (concurrent duplicate) is treated as a duplicate and returns
+ *   null instead of throwing.
  */
 async function createNotification({
   recipientId,
@@ -112,44 +130,74 @@ async function createNotification({
   metadata,
   createdBy = "system",
 }) {
-  // Duplicate prevention
-  if (eventId) {
-    const existing = await db
-        .collection("notifications")
-        .where("eventId", "==", eventId)
-        .limit(1)
-        .get();
-
-    if (!existing.empty) {
-      console.log("[createNotification] Skipping duplicate notification event");
-      return null;
-    }
-  }
+  const payload = {
+    recipientId,
+    recipientRole,
+    type,
+    title,
+    message,
+    orderId: orderId || null,
+    eventId: eventId || null,
+    deepLink: deepLink || null,
+    metadata: metadata || null,
+    read: false,
+    readAt: null,
+    deleted: false,
+    deletedAt: null,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    createdBy,
+  };
 
   try {
-    const docRef = await db.collection("notifications").add({
-      recipientId,
-      recipientRole,
-      type,
-      title,
-      message,
-      orderId: orderId || null,
-      eventId: eventId || null,
-      deepLink: deepLink || null,
-      metadata: metadata || null,
-      read: false,
-      readAt: null,
-      deleted: false,
-      deletedAt: null,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      createdBy,
-    });
+    if (eventId) {
+      // Duplicate prevention: skip creation if a notification with the same
+      // eventId already exists (also catches legacy random-ID duplicates).
+      const existing = await db
+          .collection("notifications")
+          .where("eventId", "==", eventId)
+          .limit(1)
+          .get();
 
+      if (!existing.empty) {
+        console.log("[createNotification] Skipping duplicate notification event");
+        return null;
+      }
+
+      // Deterministic document ID derived from the eventId, so concurrent
+      // deliveries of the same event target the same document. Sanitisation
+      // is collision-free: notificationEventId() only ever produces
+      // [A-Za-z0-9_-] characters (action + order ID + optional suffix), so
+      // two distinct eventIds cannot map to the same doc ID.
+      const docId = eventId.replace(/[^A-Za-z0-9_-]/g, "_");
+      const ref = db.collection("notifications").doc(docId);
+      // Atomic create: unlike set(), create() fails if the document already
+      // exists, so a concurrent or redelivered event can never overwrite an
+      // existing notification's state (e.g. read/deleted flags). If another
+      // delivery won the race, Firestore rejects with ALREADY_EXISTS, which
+      // the catch below treats as the duplicate this branch guards against.
+      await ref.create(payload);
+      console.log(`[createNotification] Created ${type} notification`);
+      return ref.id;
+    }
+
+    const docRef = await db.collection("notifications").add(payload);
     console.log(`[createNotification] Created ${type} notification`);
     return docRef.id;
   } catch (err) {
+    // A concurrent delivery created the deterministic doc first — this is
+    // the duplicate the pre-check above is designed to catch, so report it
+    // as skipped rather than an error.
+    if (eventId && isAlreadyExistsError(err)) {
+      console.log(
+        "[createNotification] Skipping duplicate notification event (concurrent)"
+      );
+      return null;
+    }
+    // Any other failure is propagated so the caller (and Cloud Functions
+    // event retries) can react — notification creation is best-effort and
+    // every call site already handles thrown errors.
     console.error(`[createNotification] Error creating ${type}:`, err);
-    return null;
+    throw err;
   }
 }
 
@@ -916,9 +964,14 @@ async function releaseDeliveryClaim(eventId, deviceDocId, claimId) {
 /**
  * Process a single expired order inside a Firestore transaction.
  *
+ * The automatic strike engine has been removed: an expired pickup is only
+ * marked as a no-show and the student is notified. No strike counter, account
+ * status, or suspension state is touched — strike management remains an
+ * admin-only concern (admin app).
+ *
  * @param {admin.firestore.Transaction} transaction
  * @param {admin.firestore.DocumentSnapshot} orderSnapshot
- * @return {Promise<boolean>} true if the strike was processed, false if skipped
+ * @return {Promise<boolean>} true if the no-show was processed, false if skipped
  */
 async function processExpiredOrder(transaction, orderSnapshot) {
   const orderRef = orderSnapshot.ref;
@@ -929,67 +982,37 @@ async function processExpiredOrder(transaction, orderSnapshot) {
   // ── Step 1: Verify order is still eligible ──────────────────────
   if (orderData.status !== "ready") return false;
   if (orderData.deadlineStatus !== "ACTIVE") return false;
-  if (orderData.strikeProcessed === true) return false;
+  if (orderData.noShowProcessed === true) return false;
 
   const studentId = orderData.studentId;
   if (!studentId) {
-    console.warn("[AutoStrike] Order without studentId – skipping");
+    console.warn("[PickupExpiry] Order without studentId – skipping");
     return false;
   }
 
-  // ── Step 2: Read the student document ───────────────────────────
-  const userRef = db.collection("users").doc(studentId);
-  const userSnapshot = await transaction.get(userRef);
-
-  if (!userSnapshot.exists) {
-    console.warn("[AutoStrike] User not found – skipping expired order");
-    return false;
-  }
-
-  const userData = userSnapshot.data();
-  if (!userData) return false;
-
-  // ── Step 3: Calculate new strike values ─────────────────────────
-  const currentStrikeCount = (userData.strikeCount ?? 0);
-  const newStrikeCount = Math.min(currentStrikeCount + 1, 2);
-
-  const orderUpdate = {
+  // ── Step 2: Update order to no_show ─────────────────────────────
+  transaction.update(orderRef, {
     status: "no_show",
     deadlineStatus: "EXPIRED",
-    strikeProcessed: true,
+    noShowProcessed: true,
     expiredAt: admin.firestore.FieldValue.serverTimestamp(),
-    strikeIssuedAt: admin.firestore.FieldValue.serverTimestamp(),
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-  };
+  });
 
-  const userUpdate = {
-    strikeCount: newStrikeCount,
-    accountStatus: deriveAccountStatus(newStrikeCount),
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-  };
-
-  // ── Step 4: Update order ────────────────────────────────────────
-  transaction.update(orderRef, orderUpdate);
-
-  // ── Step 5: Update user ─────────────────────────────────────────
-  transaction.update(userRef, userUpdate);
-
-  // ── Step 6: Create audit log ────────────────────────────────────
+  // ── Step 3: Create audit log ────────────────────────────────────
   const auditRef = db.collection("audit_logs").doc();
   transaction.set(auditRef, {
     action: "automatic_no_show",
     orderId: orderSnapshot.id,
     studentId: studentId,
-    previousStrikeCount: currentStrikeCount,
-    newStrikeCount: newStrikeCount,
     performedBy: "system",
     reason: "pickup_deadline_expired",
     timestamp: admin.firestore.FieldValue.serverTimestamp(),
   });
 
   console.log(
-    `[AutoStrike] strikeCount ${currentStrikeCount} → ${newStrikeCount}, ` +
-    `accountStatus=${deriveAccountStatus(newStrikeCount)}`
+    `[PickupExpiry] Order ${orderSnapshot.id} marked no_show ` +
+    `(pickup deadline expired)`
   );
 
   return true;
@@ -1003,7 +1026,7 @@ exports.processExpiredPickups = functions
     .pubsub
     .schedule("every 5 minutes")
     .onRun(async (context) => {
-      console.log("[AutoStrike] Scheduled run started...");
+      console.log("[PickupExpiry] Scheduled run started...");
 
       const now = admin.firestore.Timestamp.now();
       let processedCount = 0;
@@ -1022,7 +1045,7 @@ exports.processExpiredPickups = functions
             .where("pickupDeadline", "<=", now)
             .get();
 
-        console.log(`[AutoStrike] Found ${expiredOrdersSnapshot.size} expired order(s)`);
+        console.log(`[PickupExpiry] Found ${expiredOrdersSnapshot.size} expired order(s)`);
 
         const promises = expiredOrdersSnapshot.docs.map(async (orderSnapshot) => {
           try {
@@ -1040,73 +1063,44 @@ exports.processExpiredPickups = functions
           } catch (err) {
             errorCount++;
             console.error(
-              `[AutoStrike] Failed to process an expired order:`, err
+              `[PickupExpiry] Failed to process an expired order:`, err
             );
           }
         });
 
         await Promise.all(promises);
       } catch (err) {
-        console.error("[AutoStrike] Query or processing error:", err);
+        console.error("[PickupExpiry] Query or processing error:", err);
         throw err;
       }
 
       console.log(
-        `[AutoStrike] Run complete: ${processedCount} processed, ${errorCount} errors`
+        `[PickupExpiry] Run complete: ${processedCount} processed, ${errorCount} errors`
       );
 
-      // ── Notifications: Notify students about no-show strikes ──
+      // ── Notifications: Notify students about missed pickups ──
+      // Only the ORDER_NO_SHOW notification is created — the strike engine
+      // is removed, so no STRIKE_ISSUED / ACCOUNT_SUSPENDED notifications.
+      // The eventId is per-order so a student who misses several orders
+      // receives a notification for each one.
       if (processedCount > 0) {
-        console.log(`[AutoStrike] Creating notifications for ${processedRecords.length} student(s)`);
+        console.log(`[PickupExpiry] Creating notifications for ${processedRecords.length} student(s)`);
         for (const { studentId, orderId } of processedRecords) {
           try {
-            // Create ORDER_NO_SHOW notification (existing Phase 7 behavior)
             await createNotification({
               recipientId: studentId,
               recipientRole: "student",
               type: "ORDER_NO_SHOW",
-              title: "Order Missed — Strike Issued",
-              message: "You did not collect your order on time. " +
-                       "A strike has been added to your account. " +
-                       "Repeated missed pickups may lead to account suspension.",
-              deepLink: "/account",
-              eventId: notificationEventId("AUTO_NO_SHOW", studentId),
+              title: "Order Missed",
+              message: `You did not collect your order #${orderId} within the ` +
+                       "pickup window and it has been marked as a no-show.",
+              deepLink: "/orders",
+              eventId: notificationEventId("ORDER_NO_SHOW", orderId),
               createdBy: "system",
             });
-
-            // Create STRIKE_ISSUED notification (per-strike, per-order)
-            await createNotification({
-              recipientId: studentId,
-              recipientRole: "student",
-              type: "STRIKE_ISSUED",
-              title: "Strike Added to Your Account",
-              message: "You received a strike for not collecting your order #" +
-                       `${orderId} on time. ` +
-                       "Please collect future orders promptly.",
-              deepLink: "/account",
-              eventId: notificationEventId("STRIKE_ISSUED", orderId),
-              createdBy: "system",
-            });
-
-            const userDoc = await db.collection("users").doc(studentId).get();
-            const strikeCount = userDoc.data()?.strikeCount ?? 0;
-            if (strikeCount >= 2) {
-              await createNotification({
-                recipientId: studentId,
-                recipientRole: "student",
-                type: "ACCOUNT_SUSPENDED",
-                title: "Account Suspended",
-                message: "Your account has been suspended due to " +
-                         "repeated missed pickups. " +
-                         "Please contact support to reactivate your account.",
-                deepLink: "/account",
-                eventId: `ACCOUNT_SUSPENDED_${studentId}_${orderId}`,
-                createdBy: "system",
-              });
-            }
           } catch (notifErr) {
             console.error(
-              `[AutoStrike] Failed to create notification:`, notifErr
+              `[PickupExpiry] Failed to create notification:`, notifErr
             );
           }
         }
@@ -1139,7 +1133,7 @@ exports.processExpiredPickups = functions
 
         if (ordersToRemind.length > 0) {
           console.log(
-            `[AutoStrike] Sending PICKUP_REMINDER for ${ordersToRemind.length} order(s)`
+            `[PickupExpiry] Sending PICKUP_REMINDER for ${ordersToRemind.length} order(s)`
           );
 
           const reminderPromises = ordersToRemind.map(
@@ -1169,7 +1163,7 @@ exports.processExpiredPickups = functions
                 });
               } catch (notifErr) {
                 console.error(
-                  `[AutoStrike] Failed to send PICKUP_REMINDER:`, notifErr
+                  `[PickupExpiry] Failed to send PICKUP_REMINDER:`, notifErr
                 );
               }
             },
@@ -1178,11 +1172,174 @@ exports.processExpiredPickups = functions
           await Promise.allSettled(reminderPromises);
         }
       } catch (reminderErr) {
-        console.error("[AutoStrike] PICKUP_REMINDER error:", reminderErr);
+        console.error("[PickupExpiry] PICKUP_REMINDER error:", reminderErr);
       }
 
       return null;
     });
+
+// ════════════════════════════════════════════════════════════════════════════
+// FUNCTION: extendPickupDeadline  (Callable — student extends their pickup)
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Number of minutes a single pickup-deadline extension adds.
+ * Matches the customer app's PickupExtensionService.extensionMinutes.
+ */
+const PICKUP_EXTENSION_MINUTES = 10;
+
+/**
+ * Extend an order's pickup deadline by [PICKUP_EXTENSION_MINUTES].
+ *
+ * Students cannot update order documents directly (Firestore rules only
+ * allow admin order updates), so this callable performs the write with the
+ * Admin SDK. Enforced invariants:
+ *
+ *  - the caller must be authenticated (App Check enforced),
+ *  - the caller must own the order,
+ *  - the order must still be ready with an ACTIVE pickup deadline,
+ *  - the extension is consumable exactly once per order,
+ *  - the current pickup deadline must not have passed yet.
+ *
+ * All checks run inside a transaction so two concurrent taps cannot both
+ * consume the single extension.
+ */
+exports.extendPickupDeadline = onCall(
+  {
+    authPolicy: "required",
+    // Phase 15 — App Check: reject callers that cannot present a valid App
+    // Check attestation token.
+    enforceAppCheck: true,
+    region: "us-central1",
+  },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError(
+        "unauthenticated",
+        "User must be authenticated to extend a pickup."
+      );
+    }
+
+    const uid = request.auth.uid;
+
+    // ── Request envelope validation ───────────────────────────────
+    const data = request.data;
+    if (
+      data === null ||
+      typeof data !== "object" ||
+      Array.isArray(data) ||
+      JSON.stringify(data).length > 4096
+    ) {
+      throw new HttpsError("invalid-argument", "Invalid request payload.");
+    }
+
+    const envelopeKeys = Object.keys(data);
+    if (envelopeKeys.length !== 1 || envelopeKeys[0] !== "orderId") {
+      throw new HttpsError(
+        "invalid-argument",
+        "Request payload must contain exactly the orderId field."
+      );
+    }
+
+    const { orderId } = data;
+    if (
+      !orderId ||
+      typeof orderId !== "string" ||
+      orderId.length === 0 ||
+      orderId.length > 128 ||
+      !/^[A-Za-z0-9_-]+$/.test(orderId)
+    ) {
+      throw new HttpsError("invalid-argument", "orderId is invalid.");
+    }
+
+    const orderRef = db.collection("orders").doc(orderId);
+
+    try {
+      const extendedDeadline = await db.runTransaction(async (transaction) => {
+        const orderSnapshot = await transaction.get(orderRef);
+        if (!orderSnapshot.exists) {
+          throw new HttpsError("not-found", "Order not found.");
+        }
+
+        const orderData = orderSnapshot.data();
+
+        // Ownership: only the student who placed the order may extend it.
+        if (orderData.studentId !== uid) {
+          throw new HttpsError(
+            "permission-denied",
+            "You can only extend your own orders."
+          );
+        }
+
+        if (
+          orderData.status !== "ready" ||
+          orderData.deadlineStatus !== "ACTIVE"
+        ) {
+          throw new HttpsError(
+            "failed-precondition",
+            "This order can no longer be extended."
+          );
+        }
+
+        if (orderData.deadlineExtended === true) {
+          throw new HttpsError(
+            "failed-precondition",
+            "You have already extended the pickup for this order."
+          );
+        }
+
+        const pickupDeadline = orderData.pickupDeadline;
+        // Missing or non-Timestamp values fail cleanly instead of blowing up
+        // on .toMillis()/.seconds below and surfacing as a generic error.
+        if (!(pickupDeadline instanceof admin.firestore.Timestamp)) {
+          throw new HttpsError(
+            "failed-precondition",
+            "This order has no valid pickup deadline and cannot be extended."
+          );
+        }
+
+        const now = admin.firestore.Timestamp.now();
+        if (pickupDeadline.toMillis() <= now.toMillis()) {
+          throw new HttpsError(
+            "failed-precondition",
+            "The pickup deadline has already passed."
+          );
+        }
+
+        const newDeadline = new admin.firestore.Timestamp(
+          pickupDeadline.seconds + PICKUP_EXTENSION_MINUTES * 60,
+          pickupDeadline.nanoseconds,
+        );
+
+        transaction.update(orderRef, {
+          pickupDeadline: newDeadline,
+          deadlineExtended: true,
+          extensionAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        return newDeadline;
+      });
+
+      console.log(
+        `[extendPickupDeadline] Order ${orderId} extended by ` +
+        `${PICKUP_EXTENSION_MINUTES} min → ${extendedDeadline.toDate().toISOString()}`
+      );
+
+      return {
+        success: true,
+        pickupDeadline: extendedDeadline.toDate().toISOString(),
+      };
+    } catch (err) {
+      if (err instanceof HttpsError) throw err;
+      console.error("[extendPickupDeadline] Error:", err);
+      throw new HttpsError(
+        "internal",
+        "Could not extend the pickup deadline. Please try again."
+      );
+    }
+  },
+);
 
 // ── Order foodIds backfill ────────────────────────────────────────────────────
 //

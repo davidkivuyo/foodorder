@@ -112,6 +112,11 @@ class NotificationService {
       createdBy: createdBy,
     ).toFirestore();
 
+    if (eventId != null && eventId.isNotEmpty) {
+      // Deterministic doc ID — a concurrent delivery of the same event
+      // writes to the same document, so at most one notification per event.
+      return await _repository.createWithEventId(eventId, data);
+    }
     return await _repository.create(data);
   }
 

@@ -17,8 +17,6 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import '../services/auth_service.dart';
-import '../services/strike_service.dart';
-import '../models/strike_model.dart';
 import '../widgets/logout_confirmation_dialog.dart';
 import 'diagnostics_screen.dart';
 import 'notification_screen.dart';
@@ -112,68 +110,12 @@ class _AccountScreenState extends State<AccountScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      "What's your bite today?",
-                      style: TextStyle(
-                        fontSize: 19,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    if (user != null)
-                      StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-                        stream: StrikeService().strikeStream(user.uid),
-                        builder: (context, snapshot) {
-                          if (!snapshot.hasData || !snapshot.data!.exists) {
-                            return const SizedBox.shrink();
-                          }
-                          final doc = snapshot.requireData;
-                          final percentage =
-                              StrikeService.extractStrikePercentage(doc);
-                          final displayStatus = displayStatusFromPercentage(
-                            percentage,
-                          );
-
-                          final Color textColor;
-                          switch (displayStatus) {
-                            case StrikeDisplayStatus.active:
-                              textColor = Colors.green.shade700;
-                              break;
-                            case StrikeDisplayStatus.warning:
-                              textColor = Colors.orange.shade800;
-                              break;
-                            case StrikeDisplayStatus.suspended:
-                              textColor = Colors.red.shade700;
-                              break;
-                          }
-
-                          return Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Container(
-                                width: 8,
-                                height: 8,
-                                decoration: BoxDecoration(
-                                  color: textColor,
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                '$percentage%',
-                                style: TextStyle(
-                                  fontSize: 19,
-                                  fontWeight: FontWeight.bold,
-                                  color: textColor,
-                                ),
-                              ),
-                            ],
-                          );
-                        },
-                      ),
-                  ],
+                const Text(
+                  "What's your bite today?",
+                  style: TextStyle(
+                    fontSize: 19,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 const SizedBox(height: 8),
 

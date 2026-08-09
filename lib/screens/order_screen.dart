@@ -21,6 +21,8 @@ import '../data/food_data.dart';
 import '../services/app_log.dart';
 import '../services/cart_service.dart';
 import '../services/pickup_deadline_service.dart';
+import '../services/pickup_extension_service.dart';
+import '../viewmodels/orders_view_model.dart';
 import '../widgets/pickup_countdown.dart';
 import '../widgets/cart_bottom_sheet.dart';
 
@@ -37,18 +39,28 @@ class _OrdersScreenState extends State<OrdersScreen>
   Stream<QuerySnapshot<Map<String, dynamic>>>? _ordersStream;
   Stream<QuerySnapshot<Map<String, dynamic>>>? _plannedOrdersStream;
   late TabController _tabController;
+  late final OrdersViewModel _viewModel;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    _viewModel = OrdersViewModel();
+    _viewModel.addListener(_onViewModelChanged);
     _setupStream();
   }
 
   @override
   void dispose() {
+    _viewModel.removeListener(_onViewModelChanged);
+    _viewModel.dispose();
     _tabController.dispose();
     super.dispose();
+  }
+
+  void _onViewModelChanged() {
+    if (!mounted) return;
+    setState(() {});
   }
 
   void _setupStream() {
@@ -196,6 +208,27 @@ class _OrdersScreenState extends State<OrdersScreen>
         ),
       );
     }
+  }
+
+  /// Extend the order's pickup deadline by 10 minutes (once per order).
+  ///
+  /// The eligibility check and the extension call both live in
+  /// [OrdersViewModel]; this handler only renders the outcome.
+  Future<void> _handleExtendPickup(FoodOrder order) async {
+    final result = await _viewModel.extendPickup(order.orderId);
+    if (!mounted) return;
+    final failure = result.failure;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          failure == null
+              ? 'Pickup extended by '
+                  '${PickupExtensionService.extensionMinutes} minutes!'
+              : _pickupExtensionErrorMessage(failure),
+        ),
+        backgroundColor: failure == null ? Colors.green.shade800 : Colors.red,
+      ),
+    );
   }
 
   /// Delete a planned meal
@@ -809,6 +842,19 @@ class _OrdersScreenState extends State<OrdersScreen>
                   ),
                 ],
               ),
+              if (_viewModel.canExtendPickup(order) ||
+                  order.deadlineExtended) ...[
+                const SizedBox(height: 6),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: _ExtendPickupAction(
+                    canExtend: _viewModel.canExtendPickup(order),
+                    extended: order.deadlineExtended,
+                    isExtending: _viewModel.isExtending(order.orderId),
+                    onExtend: () => _handleExtendPickup(order),
+                  ),
+                ),
+              ],
               const SizedBox(height: 4),
             ],
 
@@ -973,15 +1019,26 @@ class _OrdersScreenState extends State<OrdersScreen>
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (context) {
-        return Container(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-          constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(context).size.height * 0.85,
-          ),
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+        // Local to the sheet: `order` is a snapshot taken when the sheet
+        // opened, so the extend action tracks its own state here instead of
+        // relying on the parent's stream to rebuild this route. The pickup
+        // deadline starts from the snapshot and is refreshed from the
+        // extension response so the countdown stays accurate while the sheet
+        // is open.
+        bool sheetExtending = false;
+        bool sheetExtended = false;
+        DateTime? sheetPickupDeadline = order.pickupDeadline;
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return Container(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(context).size.height * 0.85,
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                 // Header: Order ID & Status
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1019,6 +1076,85 @@ class _OrdersScreenState extends State<OrdersScreen>
                   'Placed on ${_formatFullDateTime(order.orderTime)}',
                   style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                 ),
+
+                // No-show notice — mirrors the ORDER_NO_SHOW notification
+                if (order.status == OrderStatus.noShow) ...[
+                  const SizedBox(height: 12),
+                  const _NoShowNotice(),
+                ],
+
+                // Pickup info + extend action for ready orders
+                if (order.status == OrderStatus.ready &&
+                    order.readyAt != null) ...[
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.access_time,
+                        size: 14,
+                        color: Colors.grey[600],
+                      ),
+                      const SizedBox(width: 4),
+                      Flexible(
+                        child: Text(
+                          'Ready ${PickupDeadlineService.formatPickupTime(order.readyAt)}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[600],
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      PickupCountdown(
+                        pickupDeadline: sheetPickupDeadline,
+                        deadlineStatus: order.deadlineStatus,
+                      ),
+                    ],
+                  ),
+                  if (_viewModel.canExtendPickup(order) ||
+                      order.deadlineExtended) ...[
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: _ExtendPickupAction(
+                        canExtend:
+                            !sheetExtended && _viewModel.canExtendPickup(order),
+                        extended: sheetExtended || order.deadlineExtended,
+                        isExtending: sheetExtending,
+                        onExtend: () async {
+                          setSheetState(() => sheetExtending = true);
+                          final result =
+                              await _viewModel.extendPickup(order.orderId);
+                          if (!context.mounted) return;
+                          final failure = result.failure;
+                          setSheetState(() {
+                            sheetExtending = false;
+                            if (failure == null) {
+                              sheetExtended = true;
+                              if (result.newDeadline != null) {
+                                sheetPickupDeadline = result.newDeadline;
+                              }
+                            }
+                          });
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                failure == null
+                                    ? 'Pickup extended by '
+                                        '${PickupExtensionService.extensionMinutes} minutes!'
+                                    : _pickupExtensionErrorMessage(failure),
+                              ),
+                              backgroundColor: failure == null
+                                  ? Colors.green.shade800
+                                  : Colors.red,
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ],
                 const SizedBox(height: 16),
 
                 // Status Timeline visualizer
@@ -1161,6 +1297,8 @@ class _OrdersScreenState extends State<OrdersScreen>
               ],
             ),
           ),
+        );
+          },
         );
       },
     );
@@ -1482,5 +1620,152 @@ class _OrdersScreenState extends State<OrdersScreen>
       'Dec',
     ];
     return '${dt.day} ${months[dt.month - 1]}';
+  }
+}
+
+/// The one-tap "extend pickup" action shown on ready orders, plus the
+/// confirmation chip once the extension has been used.
+///
+/// Shared by the order card and the order details bottom sheet.
+class _ExtendPickupAction extends StatelessWidget {
+  final bool canExtend;
+  final bool extended;
+  final bool isExtending;
+  final VoidCallback onExtend;
+
+  const _ExtendPickupAction({
+    required this.canExtend,
+    required this.extended,
+    required this.isExtending,
+    required this.onExtend,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (canExtend) {
+      return OutlinedButton.icon(
+        onPressed: isExtending ? null : onExtend,
+        icon: isExtending
+            ? const SizedBox(
+                width: 14,
+                height: 14,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.timer_outlined, size: 16),
+        label: Text(
+          isExtending
+              ? 'Extending…'
+              : 'Extend pickup by ${PickupExtensionService.extensionMinutes} min',
+        ),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: Colors.orange.shade900,
+          side: BorderSide(color: Colors.orange.shade400),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          minimumSize: Size.zero,
+          textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+        ),
+      );
+    }
+    if (extended) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.check_circle_outline,
+            size: 14,
+            color: Colors.green.shade700,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            'Pickup extended by ${PickupExtensionService.extensionMinutes} min',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: Colors.green.shade700,
+            ),
+          ),
+        ],
+      );
+    }
+    return const SizedBox.shrink();
+  }
+}
+
+/// Banner shown in the order details sheet when an order was marked as a
+/// no-show — mirrors the ORDER_NO_SHOW notification the student received.
+class _NoShowNotice extends StatelessWidget {
+  const _NoShowNotice();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.red.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.red.shade200),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(
+            Icons.cancel_outlined,
+            size: 20,
+            color: Color(0xFFC62828),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Order marked as no-show',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.red.shade900,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'You did not collect this order within the pickup window, '
+                  'so it was marked as a no-show. An "Order Missed" '
+                  'notification was sent to you.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.red.shade800,
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Resolves a pickup-extension failure to a user-facing message.
+///
+/// Kept in the consuming screen so it can later be swapped for the app's
+/// localization resources; English remains the default locale.
+String _pickupExtensionErrorMessage(PickupExtensionFailure failure) {
+  switch (failure) {
+    case PickupExtensionFailure.notFound:
+      return 'Order not found. It may have been cancelled.';
+    case PickupExtensionFailure.permissionDenied:
+      return 'You cannot extend this order.';
+    case PickupExtensionFailure.failedPrecondition:
+      return 'The pickup deadline can no longer be extended.';
+    case PickupExtensionFailure.unauthenticated:
+      return 'Please sign in to extend your pickup.';
+    case PickupExtensionFailure.unavailable:
+      return 'The server is unreachable. Please try again.';
+    case PickupExtensionFailure.failed:
+      return 'Could not extend pickup. Please try again.';
+    case PickupExtensionFailure.networkError:
+      return 'Could not extend pickup. Please check your connection and try again.';
   }
 }

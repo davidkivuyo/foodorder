@@ -2,7 +2,7 @@
   "version": "${VERSION}",
   "minimumVersion": "${VERSION}",
   "forceUpdate": false,
-  "releaseNotes": "New version of Campus Bite is available. Bug fixes and improvements included.",
+  "releaseNotes": "New version of Campus Bite is available. New features and improvements included.",
   "downloads": {
     "universal": "https://dl.larason.space/${TAG}/CampusBite-universal.apk",
     "arm64-v8a": "https://dl.larason.space/${TAG}/CampusBite-arm64-v8a.apk",

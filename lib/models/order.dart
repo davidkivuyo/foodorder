@@ -119,10 +119,13 @@ class FoodOrder {
   final double? distanceMeters;
   final bool distanceCalculated;
 
-  // Phase 6: Automatic strike tracking
-  final bool strikeProcessed;
+  // No-show processing state (server-written by the pickup expiry function)
+  final bool noShowProcessed;
   final DateTime? expiredAt;
-  final DateTime? strikeIssuedAt;
+
+  // Pickup deadline extension (student-initiated, once per order)
+  final bool deadlineExtended;
+  final DateTime? extensionAt;
 
   FoodOrder({
     required this.orderId,
@@ -142,9 +145,10 @@ class FoodOrder {
     this.cafeId,
     this.distanceMeters,
     this.distanceCalculated = false,
-    this.strikeProcessed = false,
+    this.noShowProcessed = false,
     this.expiredAt,
-    this.strikeIssuedAt,
+    this.deadlineExtended = false,
+    this.extensionAt,
   });
 
   /// Build a [FoodOrder] from a Firestore document snapshot.
@@ -228,9 +232,10 @@ class FoodOrder {
       cafeId: (data['cafeId'] as String?) ?? '',
       distanceMeters: (data['distanceMeters'] as num?)?.toDouble(),
       distanceCalculated: data['distanceCalculated'] as bool? ?? false,
-      strikeProcessed: data['strikeProcessed'] as bool? ?? false,
+      noShowProcessed: data['noShowProcessed'] as bool? ?? false,
       expiredAt: parseTimestamp(data['expiredAt']),
-      strikeIssuedAt: parseTimestamp(data['strikeIssuedAt']),
+      deadlineExtended: data['deadlineExtended'] as bool? ?? false,
+      extensionAt: parseTimestamp(data['extensionAt']),
     );
   }
 
@@ -267,7 +272,8 @@ class FoodOrder {
       'distanceMeters': distanceMeters,
       'distanceCalculated': distanceCalculated,
       'pickupWindowMinutes': pickupWindowMinutes,
-      'strikeProcessed': strikeProcessed,
+      'noShowProcessed': noShowProcessed,
+      'deadlineExtended': deadlineExtended,
     };
   }
 }
