@@ -145,767 +145,499 @@ Do not remove existing comments unless they are directly related to what you are
 
 # Current Phase
 
-# PHASE 17 — ERROR REPORTING & MONITORING
+# PHASE 18 — PRODUCTION READINESS & FINAL VALIDATION
 
 ## OBJECTIVE
 
-Implement production-grade monitoring for CampusBite.
+This is the final implementation phase.
 
-This phase focuses only on:
+No new features are to be developed.
 
-• crash reporting
+The purpose of this phase is to prepare CampusBite for long-term production use.
 
-• error monitoring
+The AI agent must review, validate, optimize, and polish the entire project while ensuring all previously implemented features continue working correctly.
 
-• performance monitoring
+This phase must improve reliability, maintainability, accessibility, testing, documentation, and release readiness.
 
-• application health
+Business logic must remain unchanged.
 
-• analytics
-
-• audit logging
-
-Do NOT modify existing business logic.
-
-Do NOT redesign screens.
-
-Do NOT change application workflows.
-
-The implementation must be lightweight, privacy-first and production-ready.
-
-create dedicated services rather than scattering monitoring code throughout the app.
-
-lib/
- ├── services/
- │    ├── error_service.dart
- │    ├── logger_service.dart
- │    ├── analytics_service.dart
- │    ├── performance_service.dart
- │    ├── health_service.dart
- │    ├── crash_reporting_service.dart
- │    └── diagnostics_service.dart
- 
 ---
 
 # EXISTING SYSTEM
 
-The following systems already exist:
+The following features already exist:
+
+✓ Student Application
+
+✓ Cafe Admin Application
 
 ✓ Firebase Authentication
 
+✓ Email Verification
+
+✓ Forgot Password
+
 ✓ Firestore
-
-✓ Cloud Functions
-
-✓ Notifications
 
 ✓ Orders
 
+✓ Favourite Menu
+
 ✓ Reviews
 
-✓ Favourite Engine
-
-✓ Strike Engine
-
-✓ Admin App
+✓ Notifications
 
 ✓ Cloudinary
 
-✓ In-App Updates
+✓ In-app Updates
 
-This phase only monitors those systems.
+✓ Security Hardening
 
----
+✓ Crash Reporting
 
-# GENERAL REQUIREMENTS
+✓ Monitoring
 
-Monitoring must:
+✓ Analytics
 
-• never expose personal information
-
-• avoid unnecessary Firestore writes
-
-• work offline
-
-• recover automatically
-
-• distinguish debug and release builds
-
-Never interrupt normal application usage.
+This phase validates these systems.
 
 ---
 
-# PART 1 — FIREBASE CRASHLYTICS
+# GENERAL RULES
 
-Integrate Firebase Crashlytics.
+Do not redesign the application.
 
-Enable automatic crash reporting.
+Do not change Firestore structure unless required to fix production issues.
 
-Capture:
+Do not introduce breaking API changes.
 
-Unhandled Flutter exceptions
+Maintain backward compatibility.
 
-Platform exceptions
-
-Dart asynchronous exceptions
-
-Cloud Function failures
-
-Fatal application crashes
-
-Record custom keys including:
-
-Application version
-
-Build number
-
-Flutter version
-
-Platform
-
-Current screen
-
-Network status
-
-User role
-
-Do NOT record:
-
-Email
-
-UID (student or admin)
-
-Student registration number
-
-Phone number
-
-Notification token
-
-Review text
-
-Location
-
-Crash reports must remain anonymous.
-
-No UID of any kind — student or admin — may be attached to crash reports.
+Prioritize stability over optimization.
 
 ---
 
-# PART 2 — GLOBAL ERROR HANDLER
+# STEP 1 — COMPLETE PROJECT AUDIT
 
-Create a centralized ErrorService.
+Perform a complete review of the project.
 
-All uncaught exceptions must pass through it.
+Inspect:
 
-Responsibilities:
+Flutter code
 
-Log locally
+Architecture
 
-Send to Crashlytics
+Services
 
-Display user-friendly messages
+Repositories
 
-Categorize errors
+Widgets
 
-Support:
+Providers
 
-FlutterError
+Firebase usage
 
-PlatformDispatcher
+Cloud Functions
 
-runZonedGuarded
+Firestore Rules
 
-Future exceptions
+Cloudinary integration
 
-Stream exceptions
+GitHub Actions
 
-Never allow uncaught exceptions to terminate the app unnecessarily.
+Cloudflare Worker
 
-## Error-Routing Contract
+Identify:
 
-Errors fall into exactly four categories. Each category has a fixed path
-through the system; do not blur the boundaries.
+Dead code
 
-### 1. Client Dart/Flutter exceptions (routed through ErrorService)
+Duplicate code
 
-Handled and unhandled exceptions originating on the client (widget errors,
-async failures, stream errors, Future errors, platform exceptions).
+Unused classes
 
-ErrorService: RECORDS (logs locally, sends anonymous data to Crashlytics),
-DISPLAYS a user-friendly message, CONSUMES the error (never rethrows), and
-never terminates the app.
+Unused assets
 
-### 2. Native fatal crashes (captured automatically by Crashlytics)
+Unused imports
 
-Crashes at the platform layer (Android/iOS native code, JVM/NDK/ObjC).
+Deprecated APIs
 
-ErrorService: does not see these. Crashlytics CAPTURES them automatically via
-the native SDK. No client code records, displays, or consumes them. Crash
-reports remain anonymous (no UID, email, phone, token, review text, or
-location).
-
-### 3. Client-side Cloud Function invocation failures
-
-Failures calling a callable/HTTP function from the client (network, timeout,
-invalid request, permission, function-unavailable).
-
-ErrorService: RECORDS (logs the failure locally, optionally sends an anonymous
-analytics/function-error event), DISPLAYS a user-friendly message, CONSUMES
-the error (does not rethrow), and retries only when a retry is safe. The
-failure is reported from the client; the server logs stay server-side.
-
-### 4. Server-side Cloud Function errors (handled on the server)
-
-Errors thrown inside a deployed Cloud Function (backend exception, quota,
-permission, dependency failure).
-
-ErrorService/client: does NOT record, display, consume, or rethrow these.
-The server handles its own logging and surfaces failures back to the client
-only through the normal invocation-failure path (category 3). Flutter must
-never attach UIDs, request payloads, or sensitive content to any of these.
-
-Applies to all categories: never terminate the app due to an error, and never
-expose raw exception text to the user.
+Document findings.
 
 ---
 
-# PART 3 — USER-FRIENDLY ERROR MESSAGES
+# STEP 2 — DEPENDENCY REVIEW
 
-Replace technical errors.
+Review pubspec.yaml.
 
-Instead of:
+Update packages to stable versions where compatible.
 
-FirebaseException
+Remove unused dependencies.
 
-Display:
+Replace abandoned packages.
 
-"Something went wrong."
+Verify compatibility with the current Flutter stable release.
 
-Examples:
-
-Network unavailable
-
-Server unavailable
-
-Permission denied
-
-Update failed
-
-Download interrupted
-
-Review failed
-
-Order failed
-
-Notification failed
-
-Cart failed
-
-Provide retry actions where appropriate.
-
-Never expose internal exception messages.
+Do not introduce beta or experimental packages.
 
 ---
 
-# PART 4 — STRUCTURED LOGGING
+# STEP 3 — CODE QUALITY
 
-Implement LoggerService.
+Improve code readability.
 
-Support log levels:
+Standardize naming conventions.
 
-Debug
+Ensure consistent formatting.
 
-Info
+Refactor overly complex methods.
 
-Warning
+Extract reusable widgets.
 
-Error
+Extract reusable services.
 
-Critical
+Reduce widget nesting where practical.
 
-Debug logs:
+Improve comments and documentation.
 
-Debug builds only.
-
-Release builds:
-
-Only Warning
-
-Error
-
-Critical
-
-Never use print() or debugPrint() throughout the application.
-
-Replace them with LoggerService.
+Remove TODOs that are no longer relevant.
 
 ---
 
-# PART 5 — FIREBASE ANALYTICS
+# STEP 4 — ACCESSIBILITY
 
-Track meaningful application events.
+Review accessibility.
 
-Examples:
+Ensure:
 
-User registration
+Meaningful semantics
 
-Login
+Screen reader compatibility
 
-Logout
+Adequate touch target sizes
 
-Food viewed
+Keyboard navigation where applicable
 
-Food searched
+Sufficient color contrast
 
-Food favourited
+Support for larger text scaling
 
-Added to cart
-
-Removed from cart
-
-Order placed
-
-Order cancelled
-
-Order collected
-
-Review submitted
-
-Notification opened
-
-Update installed
-
-Admin added menu item
-
-Admin removed menu item
-
-Strike issued
-
-Strike removed
-
-Never log:
-
-Email
-
-UID (student or admin)
-
-Food review text
-
-Location
-
-Notification content
-
-Search text
-
-Passwords
-
-Analytics must remain anonymous.
-
-UIDs of any kind, including admin UIDs, are never sent to Analytics. The only permitted UID usage is inside immutable audit records (Part 12).
+Do not change the application's visual identity.
 
 ---
 
-# PART 6 — PERFORMANCE MONITORING
+# STEP 5 — RESPONSIVE LAYOUT REVIEW
 
-Enable Firebase Performance Monitoring.
-
-Measure:
-
-App startup
-
-Authentication
-
-Menu loading
-
-Food details
-
-Search
-
-Cart loading
-
-Checkout
-
-Orders
-
-Notifications
-
-Reviews
-
-Cloud Function execution
-
-Cloudinary image loading
-
-Update check
-
-Record slow traces.
-
-Do not create unnecessary custom traces.
-
----
-
-# PART 7 — NETWORK MONITORING
-
-Monitor:
-
-Internet connectivity
-
-Cloud Firestore availability
-
-Cloud Functions availability
-
-Cloudinary availability
-
-Worker update endpoint
-
-Detect:
-
-Offline
-
-Slow network
-
-High latency
-
-Timeouts
-
-Automatically recover.
-
-Never continuously poll servers.
-
----
-
-# PART 8 — FIRESTORE HEALTH
-
-Monitor:
-
-Permission errors
-
-Quota errors
-
-Unavailable errors
-
-Offline cache usage
-
-Synchronization failures
-
-Log only summaries.
-
-Do not create Firestore documents for every error.
-
----
-
-# PART 9 — CLOUD FUNCTION MONITORING
-
-Capture:
-
-Execution failures
-
-Permission failures
-
-Timeouts
-
-Invalid requests
-
-Retry attempts
-
-Cloud Functions themselves remain responsible for server logs.
-
-Flutter only records client failures.
-
----
-
-# PART 10 — IMAGE MONITORING
-
-Track:
-
-Failed Cloudinary downloads
-
-Slow image loading
-
-Placeholder frequency
-
-Broken URLs
-
-Cache misses
-
-Do not repeatedly retry broken URLs.
-
----
-
-# PART 11 — UPDATE MONITORING
-
-Monitor:
-
-Metadata download
-
-Version parsing
-
-Download failures
-
-Checksum validation
-
-Installation failures
-
-Cancellation rate
-
-Successful updates
-
-Never block application use due to monitoring failures.
-
----
-
-# PART 12 — ADMIN AUDIT LOGS
-
-Maintain immutable audit logs.
-
-Record:
-
-Menu added
-
-Menu edited
-
-Menu deleted
-
-Strike issued
-
-Strike removed
-
-Account suspended
-
-Review removed
-
-Notification broadcast
-
-Cloudinary deletion
-
-Each log includes:
-
-Timestamp
-
-Admin UID
-
-Action
-
-Target document ID
-
-No personal content.
-
-Audit logs are append-only.
-
-## Audit data model and storage
-
-Audit records form a separate compliance data class, distinct from telemetry
-events, with an explicitly specified storage backend.
-
-Storage backend: a dedicated Firestore collection reserved exclusively for
-audit records (e.g. `audit_logs`). No other monitoring data is written there,
-and audit records are never written to any telemetry store.
-
-Records are IMMUTABLE once written: they are never updated in place, never
-edited, and never overwritten. The ONLY permitted deletion is the configured
-retention purge (records older than the retention window). No manual deletion,
-no client deletion, and no edit path exists.
-
-Admin UIDs are the ONLY identifiers permitted in monitoring data, and ONLY inside these immutable audit records. They must never be copied into Crashlytics, Analytics, Performance, or any other monitoring channel.
-
-## Telemetry exclusion
-
-Audit records are excluded from telemetry-cost rules (Part 15): the near-zero
-cost requirement applies to monitoring telemetry, not to the compliance audit
-store. However, audit records are NEVER exported or mirrored into Analytics,
-Crashlytics, Performance Monitoring, Cloud Logging, or any other telemetry
-channel.
-
-Audit log access is restricted to:
-
-Authorized administrators
-
-Backend operations
-
-Never expose audit records through client-facing Firestore rules.
-
-Retention policy:
-
-Retain audit records for at least 90 days
-
-Automatically purge records older than the configured retention window
-
-Never export or mirror audit records into monitoring or analytics tools
-
----
-
-# PART 13 — APPLICATION HEALTH DASHBOARD
-
-Implement HealthService.
-
-Track:
-
-Firestore connected
-
-Authentication available
-
-Cloud Functions reachable
-
-Cloudinary reachable
-
-Notification service active
-
-Update service reachable
-
-Return overall status:
-
-Healthy
-
-Degraded
-
-Offline
-
-Unknown
-
-Use lightweight checks.
-
-Do not continuously ping services.
-
----
-
-# PART 14 — DEBUG DIAGNOSTICS
-
-Create hidden diagnostics screen.
-
-## Visibility rule
-
-Visible only when `isDebugBuild OR isAdministrator`:
-
-* Debug builds — always visible (regardless of role)
-
-* Release + administrator accounts — visible
-
-* Release + non-administrator accounts — NEVER accessible
-
-This is an inclusive OR: a release administrator is allowed, while a release
-non-administrator account is denied. Both cases must be covered by tests.
-
-Display:
-
-Application version
-
-Build number
-
-Flutter version
-
-Firebase versions
-
-Firestore cache size
-
-Current user role
-
-Notification status
-
-Analytics status
-
-Crashlytics status
-
-Performance status
-
-Last synchronization
-
-Never expose secrets.
-
----
-
-# PART 15 — COST OPTIMIZATION
-
-Do NOT store monitoring events in Firestore.
-
-Prefer:
-
-Crashlytics
-
-Analytics
-
-Performance Monitoring
-
-Cloud Logging
-
-Avoid:
-
-Firestore logging
-
-Repeated writes
-
-Heartbeat documents
-
-Polling every few seconds
-
-Monitoring must generate near-zero Firestore costs.
-
-## Audit-record exclusion
-
-The near-zero-cost rule applies to monitoring telemetry only. The compliance
-audit store (Part 12) is exempt from this limit, but audit records are NEVER
-exported or mirrored into Analytics, Crashlytics, Performance Monitoring,
-Cloud Logging, or any other telemetry channel.
-
----
-
-# PART 16 — PRIVACY
-
-Comply with privacy-first principles.
-
-Never collect:
-
-Email
-
-Phone
-
-Location
-
-Review text
-
-Notification text
-
-Payment information
-
-Authentication tokens
-
-Passwords
-
-Student ID
-
-Logs must contain technical diagnostics only.
-
-The sole exception to identifier prohibitions is the Admin UID inside immutable audit records (Part 12). Admin UIDs remain prohibited in Crashlytics, Analytics, Performance, and all other monitoring data.
-
----
-
-# PART 17 — TESTING
+Test common screen sizes.
 
 Verify:
 
-✓ Crash reports reach Crashlytics
+Small Android phones
 
-✓ Analytics events recorded
+Large phones
 
-✓ Performance traces visible
+Tablets (basic usability)
 
-✓ Structured logging works
+Portrait orientation
 
-✓ User-friendly messages displayed
+Landscape orientation (where supported)
 
-✓ No sensitive data logged
+Prevent overflow and clipping.
 
-✓ Health service detects offline state
+---
 
-✓ Monitoring survives app restart
+# STEP 6 — LOCALIZATION PREPARATION
 
-✓ No Firestore monitoring writes
+Prepare the application for future localization.
 
-✓ Update monitoring works
+Extract user-facing strings into localization resources.
 
-✓ Cloudinary monitoring works
+Do not translate yet.
 
-✓ Debug diagnostics screen hidden in release
+Default language remains English.
 
-✓ Existing features unchanged
+---
+
+# STEP 7 — FIRESTORE INDEX VALIDATION
+
+Review all Firestore queries.
+
+Identify composite index requirements.
+
+Document any required indexes.
+
+Ensure queries are efficient.
+
+Avoid collection scans.
+
+---
+
+# STEP 8 — OFFLINE RELIABILITY
+
+Validate offline behavior.
+
+Verify:
+
+Cached menu loading
+
+Cached orders
+
+Cached notifications
+
+Graceful offline messaging
+
+Automatic synchronization when connectivity returns
+
+Prevent duplicate writes during reconnection.
+
+---
+
+# STEP 9 — PERFORMANCE BENCHMARKING
+
+Measure:
+
+Cold startup time
+
+Warm startup time
+
+Home screen load
+
+Menu load
+
+Order placement
+
+Review submission
+
+Notification loading
+
+Update check
+
+Document baseline measurements.
+
+Highlight bottlenecks.
+
+---
+
+# STEP 10 — END-TO-END TESTING
+
+Verify complete workflows.
+
+Student:
+
+Register
+
+Verify email
+
+Login
+
+Browse menu
+
+Search food
+
+Add to cart
+
+Place order
+
+Receive notifications
+
+Collect order
+
+Leave review
+
+Favourite food
+
+Receive updates
+
+Admin:
+
+Login
+
+Add menu item
+
+Edit menu
+
+Delete menu
+
+Receive new orders
+
+Change order status
+
+Issue strike
+
+Remove strike
+
+Broadcast notification
+
+Delete Cloudinary image
+
+Verify every workflow succeeds.
+
+---
+
+# STEP 11 — FAILURE TESTING
+
+Test:
+
+No internet
+
+Firestore unavailable
+
+Cloud Function unavailable
+
+Cloudinary unavailable
+
+Worker unavailable
+
+Notification failure
+
+Download interruption
+
+Authentication expiration
+
+Unexpected application termination
+
+Verify graceful recovery.
+
+---
+
+# STEP 12 — SECURITY REGRESSION REVIEW
+
+Confirm:
+
+Firestore Rules still enforce permissions
+
+Cloud Functions validate authorization
+
+Cloudinary secrets remain protected
+
+No secrets committed
+
+Update system verifies integrity
+
+Admin-only operations remain protected
+
+App Check configuration (if implemented) remains valid
+
+No regression from previous phases.
+
+---
+
+# STEP 13 — RELEASE PIPELINE VALIDATION
+
+Review GitHub Actions.
+
+Verify:
+
+Universal APK generation
+
+Split APK generation
+
+release.json generation
+
+SHA-256 checksum generation
+
+Release notes
+
+Version naming
+
+Cloudflare update compatibility
+
+Artifact naming consistency
+
+---
+
+# STEP 14 — DOCUMENTATION
+
+Update project documentation.
+
+Include:
+
+Architecture overview
+
+Firestore structure
+
+Cloud Functions overview
+
+Notification flow
+
+Strike Engine flow
+
+Favourite Engine flow
+
+Update system architecture
+
+Environment setup
+
+Release process
+
+Deployment steps
+
+Troubleshooting guide
+
+Developer onboarding instructions
+
+---
+
+# STEP 15 — FINAL RELEASE CHECKLIST
+
+Create a production release checklist.
+
+Include:
+
+Release version
+
+Build number
+
+Git tag
+
+Firestore Rules deployed
+
+Cloud Functions deployed
+
+Indexes deployed
+
+Secrets configured
+
+Cloudinary verified
+
+Crashlytics enabled
+
+Analytics enabled
+
+Performance Monitoring enabled
+
+GitHub Release verified
+
+Cloudflare Worker verified
+
+APK signatures verified
+
+Manual smoke testing completed
+
+---
+
+# TESTING
+
+Verify:
+
+✓ All existing features function correctly
+
+✓ No new regressions introduced
+
+✓ Performance maintained or improved
+
+✓ Accessibility improved
+
+✓ Offline behavior verified
+
+✓ Security unchanged
+
+✓ Monitoring operational
+
+✓ Documentation complete
+
+✓ Release pipeline operational
+
+✓ Application ready for production deployment
 
 ---
 
@@ -913,33 +645,35 @@ Verify:
 
 Provide:
 
-1. Files created
+1. Files modified
 
-2. Files modified
+2. Architecture improvements
 
-3. Crashlytics implementation summary
+3. Refactoring summary
 
-4. Analytics events list
+4. Accessibility improvements
 
-5. Performance traces implemented
+5. Performance benchmark report
 
-6. LoggerService architecture
+6. Firestore index recommendations
 
-7. HealthService architecture
+7. Documentation updates
 
-8. Audit logging summary
+8. Release readiness checklist
 
-9. Privacy compliance summary
+9. Outstanding technical debt (if any)
 
-10. Testing checklist
+10. Final production readiness assessment
 
-Stop after Phase 17
+This concludes the implementation roadmap.
+
+No additional features should be implemented during this phase.
 
 ---
 
 # Phase Completion Criteria
 
-Phase 17 is complete when:
+Phase 18 is complete when:
 
 * The new features works well with past features.
 * App runs successfully.
