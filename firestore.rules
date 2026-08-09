@@ -115,7 +115,10 @@ service cloud.firestore {
         && request.resource.data.price >= 0
         && request.resource.data.status == 'pending'
         // Backend-protected fields must not be forgeable on create.
-        && request.resource.data.noShowProcessed == false
+        // noShowProcessed is optional on create so legacy builds (which omit
+        // it) can still order — a missing field reads as null in rules.
+        && (!('noShowProcessed' in request.resource.data)
+          || request.resource.data.noShowProcessed == false)
         && request.resource.data.deadlineStatus == 'NOT_READY'
         && (!('expiredAt' in request.resource.data)
           || request.resource.data.expiredAt == null)

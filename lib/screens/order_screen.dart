@@ -22,6 +22,7 @@ import '../services/app_log.dart';
 import '../services/cart_service.dart';
 import '../services/pickup_deadline_service.dart';
 import '../services/pickup_extension_service.dart';
+import '../viewmodels/orders_view_model.dart';
 import '../widgets/pickup_countdown.dart';
 import '../widgets/cart_bottom_sheet.dart';
 
@@ -38,21 +39,28 @@ class _OrdersScreenState extends State<OrdersScreen>
   Stream<QuerySnapshot<Map<String, dynamic>>>? _ordersStream;
   Stream<QuerySnapshot<Map<String, dynamic>>>? _plannedOrdersStream;
   late TabController _tabController;
-  /// Order ID currently being extended, so only that order's card shows the
-  /// in-progress state while other ready orders stay interactive.
-  String? _extendingOrderId;
+  late final OrdersViewModel _viewModel;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    _viewModel = OrdersViewModel();
+    _viewModel.addListener(_onViewModelChanged);
     _setupStream();
   }
 
   @override
   void dispose() {
+    _viewModel.removeListener(_onViewModelChanged);
+    _viewModel.dispose();
     _tabController.dispose();
     super.dispose();
+  }
+
+  void _onViewModelChanged() {
+    if (!mounted) return;
+    setState(() {});
   }
 
   void _setupStream() {
@@ -202,48 +210,23 @@ class _OrdersScreenState extends State<OrdersScreen>
     }
   }
 
-  /// Whether the student may still extend this order's pickup deadline.
-  ///
-  /// Available exactly once, only while the order is ready and its pickup
-  /// deadline has not yet passed.
-  bool _canExtendPickup(FoodOrder order) {
-    if (order.status != OrderStatus.ready) return false;
-    if (order.deadlineStatus != DeadlineStatus.active) return false;
-    if (order.deadlineExtended) return false;
-    final deadline = order.pickupDeadline;
-    if (deadline == null) return false;
-    return deadline.isAfter(DateTime.now());
-  }
-
   /// Extend the order's pickup deadline by 10 minutes (once per order).
+  ///
+  /// The eligibility check and the extension call both live in
+  /// [OrdersViewModel]; this handler only renders the outcome.
   Future<void> _handleExtendPickup(FoodOrder order) async {
-    setState(() => _extendingOrderId = order.orderId);
-    PickupExtensionFailure? failure;
-    try {
-      failure = await PickupExtensionService.instance
-          .extendPickupDeadline(order.orderId);
-    } finally {
-      if (mounted) setState(() => _extendingOrderId = null);
-    }
-
-    if (failure != null) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(_pickupExtensionErrorMessage(failure)),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-
+    final result = await _viewModel.extendPickup(order.orderId);
     if (!mounted) return;
+    final failure = result.failure;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          'Pickup extended by ${PickupExtensionService.extensionMinutes} minutes!',
+          failure == null
+              ? 'Pickup extended by '
+                  '${PickupExtensionService.extensionMinutes} minutes!'
+              : _pickupExtensionErrorMessage(failure),
         ),
-        backgroundColor: Colors.green.shade800,
+        backgroundColor: failure == null ? Colors.green.shade800 : Colors.red,
       ),
     );
   }
@@ -859,14 +842,15 @@ class _OrdersScreenState extends State<OrdersScreen>
                   ),
                 ],
               ),
-              if (_canExtendPickup(order) || order.deadlineExtended) ...[
+              if (_viewModel.canExtendPickup(order) ||
+                  order.deadlineExtended) ...[
                 const SizedBox(height: 6),
                 Align(
                   alignment: Alignment.centerLeft,
                   child: _ExtendPickupAction(
-                    canExtend: _canExtendPickup(order),
+                    canExtend: _viewModel.canExtendPickup(order),
                     extended: order.deadlineExtended,
-                    isExtending: _extendingOrderId == order.orderId,
+                    isExtending: _viewModel.isExtending(order.orderId),
                     onExtend: () => _handleExtendPickup(order),
                   ),
                 ),
@@ -1037,9 +1021,13 @@ class _OrdersScreenState extends State<OrdersScreen>
       builder: (context) {
         // Local to the sheet: `order` is a snapshot taken when the sheet
         // opened, so the extend action tracks its own state here instead of
-        // relying on the parent's stream to rebuild this route.
+        // relying on the parent's stream to rebuild this route. The pickup
+        // deadline starts from the snapshot and is refreshed from the
+        // extension response so the countdown stays accurate while the sheet
+        // is open.
         bool sheetExtending = false;
         bool sheetExtended = false;
+        DateTime? sheetPickupDeadline = order.pickupDeadline;
         return StatefulBuilder(
           builder: (context, setSheetState) {
             return Container(
@@ -1119,27 +1107,35 @@ class _OrdersScreenState extends State<OrdersScreen>
                       ),
                       const SizedBox(width: 8),
                       PickupCountdown(
-                        pickupDeadline: order.pickupDeadline,
+                        pickupDeadline: sheetPickupDeadline,
                         deadlineStatus: order.deadlineStatus,
                       ),
                     ],
                   ),
-                  if (_canExtendPickup(order) || order.deadlineExtended) ...[
+                  if (_viewModel.canExtendPickup(order) ||
+                      order.deadlineExtended) ...[
                     const SizedBox(height: 8),
                     Align(
                       alignment: Alignment.centerLeft,
                       child: _ExtendPickupAction(
-                        canExtend: !sheetExtended && _canExtendPickup(order),
+                        canExtend:
+                            !sheetExtended && _viewModel.canExtendPickup(order),
                         extended: sheetExtended || order.deadlineExtended,
                         isExtending: sheetExtending,
                         onExtend: () async {
                           setSheetState(() => sheetExtending = true);
-                          final failure = await PickupExtensionService.instance
-                              .extendPickupDeadline(order.orderId);
+                          final result =
+                              await _viewModel.extendPickup(order.orderId);
                           if (!context.mounted) return;
+                          final failure = result.failure;
                           setSheetState(() {
                             sheetExtending = false;
-                            if (failure == null) sheetExtended = true;
+                            if (failure == null) {
+                              sheetExtended = true;
+                              if (result.newDeadline != null) {
+                                sheetPickupDeadline = result.newDeadline;
+                              }
+                            }
                           });
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(

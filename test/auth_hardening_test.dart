@@ -213,6 +213,27 @@ void main() {
         expect(rules, contains('function validOrderStatusTransition()'));
       });
 
+      test('noShowProcessed is optional on order create (legacy clients, '
+          'Part 10)', () {
+        // noShowProcessed is server-written state and must never be forgeable
+        // to true, but it MUST also be optional on create so older app builds
+        // (which omit it) can still place orders. In the rules language a
+        // missing field reads as null, so a bare `== false` requirement would
+        // reject legacy clients — only the guarded form is acceptable.
+        final fn = rules.substring(
+          rules.indexOf('function validOrderCreateRequest()'),
+          rules.indexOf('function adminNotModifyingProtectedOrderFields()'),
+        );
+        expect(
+          fn,
+          contains("&& (!('noShowProcessed' in request.resource.data)"),
+        );
+        expect(
+          fn,
+          contains('|| request.resource.data.noShowProcessed == false)'),
+        );
+      });
+
       test('strike data is immutable for students (Part 8)', () {
         // Students may never modify strike counters or suspension status —
         // only admins via validAdminStrikeUpdate().
