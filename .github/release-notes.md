@@ -2,9 +2,10 @@
 
 Thank you for downloading Campus Bite.
 
-## UI refinements
+## What's new in this release
 
-- Improved layout and spacing for better visual hierarchy in home screen and menu sections.
+- Removed the automatic striking engine.
+- Now one can order meals without worrying about being banned for missing their food.
 
 ## special thanks
 To all app contributors, the app is open source under Apache 2.0 License.
