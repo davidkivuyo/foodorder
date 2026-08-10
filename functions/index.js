@@ -983,6 +983,15 @@ async function processExpiredOrder(transaction, orderSnapshot) {
   if (orderData.status !== "ready") return false;
   if (orderData.deadlineStatus !== "ACTIVE") return false;
   if (orderData.noShowProcessed === true) return false;
+  // Re-verify inside the transaction: the deadline must exist and have
+  // already passed (the scheduled query filters on it too, but this keeps
+  // the guard complete if the order state changed since the query).
+  const pickupDeadline = orderData.pickupDeadline;
+  if (!(pickupDeadline instanceof admin.firestore.Timestamp)) return false;
+  const now = admin.firestore.Timestamp.now();
+  if (pickupDeadline.toMillis() > now.toMillis()) {
+    return false;
+  }
 
   const studentId = orderData.studentId;
   if (!studentId) {
@@ -1543,49 +1552,83 @@ exports.onOrderStatusChanged = onDocumentUpdated(
     }
 
     if (beforeData.status === afterData.status) return;
-    if (afterData.status !== "ready") return;
 
-    if (afterData.readyAt != null) return;
+    // Legacy admin writes may store uppercase 'COLLECTED'; canonicalise
+    // before branching (mirrors canonicalOrderStatus in the rules).
+    const status = afterData.status === "COLLECTED" ? "collected" : afterData.status;
 
-    const now = admin.firestore.Timestamp.now();
-    const deadline = new admin.firestore.Timestamp(
-      now.seconds + PICKUP_WINDOW_MINUTES * 60,
-      now.nanoseconds,
-    );
+    // ── READY: record the authoritative readyAt + pickupDeadline ────
+    if (status === "ready") {
+      if (afterData.readyAt != null) return;
 
-    await event.data.after.ref.update({
-      readyAt: now,
-      pickupDeadline: deadline,
-      pickupWindowMinutes: PICKUP_WINDOW_MINUTES,
-      deadlineStatus: "ACTIVE",
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
+      const now = admin.firestore.Timestamp.now();
+      const deadline = new admin.firestore.Timestamp(
+        now.seconds + PICKUP_WINDOW_MINUTES * 60,
+        now.nanoseconds,
+      );
 
-    console.log(
-      `[onOrderStatusChanged] Order marked READY. ` +
-      `Pickup deadline: ${deadline.toDate().toISOString()}`,
-    );
+      await event.data.after.ref.update({
+        readyAt: now,
+        pickupDeadline: deadline,
+        pickupWindowMinutes: PICKUP_WINDOW_MINUTES,
+        deadlineStatus: "ACTIVE",
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
 
-    const studentId = afterData.studentId;
-    if (studentId) {
-      try {
-        await createNotification({
-          recipientId: studentId,
-          recipientRole: "student",
-          type: "ORDER_READY",
-          title: "Order Ready for Pickup",
-          message: `Your order #${event.params.orderId} is ready! ` +
-                   `Please collect it within ${PICKUP_WINDOW_MINUTES} minutes.`,
-          orderId: event.params.orderId,
-          deepLink: `/orders/${event.params.orderId}`,
-          eventId: notificationEventId("ORDER_READY", event.params.orderId),
-          createdBy: "system",
-        });
-      } catch (notifErr) {
-        console.error(
-          `[onOrderStatusChanged] Failed to create ORDER_READY notification:`, notifErr
-        );
+      console.log(
+        `[onOrderStatusChanged] Order marked READY. ` +
+        `Pickup deadline: ${deadline.toDate().toISOString()}`,
+      );
+
+      const studentId = afterData.studentId;
+      if (studentId) {
+        try {
+          await createNotification({
+            recipientId: studentId,
+            recipientRole: "student",
+            type: "ORDER_READY",
+            title: "Order Ready for Pickup",
+            message: `Your order #${event.params.orderId} is ready! ` +
+                     `Please collect it within ${PICKUP_WINDOW_MINUTES} minutes.`,
+            orderId: event.params.orderId,
+            deepLink: `/orders/${event.params.orderId}`,
+            eventId: notificationEventId("ORDER_READY", event.params.orderId),
+            createdBy: "system",
+          });
+        } catch (notifErr) {
+          console.error(
+            `[onOrderStatusChanged] Failed to create ORDER_READY notification:`, notifErr
+          );
+        }
       }
+      return;
+    }
+
+    // ── COLLECTED: record the authoritative collectedAt ─────────────
+    if (status === "collected") {
+      if (afterData.collectedAt != null) return;
+      await event.data.after.ref.update({
+        collectedAt: admin.firestore.Timestamp.now(),
+        deadlineStatus: "COLLECTED",
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      console.log(`[onOrderStatusChanged] Order marked COLLECTED.`);
+      return;
+    }
+
+    // ── NO_SHOW: keep the state self-consistent when an admin marks an
+    //    order no_show directly. The scheduled processor already writes
+    //    these fields, so its updates make this branch a no-op.
+    if (status === "no_show") {
+      if (afterData.expiredAt != null) return;
+      await event.data.after.ref.update({
+        expiredAt: admin.firestore.Timestamp.now(),
+        noShowProcessed: true,
+        deadlineStatus: "EXPIRED",
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      console.log(`[onOrderStatusChanged] Order marked NO_SHOW.`);
+      return;
     }
   },
 );
