@@ -4,8 +4,7 @@ Thank you for downloading Campus Bite.
 
 ## What's new in this release
 
-- Removed the automatic striking engine.
-- Now one can order meals without worrying about being banned for missing their food.
+- Added order cancellation 2min window to allow users to cancel orders.
 
 ## special thanks
 To all app contributors, the app is open source under Apache 2.0 License.
