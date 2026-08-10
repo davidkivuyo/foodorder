@@ -1479,16 +1479,26 @@ exports.cancelOrder = onCall(
           );
         }
 
-        // The authoritative deadline comes from the server-written
-        // cancellationDeadline (createdAt + 2 minutes, set by onNewOrder).
-        // A missing or non-Timestamp value fails cleanly.
-        const cancellationDeadline = orderData.cancellationDeadline;
-        if (!(cancellationDeadline instanceof admin.firestore.Timestamp)) {
+        // The authoritative deadline is always derived from the
+        // server-authoritative createdAt (the create rules require
+        // createdAt == request.time, so it cannot be forged). The persisted
+        // cancellationDeadline is display-only data for the client UI; it is
+        // never trusted for the authoritative comparison, so a skewed or
+        // missing stored value can neither extend nor shorten the window.
+        // Deriving from createdAt also covers the pre-trigger gap: a brand
+        // new order may not yet carry a stored deadline, but the window is
+        // the same either way.
+        const createdAt = orderData.createdAt;
+        if (!(createdAt instanceof admin.firestore.Timestamp)) {
           throw new HttpsError(
             "failed-precondition",
             "This order has no cancellation window."
           );
         }
+        const cancellationDeadline = new admin.firestore.Timestamp(
+          createdAt.seconds + CANCELLATION_WINDOW_MINUTES * 60,
+          createdAt.nanoseconds,
+        );
 
         const now = admin.firestore.Timestamp.now();
         if (now.toMillis() >= cancellationDeadline.toMillis()) {
@@ -1509,7 +1519,9 @@ exports.cancelOrder = onCall(
         return true;
       });
 
-      console.log(`[cancelOrder] Order ${orderId} cancelled by ${uid}`);
+      // No user identifiers in logs (privacy): the caller UID is recorded in
+      // the order document (cancelledBy) and the audit trail, not in log lines.
+      console.log(`[cancelOrder] Order ${orderId} cancelled`);
 
       // ── Student notification (deduplicated by eventId) ──────────
       // Cancellation is a terminal state; the student is told the order

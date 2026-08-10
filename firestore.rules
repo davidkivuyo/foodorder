@@ -219,8 +219,12 @@ service cloud.firestore {
       // once they have aged past the 2-minute window (createdAt + 2 min) —
       // createdAt is server-resolved (FieldValue.serverTimestamp), so the age
       // check cannot be forged by the client.
+      // Explicit type validation for both timestamp branches: a non-timestamp
+      // cancellationDeadline is treated as window-not-passed (fail-closed —
+      // the cafe cannot accept), never compared against request.time.
       return ('cancellationDeadline' in resource.data)
-        ? resource.data.cancellationDeadline <= request.time
+        ? (resource.data.cancellationDeadline is timestamp
+          && resource.data.cancellationDeadline <= request.time)
         : ('createdAt' in resource.data
           && resource.data.createdAt is timestamp
           && resource.data.createdAt + duration.value(2, 'm') <= request.time);

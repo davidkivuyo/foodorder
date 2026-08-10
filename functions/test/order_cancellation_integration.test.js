@@ -468,6 +468,10 @@ describe("cancelOrder callable — student cancellation flow", () => {
 
   it("rejects cancellation after the deadline has passed (Test 4)", async () => {
     await seedOrder("cancel-flow-2", validOrderPayload({
+      // The authoritative window is derived from the server-resolved
+      // createdAt (createdAt + 2 min), not from the display-only stored
+      // deadline. Age the order past the window so cancellation is rejected.
+      createdAt: new Date(Date.now() - 3 * 60000), // placed 3 min ago
       cancellationDeadline: new Date(Date.now() - 1000),
     }));
 
@@ -479,6 +483,50 @@ describe("cancelOrder callable — student cancellation flow", () => {
       (err) => err.code === "failed-precondition",
     );
     const after = await orderById("cancel-flow-2");
+    assert.equal(after.status, "pending");
+  });
+
+  it("cancels a FRESH order before the onNewOrder trigger has written "
+      + "cancellationDeadline (pre-trigger window)", async () => {
+    // A brand new rules-created order carries NO cancellationDeadline — the
+    // onNewOrder trigger writes createdAt + 2 min asynchronously. The
+    // callable must derive the same window from the server-authoritative
+    // createdAt (rules require createdAt == request.time) so a student can
+    // cancel immediately after placing an order, before the trigger lands.
+    await seedOrder("cancel-flow-fresh-1", validOrderPayload({
+      createdAt: new Date(Date.now() - 1000), // placed ~1s ago, trigger pending
+    }));
+
+    const result = await functionsModule.cancelOrder.run(callableRequest(
+      "student1",
+      { orderId: "cancel-flow-fresh-1", reason: "Changed my mind" },
+    ));
+
+    assert.equal(result.success, true);
+    const after = await orderById("cancel-flow-fresh-1");
+    assert.equal(after.status, "cancelled");
+    assert.equal(after.cancelledBy, "student1");
+    assert.ok(after.cancelledAt instanceof admin.firestore.Timestamp);
+  });
+
+  it("rejects cancelling a deadline-less order whose DERIVED createdAt "
+      + "window has already passed", async () => {
+    // Same pre-trigger shape (no cancellationDeadline), but the order is
+    // older than the 2-minute window: the derived createdAt + 2 min deadline
+    // has passed, so cancellation must be rejected exactly as if the trigger
+    // had written the deadline.
+    await seedOrder("cancel-flow-fresh-expired-1", validOrderPayload({
+      createdAt: new Date(Date.now() - 3 * 60000), // placed 3 min ago
+    }));
+
+    await assert.rejects(
+      functionsModule.cancelOrder.run(callableRequest(
+        "student1",
+        { orderId: "cancel-flow-fresh-expired-1" },
+      )),
+      (err) => err.code === "failed-precondition",
+    );
+    const after = await orderById("cancel-flow-fresh-expired-1");
     assert.equal(after.status, "pending");
   });
 
@@ -661,8 +709,12 @@ describe("cancellation vs acceptance race", () => {
   it("only one transition succeeds when the window has passed — accept wins "
       + "(Test 7b)", async () => {
     // Window closed: the admin may accept (deadline passed), while the
-    // cancel callable rejects with failed-precondition.
+    // cancel callable rejects with failed-precondition. The window is
+    // derived from the server-authoritative createdAt (createdAt + 2 min),
+    // so the fixture must age the order itself — a past stored deadline
+    // alone no longer closes the window.
     const payload = validOrderPayload({
+      createdAt: new Date(Date.now() - 3 * 60000), // placed 3 min ago
       cancellationDeadline: new Date(Date.now() - 1000),
     });
     await seedOrder("cancel-race-2", payload);

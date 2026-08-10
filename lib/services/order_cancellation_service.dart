@@ -55,9 +55,17 @@ typedef OrderCancellationResult = ({OrderCancellationFailure? failure});
 /// (Firestore rules only allow admin order updates). The callable verifies
 /// ownership, pending status and the authoritative server-side deadline.
 class OrderCancellationService {
-  /// Public so ViewModels can inject fakes in tests (mirrors the repo's
-  /// subclassable service pattern, e.g. AuthService).
-  OrderCancellationService();
+  final FirebaseFunctions? _functions;
+
+  /// [functions] is injectable for tests and defaults to the shared
+  /// [FirebaseFunctions.instance] at call time (mirrors the repo's
+  /// optional-injection pattern, e.g. CartService). Resolved lazily so the
+  /// [instance] singleton never touches Firebase during construction — tests
+  /// that construct [OrdersViewModel] without initializing Firebase stay
+  /// green. Public so ViewModels can inject fakes in tests (subclassable
+  /// service pattern, e.g. AuthService).
+  OrderCancellationService({FirebaseFunctions? functions})
+      : _functions = functions; // ignore: prefer_initializing_formals
 
   static final OrderCancellationService instance =
       OrderCancellationService();
@@ -85,7 +93,8 @@ class OrderCancellationService {
     String? reason,
   }) async {
     try {
-      final callable = FirebaseFunctions.instance.httpsCallable('cancelOrder');
+      final callable =
+          (_functions ?? FirebaseFunctions.instance).httpsCallable('cancelOrder');
       await callable.call({
         'orderId': orderId,
         if (reason != null && reason.isNotEmpty) 'reason': reason,

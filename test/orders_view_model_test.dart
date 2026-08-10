@@ -184,11 +184,16 @@ void main() {
   });
 
   group('OrdersViewModel.cancelOrder — concurrent in-flight state', () {
+    late _HeldOrderCancellationService service;
+    late OrdersViewModel vm;
+
+    setUp(() {
+      service = _HeldOrderCancellationService();
+      vm = OrdersViewModel(cancellationService: service);
+    });
+
     test('tracks each order independently so one completion never clears '
         'another order\'s loading state', () async {
-      final service = _HeldOrderCancellationService();
-      final vm = OrdersViewModel(cancellationService: service);
-
       final cancelA = vm.cancelOrder('oA');
       final cancelB = vm.cancelOrder('oB');
 
@@ -213,9 +218,6 @@ void main() {
     });
 
     test('marks only the cancelled order while others stay interactive', () async {
-      final service = _HeldOrderCancellationService();
-      final vm = OrdersViewModel(cancellationService: service);
-
       final future = vm.cancelOrder('oA');
       expect(vm.isCancelling('oA'), isTrue);
       expect(vm.isCancelling('oB'), isFalse);

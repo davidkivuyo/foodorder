@@ -181,10 +181,16 @@ void main() {
       expect(cancelFn, contains('orderData.studentId !== uid'));
       // Only a pending order is cancellable.
       expect(cancelFn, contains('orderData.status !== "pending"'));
-      // Server-authoritative deadline, never the client clock.
+      // Server-authoritative deadline, never the client clock: the window is
+      // always derived from the validated server-resolved createdAt, and the
+      // persisted cancellationDeadline is never trusted for the comparison.
       expect(
         cancelFn,
-        contains('cancellationDeadline instanceof admin.firestore.Timestamp'),
+        contains('createdAt instanceof admin.firestore.Timestamp'),
+      );
+      expect(
+        cancelFn,
+        contains('createdAt.seconds + CANCELLATION_WINDOW_MINUTES * 60'),
       );
       expect(cancelFn, contains('now.toMillis() >= cancellationDeadline'));
       // Atomic transition inside a transaction.
