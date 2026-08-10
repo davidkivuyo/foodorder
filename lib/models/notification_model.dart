@@ -24,6 +24,7 @@ enum NotificationType {
   orderReady,
   pickupReminder,
   orderNoShow,
+  orderCancelled,
   accountSuspended,
   accountReactivated,
   newOrder,
@@ -44,6 +45,8 @@ enum NotificationType {
         return 'PICKUP_REMINDER';
       case NotificationType.orderNoShow:
         return 'ORDER_NO_SHOW';
+      case NotificationType.orderCancelled:
+        return 'ORDER_CANCELLED';
       case NotificationType.accountSuspended:
         return 'ACCOUNT_SUSPENDED';
       case NotificationType.accountReactivated:
@@ -67,6 +70,8 @@ enum NotificationType {
         return NotificationType.pickupReminder;
       case 'ORDER_NO_SHOW':
         return NotificationType.orderNoShow;
+      case 'ORDER_CANCELLED':
+        return NotificationType.orderCancelled;
       case 'ACCOUNT_SUSPENDED':
         return NotificationType.accountSuspended;
       case 'ACCOUNT_REACTIVATED':
@@ -94,6 +99,8 @@ enum NotificationType {
         return 'Pickup Reminder';
       case NotificationType.orderNoShow:
         return 'Order No Show';
+      case NotificationType.orderCancelled:
+        return 'Order Cancelled';
       case NotificationType.accountSuspended:
         return 'Account Suspended';
       case NotificationType.accountReactivated:

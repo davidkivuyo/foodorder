@@ -46,6 +46,7 @@ const functionsModule = require("../index.js");
 const db = admin.firestore();
 
 const { initializeTestEnvironment } = require("@firebase/rules-unit-testing");
+const { serverTimestamp } = require("firebase/firestore");
 
 const RULES_FILE = path.join(__dirname, "../../firestore.rules");
 const PICKUP_WINDOW_MINUTES = 20;
@@ -199,7 +200,11 @@ after(async () => {
 
 describe("Firestore rules — authorization behaviour", () => {
   it("lets a verified student create a valid pending order", async () => {
-    await studentDb().collection("orders").doc("rule-ok-1").set(validOrderPayload());
+    // The create rule requires createdAt to be the server-resolved write
+    // timestamp (FieldValue.serverTimestamp() == request.time).
+    await studentDb().collection("orders").doc("rule-ok-1").set(
+      validOrderPayload({ createdAt: serverTimestamp() }),
+    );
     const snap = await db.collection("orders").doc("rule-ok-1").get();
     assert.equal(snap.data().status, "pending");
   });
@@ -236,6 +241,9 @@ describe("Firestore rules — authorization behaviour", () => {
 
   it("denies forged server-owned fields on order create", async () => {
     const sdb = studentDb();
+    // The base payload is otherwise valid (server-resolved createdAt, no
+    // deadline), so each denial is attributable to the forged field.
+    const base = { createdAt: serverTimestamp() };
     for (const forged of [
       { readyAt: new Date() },
       { pickupDeadline: new Date() },
@@ -244,7 +252,9 @@ describe("Firestore rules — authorization behaviour", () => {
       { noShowProcessed: true },
     ]) {
       await assert.rejects(
-        sdb.collection("orders").doc("rule-forge").set(validOrderPayload(forged)),
+        sdb.collection("orders").doc("rule-forge").set(
+          validOrderPayload({ ...base, ...forged }),
+        ),
         /PERMISSION_DENIED/,
         `forged field ${Object.keys(forged)[0]} must be rejected on create`,
       );

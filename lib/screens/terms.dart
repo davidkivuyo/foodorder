@@ -58,7 +58,7 @@ These Terms govern your use of the Campus Bite
 • Food preparation Times: Estimated preparation times are provided for convenience and are not guaranteed.
 
 6. Cancellations and Refunds
-• Cancellations: Orders cannot be cancelled by you after you press the "Place order & notify cafe" button.
+• Cancellations: You may cancel an order within 2 minutes of placing it, before the cafe accepts it. After the cancellation window expires, orders cannot be cancelled by you.
 • Refund Policy: Refund is subject to the corresponding ordered cafes rules.
 
 7. User Conduct

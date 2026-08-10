@@ -18,6 +18,7 @@
     "firebase-tools": "^15.24.0"
   },
   "scripts": {
-    "test:no-show:integration": "cd .. && firebase emulators:exec --only firestore --project demo-foodorder \"node --test functions/test/no_show_integration.test.js\""
+    "test:no-show:integration": "cd .. && firebase emulators:exec --only firestore --project demo-foodorder \"node --test functions/test/no_show_integration.test.js\"",
+    "test:cancellation:integration": "cd .. && firebase emulators:exec --only firestore --project demo-foodorder \"node --test functions/test/order_cancellation_integration.test.js\""
   }
 }

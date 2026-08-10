@@ -102,6 +102,13 @@ service cloud.firestore {
         'distanceCalculated', 'pickupWindowMinutes',
         'noShowProcessed', 'expiredAt', 'deadlineExtended',
         'extensionAt', 'foodIds',
+        // Phase B cancellation metadata is written only by the cancelOrder
+        // callable (Admin SDK); no client may send it on create.
+        // cancellationDeadline is deliberately NOT in the allowlist: the
+        // authoritative deadline (createdAt + 2 min) is written by the
+        // onNewOrder trigger, so any payload carrying a client-supplied
+        // deadline is rejected by hasOnly() here.
+        'cancelledAt', 'cancelledBy', 'cancellationReason',
         // Legacy fields from pre-removal app builds. Kept in the allowlist
         // so older clients can still place orders until everyone updates;
         // only the safe default values are accepted.
@@ -125,6 +132,28 @@ service cloud.firestore {
           || request.resource.data.deadlineExtended == false)
         && (!('extensionAt' in request.resource.data)
           || request.resource.data.extensionAt == null)
+        // Phase B cancellation fields: server/callable-written. The
+        // authoritative cancellationDeadline (createdAt + 2 min) is written
+        // by the onNewOrder trigger — the client must not send any deadline
+        // on create (the allowlist above rejects a payload that carries one;
+        // this explicit check is defence-in-depth). The acceptance gap before
+        // the trigger runs is covered by the age gate in
+        // cancellationWindowPassed().
+        && !('cancellationDeadline' in request.resource.data)
+        // createdAt is the authoritative write timestamp: the client sends
+        // FieldValue.serverTimestamp(), which Firestore resolves to exactly
+        // request.time during rule evaluation. A literal client timestamp —
+        // backdated, forward-dated, or even computed at write time — can
+        // never match, so the 2-minute cancellation window (and its
+        // missing-deadline age gate in cancellationWindowPassed) cannot be
+        // forged.
+        && request.resource.data.createdAt == request.time
+        && (!('cancelledAt' in request.resource.data)
+          || request.resource.data.cancelledAt == null)
+        && (!('cancelledBy' in request.resource.data)
+          || request.resource.data.cancelledBy == null)
+        && (!('cancellationReason' in request.resource.data)
+          || request.resource.data.cancellationReason == null)
         // Legacy strike fields may only be sent with their safe defaults.
         && (!('strikeProcessed' in request.resource.data)
           || request.resource.data.strikeProcessed == false)
@@ -153,6 +182,12 @@ service cloud.firestore {
         && !('deadlineExtended' in changed)
         && !('extensionAt' in changed)
         && !('expiredAt' in changed)
+        // Phase B — cancellation metadata is written only by the cancelOrder
+        // callable (Admin SDK); neither student nor admin client may forge it.
+        && !('cancellationDeadline' in changed)
+        && !('cancelledAt' in changed)
+        && !('cancelledBy' in changed)
+        && !('cancellationReason' in changed)
         // Server-written collection timestamp — the onOrderStatusChanged
         // Cloud Function records it with the Admin SDK when an order is
         // collected; no client or admin app write may forge it.
@@ -171,18 +206,42 @@ service cloud.firestore {
     // invented states) and illegal/backwards transitions such as
     // 'COLLECTED' → 'preparing'. A status that is unchanged (metadata-only
     // admin update) is permitted.
+    // Phase B — the cafe may accept a pending order only after the student's
+    // 2-minute cancellation window has passed. The comparison uses the
+    // authoritative server time (request.time) against the server-written
+    // cancellationDeadline. Orders without a cancellationDeadline (legacy
+    // pre-Phase-B orders) remain acceptable for backward compatibility, but
+    // only once they have genuinely aged past the window: a freshly placed
+    // order without a deadline must never be accepted instantly.
+    function cancellationWindowPassed() {
+      // Deadline present (server-authoritative): acceptable once request.time
+      // has reached it. Legacy orders without a deadline are acceptable only
+      // once they have aged past the 2-minute window (createdAt + 2 min) —
+      // createdAt is server-resolved (FieldValue.serverTimestamp), so the age
+      // check cannot be forged by the client.
+      return ('cancellationDeadline' in resource.data)
+        ? resource.data.cancellationDeadline <= request.time
+        : ('createdAt' in resource.data
+          && resource.data.createdAt is timestamp
+          && resource.data.createdAt + duration.value(2, 'm') <= request.time);
+    }
+
     function validOrderStatusTransition() {
       let allowedStatuses = ['pending', 'accepted', 'rejected', 'preparing',
-        'ready', 'collected', 'no_show'];
+        'ready', 'collected', 'no_show', 'cancelled'];
       let before = ('status' in resource.data)
         ? canonicalOrderStatus(resource.data.status)
         : 'pending';
       let after = canonicalOrderStatus(request.resource.data.status);
+      // CANCELLED is a terminal state: no transition may leave it, and only
+      // the cancelOrder callable (Admin SDK, bypasses these rules) may enter
+      // it — there is deliberately no rule-allowed transition to 'cancelled'.
       return request.resource.data.status is string
         && request.resource.data.status in allowedStatuses
         && (before == after
           || (before == 'pending'
-            && (after == 'accepted' || after == 'rejected'))
+            && (after == 'accepted' || after == 'rejected')
+            && (after == 'rejected' || cancellationWindowPassed()))
           || (before == 'accepted' && after == 'preparing')
           || (before == 'preparing' && after == 'ready')
           || (before == 'ready'

@@ -64,10 +64,11 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: pages deploy build/web --project-name="foodorder"
 
-  # No-show lifecycle integration suite: runs the REAL Firestore emulator
-  # with the REAL firestore.rules and the REAL no-show Cloud Functions
-  # (executable coverage for the static guardrails in
-  # no_show_foundation_test.dart). The Firestore emulator requires Java 21+.
+  # Order-lifecycle integration suites: run the REAL Firestore emulator with
+  # the REAL firestore.rules and the REAL order Cloud Functions (executable
+  # coverage for the static guardrails in no_show_foundation_test.dart and
+  # order_cancellation_foundation_test.dart). The Firestore emulator
+  # requires Java 21+.
   no-show-integration:
     runs-on: ubuntu-latest
     steps:
@@ -90,4 +91,8 @@ jobs:
 
       - name: Run no-show emulator integration suite
         run: npm run test:no-show:integration
+        working-directory: functions
+
+      - name: Run order-cancellation emulator integration suite
+        run: npm run test:cancellation:integration
         working-directory: functions
