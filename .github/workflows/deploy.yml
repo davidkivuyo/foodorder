@@ -7,6 +7,10 @@ on:
 
 jobs:
   deploy:
+    # Deploy only after the no-show emulator integration suite has passed.
+    # Without this dependency GitHub Actions would run the jobs in parallel
+    # and could ship to Cloudflare Pages before (or despite) a failing suite.
+    needs: no-show-integration
     runs-on: ubuntu-latest
     steps:
       # Step 1: Checkout the code
