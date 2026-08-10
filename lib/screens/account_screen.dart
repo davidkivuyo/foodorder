@@ -112,10 +112,7 @@ class _AccountScreenState extends State<AccountScreen> {
               children: [
                 const Text(
                   "What's your bite today?",
-                  style: TextStyle(
-                    fontSize: 19,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 8),
 
@@ -159,6 +156,7 @@ class _AccountScreenState extends State<AccountScreen> {
                     }
 
                     return Card(
+                      elevation: 0,
                       child: Padding(
                         padding: const EdgeInsets.all(10),
                         child: Column(
