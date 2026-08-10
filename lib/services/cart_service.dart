@@ -501,12 +501,10 @@ class CartService extends ChangeNotifier {
 
   /// Check whether the current user's account is suspended.
   ///
-  /// Check whether the current user's account is suspended.
-  ///
-  /// Returns `true` when `accountStatus == 'SUSPENDED'` or
-  /// `strikeCount >= 2`, meaning the student cannot place orders.
-  ///
-  /// Phase 6: Derives percentage from strikeCount * 50.
+  /// Returns `true` when `accountStatus == 'SUSPENDED'`, meaning the
+  /// student cannot place orders. The strike-count-based suspension was
+  /// removed together with the automatic strike engine; account status is
+  /// now the only client-side gate (mirrored by the Firestore rules).
   Future<bool> isAccountSuspended() async {
     final uid = _currentUserId;
     if (uid == null) return false;
@@ -521,10 +519,8 @@ class CartService extends ChangeNotifier {
 
       final data = doc.data()!;
       final accountStatus = data['accountStatus'] as String? ?? 'ACTIVE';
-      final strikeCount =
-          (data['strikeCount'] as num?)?.toInt() ?? 0;
 
-      return accountStatus == 'SUSPENDED' || strikeCount >= 2;
+      return accountStatus == 'SUSPENDED';
     } on Exception catch (_) {
       return false;
     }

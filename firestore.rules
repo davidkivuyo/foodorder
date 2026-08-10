@@ -31,8 +31,7 @@ service cloud.firestore {
     function isStudentSuspended() {
       let doc = callerDoc();
       return doc.data == null
-        || doc.data.accountStatus == 'SUSPENDED'
-        || (doc.data.strikeCount is number && doc.data.strikeCount >= 2);
+        || doc.data.accountStatus == 'SUSPENDED';
     }
 
     // Phase 15 — authentication hardening. Only email-verified accounts may
@@ -153,7 +152,11 @@ service cloud.firestore {
         && !('noShowProcessed' in changed)
         && !('deadlineExtended' in changed)
         && !('extensionAt' in changed)
-        && !('expiredAt' in changed);
+        && !('expiredAt' in changed)
+        // Server-written collection timestamp — the onOrderStatusChanged
+        // Cloud Function records it with the Admin SDK when an order is
+        // collected; no client or admin app write may forge it.
+        && !('collectedAt' in changed);
     }
 
     // Normalise legacy order status spellings to the app's canonical casing.

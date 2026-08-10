@@ -109,6 +109,7 @@ class FoodOrder {
   final DateTime? updatedAt;
   final DateTime? readyAt;
   final DateTime? pickupDeadline;
+  final DateTime? collectedAt;
   final int pickupWindowMinutes;
   final DeadlineStatus deadlineStatus;
 
@@ -138,6 +139,7 @@ class FoodOrder {
     this.updatedAt,
     this.readyAt,
     this.pickupDeadline,
+    this.collectedAt,
     this.pickupWindowMinutes = 20,
     this.deadlineStatus = DeadlineStatus.notReady,
     this.studentLocation,
@@ -223,6 +225,7 @@ class FoodOrder {
       updatedAt: parseTimestamp(data['updatedAt']),
       readyAt: parseTimestamp(data['readyAt']),
       pickupDeadline: parseTimestamp(data['pickupDeadline']),
+      collectedAt: parseTimestamp(data['collectedAt']),
       pickupWindowMinutes: (data['pickupWindowMinutes'] as num?)?.toInt() ?? 20,
       deadlineStatus: DeadlineStatus.fromString(
         data['deadlineStatus'] as String? ?? 'NOT_READY',

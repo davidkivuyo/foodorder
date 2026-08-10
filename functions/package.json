@@ -13,6 +13,11 @@
     "node-fetch": "^2.7.0"
   },
   "devDependencies": {
-    "firebase-functions-test": "^3.4.0"
+    "@firebase/rules-unit-testing": "^5.0.1",
+    "firebase-functions-test": "^3.4.0",
+    "firebase-tools": "^15.24.0"
+  },
+  "scripts": {
+    "test:no-show:integration": "cd .. && firebase emulators:exec --only firestore --project demo-foodorder \"node --test functions/test/no_show_integration.test.js\""
   }
 }
