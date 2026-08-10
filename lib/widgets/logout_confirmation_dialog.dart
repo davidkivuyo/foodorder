@@ -34,7 +34,7 @@ class LogoutConfirmationDialog extends StatelessWidget {
             backgroundColor: Colors.red,
             foregroundColor: Colors.white,
           ),
-          child: const Text('Yes', style: TextStyle(color: Colors.red)),
+          child: const Text('Yes'),
         ),
       ],
     );
