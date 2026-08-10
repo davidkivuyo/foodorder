@@ -35,6 +35,8 @@ class NotificationVisuals {
         return (icon: Icons.access_time, color: const Color(0xFFE65100));
       case NotificationType.orderNoShow:
         return (icon: Icons.cancel_outlined, color: const Color(0xFFC62828));
+      case NotificationType.orderCancelled:
+        return (icon: Icons.close, color: const Color(0xFF6A1B9A));
       case NotificationType.accountSuspended:
         return (icon: Icons.block, color: const Color(0xFFC62828));
       case NotificationType.accountReactivated:

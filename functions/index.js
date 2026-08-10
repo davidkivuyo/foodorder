@@ -49,6 +49,13 @@ const db = admin.firestore();
 const PICKUP_WINDOW_MINUTES = 20;
 
 /**
+ * Length of the student cancellation window after an order is placed.
+ * The order's cancellationDeadline is createdAt + this many minutes.
+ * Matches the customer app's OrderCancellationService.windowMinutes.
+ */
+const CANCELLATION_WINDOW_MINUTES = 2;
+
+/**
  * Lease duration for delivery claim records.
  *
  * When a claim is created with status 'pending' and a claimedAt timestamp,
@@ -1350,6 +1357,205 @@ exports.extendPickupDeadline = onCall(
   },
 );
 
+// ════════════════════════════════════════════════════════════════════════════
+// FUNCTION: cancelOrder  (Callable — student cancels within the 2-minute window)
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Cancel an order within the [CANCELLATION_WINDOW_MINUTES]-minute window.
+ *
+ * Students cannot update order documents directly (Firestore rules only
+ * allow admin order updates), so this callable performs the authoritative
+ * transition with the Admin SDK. Enforced invariants:
+ *
+ *  - the caller must be authenticated (App Check enforced),
+ *  - the caller must own the order,
+ *  - the order must still be pending (not yet accepted by the cafe),
+ *  - the current server time must be before the cancellation deadline,
+ *  - the order's status history records cancelledAt / cancelledBy / reason.
+ *
+ * All checks run inside a transaction so a concurrent admin accept and a
+ * student cancel can never both succeed — only one transition wins.
+ */
+exports.cancelOrder = onCall(
+  {
+    authPolicy: "required",
+    enforceAppCheck: true,
+    region: "us-central1",
+  },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError(
+        "unauthenticated",
+        "User must be authenticated to cancel an order."
+      );
+    }
+
+    const uid = request.auth.uid;
+
+    // ── Request envelope validation ───────────────────────────────
+    const data = request.data;
+    if (
+      data === null ||
+      typeof data !== "object" ||
+      Array.isArray(data) ||
+      JSON.stringify(data).length > 4096
+    ) {
+      throw new HttpsError("invalid-argument", "Invalid request payload.");
+    }
+
+    const envelopeKeys = Object.keys(data);
+    const validKeys = envelopeKeys.filter((k) => k === "orderId" || k === "reason");
+    if (validKeys.length !== envelopeKeys.length || envelopeKeys.length === 0) {
+      throw new HttpsError(
+        "invalid-argument",
+        "Request payload must contain only orderId and an optional reason."
+      );
+    }
+
+    const { orderId, reason } = data;
+    if (
+      !orderId ||
+      typeof orderId !== "string" ||
+      orderId.length === 0 ||
+      orderId.length > 128 ||
+      !/^[A-Za-z0-9_-]+$/.test(orderId)
+    ) {
+      throw new HttpsError("invalid-argument", "orderId is invalid.");
+    }
+
+    // Optional cancellation reason: preset strings only, bounded length.
+    let cancellationReason = null;
+    if (reason !== undefined && reason !== null) {
+      if (typeof reason !== "string" || reason.length === 0) {
+        throw new HttpsError("invalid-argument", "reason is invalid.");
+      }
+      if (reason.length > 200) {
+        throw new HttpsError(
+          "invalid-argument",
+          "reason must be 200 characters or fewer."
+        );
+      }
+      const allowedReasons = [
+        "Changed my mind",
+        "Ordered by mistake",
+        "Need to change my order",
+        "Ordered the wrong item",
+        "Other",
+      ];
+      if (!allowedReasons.includes(reason)) {
+        throw new HttpsError(
+          "invalid-argument",
+          "reason is not an allowed cancellation reason."
+        );
+      }
+      cancellationReason = reason;
+    }
+
+    const orderRef = db.collection("orders").doc(orderId);
+
+    try {
+      const cancelled = await db.runTransaction(async (transaction) => {
+        const orderSnapshot = await transaction.get(orderRef);
+        if (!orderSnapshot.exists) {
+          throw new HttpsError("not-found", "Order not found.");
+        }
+
+        const orderData = orderSnapshot.data();
+
+        // Ownership: only the student who placed the order may cancel it.
+        if (orderData.studentId !== uid) {
+          throw new HttpsError(
+            "permission-denied",
+            "You can only cancel your own orders."
+          );
+        }
+
+        // Only a PENDING order may be cancelled (not yet accepted).
+        if (orderData.status !== "pending") {
+          throw new HttpsError(
+            "failed-precondition",
+            "This order can no longer be cancelled."
+          );
+        }
+
+        // The authoritative deadline is always derived from the
+        // server-authoritative createdAt (the create rules require
+        // createdAt == request.time, so it cannot be forged). The persisted
+        // cancellationDeadline is display-only data for the client UI; it is
+        // never trusted for the authoritative comparison, so a skewed or
+        // missing stored value can neither extend nor shorten the window.
+        // Deriving from createdAt also covers the pre-trigger gap: a brand
+        // new order may not yet carry a stored deadline, but the window is
+        // the same either way.
+        const createdAt = orderData.createdAt;
+        if (!(createdAt instanceof admin.firestore.Timestamp)) {
+          throw new HttpsError(
+            "failed-precondition",
+            "This order has no cancellation window."
+          );
+        }
+        const cancellationDeadline = new admin.firestore.Timestamp(
+          createdAt.seconds + CANCELLATION_WINDOW_MINUTES * 60,
+          createdAt.nanoseconds,
+        );
+
+        const now = admin.firestore.Timestamp.now();
+        if (now.toMillis() >= cancellationDeadline.toMillis()) {
+          throw new HttpsError(
+            "failed-precondition",
+            "The cancellation window has expired."
+          );
+        }
+
+        transaction.update(orderRef, {
+          status: "cancelled",
+          cancelledAt: admin.firestore.FieldValue.serverTimestamp(),
+          cancelledBy: uid,
+          cancellationReason: cancellationReason,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        return true;
+      });
+
+      // No user identifiers in logs (privacy): the caller UID is recorded in
+      // the order document (cancelledBy) and the audit trail, not in log lines.
+      console.log(`[cancelOrder] Order ${orderId} cancelled`);
+
+      // ── Student notification (deduplicated by eventId) ──────────
+      // Cancellation is a terminal state; the student is told the order
+      // is cancelled so the UI never has to guess.
+      try {
+        await createNotification({
+          recipientId: uid,
+          recipientRole: "student",
+          type: "ORDER_CANCELLED",
+          title: "Order Cancelled",
+          message: `Your order #${orderId} has been cancelled.`,
+          orderId: orderId,
+          deepLink: `/orders/${orderId}`,
+          eventId: notificationEventId("ORDER_CANCELLED", orderId),
+          createdBy: "system",
+        });
+      } catch (notifErr) {
+        console.error(
+          `[cancelOrder] Failed to create ORDER_CANCELLED notification:`, notifErr
+        );
+      }
+
+      return { success: true };
+    } catch (err) {
+      if (err instanceof HttpsError) throw err;
+      console.error("[cancelOrder] Error:", err);
+      throw new HttpsError(
+        "internal",
+        "Could not cancel the order. Please try again."
+      );
+    }
+  },
+);
+
 // ── Order foodIds backfill ────────────────────────────────────────────────────
 //
 // The review-eligibility security rule (validReviewOrderEligibility) verifies
@@ -1706,6 +1912,54 @@ exports.onNewOrder = onDocumentCreated(
         ? pricedTotal
         : (orderData.price || orderData.totalAmount || 0);
 
+    // ── Phase B: authoritative cancellation deadline ────────────────
+    // cancellationDeadline = createdAt + 2 minutes, computed from the
+    // trusted server timestamp (createdAt). The client may send an
+    // estimated deadline so the acceptance rules are enforced from the
+    // very first write (closing the admin-accept race), but this trigger
+    // overwrites it with the authoritative value so a skewed device clock
+    // can never extend or shorten the window.
+    if (orderData.createdAt instanceof admin.firestore.Timestamp) {
+      const authoritativeDeadline = new admin.firestore.Timestamp(
+        orderData.createdAt.seconds + CANCELLATION_WINDOW_MINUTES * 60,
+        orderData.createdAt.nanoseconds,
+      );
+      const stored = orderData.cancellationDeadline;
+      const needsCorrection =
+        !(stored instanceof admin.firestore.Timestamp) ||
+        stored.seconds !== authoritativeDeadline.seconds ||
+        stored.nanoseconds !== authoritativeDeadline.nanoseconds;
+      if (needsCorrection) {
+        // The authoritative deadline is what the acceptance rules and the
+        // cancelOrder callable enforce. A persistent failure must NOT be
+        // acknowledged as a successful event — rethrow after retries so
+        // Cloud Functions retries the whole event. Retries are safe: the
+        // backfill and pricing normalization are idempotent, and the
+        // NEW_ORDER notifications are deduplicated by eventId.
+        try {
+          await withRetry(
+            () => event.data.ref.update({
+              cancellationDeadline: authoritativeDeadline,
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            }),
+            {
+              maxRetries: 2,
+              baseDelayMs: 150,
+              maxDelayMs: 1000,
+            },
+          );
+          console.log(
+            `[onNewOrder] Authoritative cancellationDeadline set for ${orderId}`
+          );
+        } catch (deadlineErr) {
+          console.error(
+            `[onNewOrder] Failed to correct cancellationDeadline:`, deadlineErr
+          );
+          throw deadlineErr;
+        }
+      }
+    }
+
     console.log("[onNewOrder] New order received");
 
     try {
@@ -1796,6 +2050,7 @@ exports.onNewNotification = onDocumentCreated(
       ORDER_PREPARING: ["student"],
       ORDER_READY: ["student"],
       ORDER_NO_SHOW: ["student"],
+      ORDER_CANCELLED: ["student"],
       STRIKE_ISSUED: ["student"],
       STRIKE_REMOVED: ["student"],
       ACCOUNT_REACTIVATED: ["student"],

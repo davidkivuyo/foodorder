@@ -19,13 +19,14 @@ import 'cart_item.dart';
 
 /// Represents the current state of an order.
 enum OrderStatus {
-  pending,    // Awaiting admin review
+  pending,    // Awaiting admin review (cancellable during the 2-min window)
   accepted,   // Admin accepted the order
   rejected,   // Admin rejected the order
   preparing,  // Food is being cooked
   ready,      // Ready for pickup
   collected,  // Student collected the order
-  noShow;     // Student did not collect
+  noShow,     // Student did not collect
+  cancelled;  // Student cancelled within the cancellation window (terminal)
 
   /// Parse an [OrderStatus] from its string representation.
   static OrderStatus fromString(String value) {
@@ -44,6 +45,8 @@ enum OrderStatus {
         return OrderStatus.collected;
       case 'no_show':
         return OrderStatus.noShow;
+      case 'cancelled':
+        return OrderStatus.cancelled;
       default:
         return OrderStatus.pending;
     }
@@ -128,6 +131,12 @@ class FoodOrder {
   final bool deadlineExtended;
   final DateTime? extensionAt;
 
+  // Phase B: 2-minute cancellation window (server-authoritative)
+  final DateTime? cancellationDeadline;
+  final DateTime? cancelledAt;
+  final String? cancelledBy;
+  final String? cancellationReason;
+
   FoodOrder({
     required this.orderId,
     required this.userId,
@@ -151,6 +160,10 @@ class FoodOrder {
     this.expiredAt,
     this.deadlineExtended = false,
     this.extensionAt,
+    this.cancellationDeadline,
+    this.cancelledAt,
+    this.cancelledBy,
+    this.cancellationReason,
   });
 
   /// Build a [FoodOrder] from a Firestore document snapshot.
@@ -239,6 +252,10 @@ class FoodOrder {
       expiredAt: parseTimestamp(data['expiredAt']),
       deadlineExtended: data['deadlineExtended'] as bool? ?? false,
       extensionAt: parseTimestamp(data['extensionAt']),
+      cancellationDeadline: parseTimestamp(data['cancellationDeadline']),
+      cancelledAt: parseTimestamp(data['cancelledAt']),
+      cancelledBy: data['cancelledBy'] as String?,
+      cancellationReason: data['cancellationReason'] as String?,
     );
   }
 
@@ -277,6 +294,13 @@ class FoodOrder {
       'pickupWindowMinutes': pickupWindowMinutes,
       'noShowProcessed': noShowProcessed,
       'deadlineExtended': deadlineExtended,
+      // Phase B: the authoritative cancellationDeadline (createdAt + 2 min)
+      // is written only by the onNewOrder Cloud Function. The client never
+      // sends one on create — the Firestore create rule rejects any payload
+      // carrying it, so the deadline cannot be forged.
+      'cancelledAt': cancelledAt,
+      'cancelledBy': cancelledBy,
+      'cancellationReason': cancellationReason,
     };
   }
 }

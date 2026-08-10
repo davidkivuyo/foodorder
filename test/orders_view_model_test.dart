@@ -17,6 +17,7 @@ import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:campusbite/models/order.dart';
+import 'package:campusbite/services/order_cancellation_service.dart';
 import 'package:campusbite/services/pickup_extension_service.dart';
 import 'package:campusbite/viewmodels/orders_view_model.dart';
 
@@ -33,6 +34,27 @@ class _HeldPickupExtensionService extends PickupExtensionService {
   Future<PickupExtensionResult> extendPickupDeadline(String orderId) {
     extendCalled = true;
     return completer.future;
+  }
+}
+
+/// [OrderCancellationService] whose cancellation calls can be held open per
+/// order and resolved by the test, so the ViewModel's per-order in-flight
+/// state can be verified deterministically under concurrency.
+class _HeldOrderCancellationService extends OrderCancellationService {
+  final Map<String, Completer<OrderCancellationResult>> completers = {};
+
+  @override
+  Future<OrderCancellationResult> cancelOrder(
+    String orderId, {
+    String? reason,
+  }) {
+    final completer = Completer<OrderCancellationResult>();
+    completers[orderId] = completer;
+    return completer.future;
+  }
+
+  void complete(String orderId, OrderCancellationResult result) {
+    completers.remove(orderId)?.complete(result);
   }
 }
 
@@ -158,6 +180,51 @@ void main() {
       service.completer.complete((failure: null, newDeadline: null));
 
       await expectLater(future, completes);
+    });
+  });
+
+  group('OrdersViewModel.cancelOrder — concurrent in-flight state', () {
+    late _HeldOrderCancellationService service;
+    late OrdersViewModel vm;
+
+    setUp(() {
+      service = _HeldOrderCancellationService();
+      vm = OrdersViewModel(cancellationService: service);
+    });
+
+    test('tracks each order independently so one completion never clears '
+        'another order\'s loading state', () async {
+      final cancelA = vm.cancelOrder('oA');
+      final cancelB = vm.cancelOrder('oB');
+
+      // Both requests are in flight at once — each order is marked
+      // independently, and neither is conflated with the other.
+      expect(vm.isCancelling('oA'), isTrue);
+      expect(vm.isCancelling('oB'), isTrue);
+
+      // Completing order A must NOT clear order B's in-flight state.
+      service.complete('oA', (failure: null));
+      final resultA = await cancelA;
+      expect(resultA.failure, isNull);
+      expect(vm.isCancelling('oA'), isFalse);
+      expect(vm.isCancelling('oB'), isTrue);
+
+      // Completing order B clears only B's state.
+      service.complete('oB', (failure: OrderCancellationFailure.networkError));
+      final resultB = await cancelB;
+      expect(resultB.failure, OrderCancellationFailure.networkError);
+      expect(vm.isCancelling('oB'), isFalse);
+      expect(vm.isCancelling('oA'), isFalse);
+    });
+
+    test('marks only the cancelled order while others stay interactive', () async {
+      final future = vm.cancelOrder('oA');
+      expect(vm.isCancelling('oA'), isTrue);
+      expect(vm.isCancelling('oB'), isFalse);
+
+      service.complete('oA', (failure: null));
+      await future;
+      expect(vm.isCancelling('oA'), isFalse);
     });
   });
 }

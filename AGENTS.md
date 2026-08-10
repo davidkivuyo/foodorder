@@ -145,42 +145,70 @@ Do not remove existing comments unless they are directly related to what you are
 
 # Current Phase
 
-# PHASE A — NO-SHOW FOUNDATION
+# PHASE B — ORDER CANCELLATION & 2-MINUTE CANCELLATION WINDOW
 
 ## OBJECTIVE
 
-Implement the foundation for the new CampusBite Pickup Reliability System.
+Implement a production-ready order cancellation system for CampusBite.
 
-The previous Automatic Strike Engine has been completely removed.
+The student must have a 2-minute cancellation window immediately after successfully placing an order.
 
-DO NOT recreate the old strike system.
+During this window:
 
-DO NOT implement reliability scores yet.
+- The student can cancel the order.
+- The cafe must NOT be allowed to accept/process the order.
+- The order remains in a cancellable state.
+- Cancellation must be authoritative on the backend.
+- A cancelled order must NOT count as a NO_SHOW.
+- A cancelled order must NOT negatively affect Pickup Reliability.
+- The system must remain safe if the app closes, crashes, loses network connectivity, or the student changes devices.
 
-DO NOT implement ordering restrictions yet.
+IMPORTANT:
 
-DO NOT implement automatic penalties yet.
+The order must still be created in Firestore immediately when the order is placed.
 
-DO NOT implement the new student reliability UI yet.
+Do NOT attempt to keep the order only in local Flutter memory for two minutes.
 
-DO NOT implement the admin reliability dashboard yet.
-
-This phase only establishes a reliable, secure and production-ready way of recording whether an order was:
-
-- COLLECTED
-- NO_SHOW
-
-The existing order lifecycle must remain the source of truth.
+The database is the source of truth.
 
 ---
 
-# IMPORTANT EXISTING ORDER LIFECYCLE
+# 1. FIRST — AUDIT THE EXISTING ORDER SYSTEM
 
-CampusBite already has an order lifecycle implemented before the old striking system.
+Before modifying anything, inspect:
 
-The existing order flow is:
+- Order model
+- OrderStatus enum
+- Order creation logic
+- CartService / OrderService
+- Firestore order collection
+- Student checkout screen
+- Admin order screen
+- Admin status transition code
+- Existing order timestamps
+- Existing notifications
+- Existing Cloud Functions
+- Firestore Security Rules
+- Phase A NO_SHOW implementation
+- Phase B reliability implementation
+
+Do not assume field names.
+
+Reuse existing architecture.
+
+Do not create a second order system.
+
+---
+
+# 2. REQUIRED ORDER STATES
+
+The existing order lifecycle must remain intact.
+
+The cancellation window introduces one important distinction:
 
 PENDING / PLACED
+        ↓
+CANCELLATION WINDOW
         ↓
 ACCEPTED
         ↓
@@ -190,860 +218,1086 @@ READY
         ↓
 COLLECTED
 
+Alternative:
+
+PENDING
+   ↓
+CANCELLED
+
 or:
 
 READY
-        ↓
+   ↓
 NO_SHOW
 
-Do not replace or redesign this lifecycle.
+The important rule is:
 
-First inspect the existing codebase and identify:
+CANCELLED is a terminal state.
 
-- Order model
-- OrderStatus enum
-- CartService / OrderService
-- Student order screen
-- Admin order management
-- Firestore order document structure
-- Existing Ready status implementation
-- Existing pickup countdown implementation
-- Existing order status update methods
-- Existing Cloud Functions related to orders
-- Existing Firestore security rules
+A cancelled order must never later become:
 
-Reuse existing architecture whenever possible.
-
-Do not create duplicate order systems.
-
----
-
-# STEP 1 — AUDIT THE EXISTING ORDER IMPLEMENTATION
-
-Before modifying any code:
-
-1. Inspect the complete order model.
-2. Inspect OrderStatus.
-3. Inspect how orders are written to Firestore.
-4. Inspect how admins change order status.
-5. Inspect how students receive order status.
-6. Inspect how READY is currently stored.
-7. Inspect the existing pickup countdown.
-8. Inspect whether pickup deadlines already exist.
-9. Inspect any existing no-show implementation.
-10. Inspect Firestore Security Rules.
-11. Inspect Cloud Functions related to orders.
-
-Do not assume the existing structure.
-
-Base all changes on the actual implementation.
-
-After inspection, document:
-
-- Current order document structure
-- Current status values
-- Current status transition mechanism
-- Current pickup timer implementation
-- Existing relevant Firestore paths
-
----
-
-# STEP 2 — DO NOT REINTRODUCE STRIKES
-
-Search the project for remnants of the old striking system.
-
-Look for:
-
-- strike
-- strikes
-- strikeCount
-- strikeStatus
-- banned
-- suspension caused by no-show
-- automatic strike
-- strike engine
-- strike threshold
-- strike calculation
-- strike notification
-
-Determine whether any old code remains.
-
-Remove or isolate obsolete strike logic only if it is directly related to the deleted system.
-
-Do NOT remove unrelated functionality.
-
-Do NOT modify historical order data unnecessarily.
-
-Do not replace "strike" with "reliability" in this phase.
-
-The reliability system belongs to a later phase.
-
----
-
-# STEP 3 — DEFINE NO-SHOW AS AN ORDER STATE
-
-Add a proper NO_SHOW order status if it does not already exist.
-
-Follow the project's existing naming convention.
-
-For example:
-
-OrderStatus.noShow
-
-Do not introduce multiple names such as:
-
-- no_show
-- noShow
-- missed
-- expired
-- abandoned
-
-Use ONE canonical application-level status.
-
-The canonical status should be:
-
-NO_SHOW
-
-unless the existing architecture uses a different established convention.
-
----
-
-# STEP 4 — PRESERVE COLLECTED AS THE SUCCESSFUL TERMINAL STATE
-
-The system must distinguish:
-
+ACCEPTED
+PREPARING
+READY
 COLLECTED
-
-from:
-
 NO_SHOW
-
-These are mutually exclusive terminal states.
-
-An order must never be both:
-
-COLLECTED
-
-and
-
-NO_SHOW.
-
-Once an order is COLLECTED:
-
-- It must never become NO_SHOW.
-- No no-show processing may affect it.
-
-Once an order is finalized as NO_SHOW:
-
-- It must never later become COLLECTED through the automatic no-show process.
-
-If an admin needs to correct a mistake, that must be an explicit authorized administrative operation handled in a later phase.
 
 ---
 
-# STEP 5 — ADD PICKUP TIMESTAMP DATA
+# 3. DO NOT BREAK THE EXISTING ORDER LIFECYCLE
+
+Do not rename existing statuses unless absolutely necessary.
+
+If the current application uses:
+
+PENDING
+
+or:
+
+PLACED
+
+reuse that status.
+
+If the current application already has an appropriate initial status, reuse it.
+
+Only add a new status if the current architecture genuinely requires one.
+
+Preferred conceptual states:
+
+PENDING
+ACCEPTED
+PREPARING
+READY
+COLLECTED
+NO_SHOW
+CANCELLED
+
+---
+
+# 4. REQUIRED CANCELLATION FIELDS
 
 Inspect the existing order document first.
 
-If these fields already exist, reuse them.
+If equivalent fields already exist, reuse them.
 
-If they do not exist, add the minimum required timestamps.
+Otherwise add:
 
-Recommended fields:
-
-readyAt
-pickupDeadline
-collectedAt
-noShowAt
+createdAt
+cancellationDeadline
+cancelledAt
+cancelledBy
+cancellationReason
 
 Example:
 
 {
-  "status": "READY",
-  "readyAt": Timestamp,
-  "pickupDeadline": Timestamp,
-  "collectedAt": null,
-  "noShowAt": null
+  "status": "PENDING",
+
+  "createdAt": Timestamp,
+
+  "cancellationDeadline": Timestamp,
+
+  "cancelledAt": null,
+
+  "cancelledBy": null,
+
+  "cancellationReason": null
 }
 
-Do not duplicate timestamps that already exist under another name.
+Do not duplicate existing timestamps.
 
-Use the existing project naming convention if different.
-
----
-
-# STEP 6 — READY TIMESTAMP
-
-When an order transitions into READY:
-
-record:
-
-readyAt
-
-using a trusted server timestamp.
-
-Do NOT rely on the student's device clock.
-
-Do NOT rely on DateTime.now() from the Flutter client for authoritative deadlines.
-
-The authoritative timestamp must originate from the backend/server wherever possible.
-
-If the current backend architecture already generates this timestamp, reuse it.
+Use the existing project naming conventions.
 
 ---
 
-# STEP 7 — PICKUP DEADLINE
+# 5. TWO-MINUTE WINDOW
 
-The order needs an authoritative pickup deadline.
+The cancellation window is exactly:
 
-The deadline should be calculated from the READY event.
+2 minutes
+
+The authoritative deadline should be:
+
+cancellationDeadline =
+createdAt + 2 minutes
+
+Do NOT calculate the authoritative deadline using the student's device clock.
+
+Use a trusted server timestamp.
+
+Do not use:
+
+DateTime.now()
+
+as the authoritative source.
+
+The Flutter application may calculate/display the countdown locally, but the backend must enforce the actual deadline.
+
+---
+
+# 6. ORDER CREATION
+
+When the student confirms an order:
+
+1. Create the order in Firestore.
+2. Set the initial status to PENDING/PLACED.
+3. Set createdAt using a server timestamp.
+4. Establish cancellationDeadline.
+5. Store the student UID.
+6. Store the order items.
+7. Store cafe information.
+8. Store total amount.
+9. Make the order visible to the authorized cafe/admin system.
+
+Do not leave the order only in local state.
+
+---
+
+# 7. IMPORTANT — CAFE MUST RESPECT THE WINDOW
+
+During the cancellation window:
+
+The cafe must not transition:
+
+PENDING → ACCEPTED
+
+unless the cancellation window has expired.
+
+The backend must enforce this.
+
+Do NOT rely solely on the admin Flutter UI hiding the Accept button.
+
+A malicious or outdated client could bypass the UI.
+
+The backend must reject an early acceptance attempt.
+
+---
+
+# 8. BACKEND ACCEPTANCE VALIDATION
+
+Before allowing:
+
+PENDING → ACCEPTED
+
+verify:
+
+1. Order exists.
+2. Current status is PENDING.
+3. Order has not been cancelled.
+4. Cancellation deadline has passed.
+5. Student account is valid.
+6. Admin is authorized for that cafe.
 
 Conceptually:
 
-pickupDeadline =
-readyAt + configured pickup duration
+if status != PENDING:
+    reject
 
-For example:
+if currentServerTime < cancellationDeadline:
+    reject
 
-readyAt = 12:00
+if status == CANCELLED:
+    reject
 
-pickup duration = 20 minutes
+Otherwise:
 
-pickupDeadline = 12:20
+PENDING → ACCEPTED
 
-Do not hard-code arbitrary values into multiple files.
+The server must perform the authoritative time comparison.
 
-Create one configurable source for the pickup duration.
+---
+
+# 9. STUDENT CANCELLATION
+
+The student should see:
+
+"Cancel order"
+
+during the cancellation window.
+
+The UI should display something similar to:
+
+Cancel order
+01:42 remaining
+
+The exact design should follow the existing CampusBite UI.
+
+Do not redesign unrelated screens.
+
+---
+
+# 10. CANCELLATION BUTTON
+
+The cancel button should:
+
+1. Check that the user owns the order.
+2. Request the backend cancellation operation.
+3. Backend verifies the order is still cancellable.
+4. Backend verifies the cancellation deadline.
+5. Backend verifies current status is PENDING.
+6. Backend changes status to CANCELLED.
+7. Backend records cancellation metadata.
+8. Flutter updates the UI.
+
+Do not let the Flutter client directly set:
+
+status = CANCELLED
+
+unless the existing security architecture explicitly supports a secure conditional update.
+
+Prefer a server-side transaction/callable operation.
+
+---
+
+# 11. CANCELLATION AUTHORIZATION
+
+A student may cancel ONLY their own order.
+
+The backend must verify:
+
+request.auth.uid == order.studentId
+
+or whatever field the existing architecture uses.
+
+Student A must never be able to cancel Student B's order.
+
+---
+
+# 12. ATOMIC CANCELLATION
+
+Cancellation must be atomic.
 
 Example:
 
-pickupDurationMinutes
+Student presses Cancel
 
-However, do not implement cafe-specific configuration yet unless the existing architecture already supports it.
+while at the same time:
 
-Use the simplest production-safe approach compatible with the existing order system.
+Cafe presses Accept.
 
----
+Possible race:
 
-# STEP 8 — DO NOT TRUST THE CLIENT CLOCK
+Student:
+PENDING → CANCELLED
 
-The Flutter UI may display the countdown using the device clock for visual purposes.
+Cafe:
+PENDING → ACCEPTED
 
-However:
+The system must never produce an inconsistent result.
 
-The client countdown is NOT authoritative.
+Only one transition may succeed.
 
-The backend must determine whether the deadline has actually passed.
+Use a Firestore transaction or another authoritative backend mechanism.
 
-Never implement:
-
-if (DateTime.now() > pickupDeadline) {
-    markNoShow();
-}
-
-as the sole mechanism.
-
-The student's phone clock can be incorrect or manipulated.
-
-The countdown is a UI feature.
-
-The backend timestamp is the source of truth.
+The order's current state must be checked inside the transaction.
 
 ---
 
-# STEP 9 — NO-SHOW PROCESSING FOUNDATION
+# 13. CANCELLATION DEADLINE
 
-Create the backend-ready mechanism required to transition:
+The cancellation operation must verify the authoritative server time.
 
-READY → NO_SHOW
+Conceptually:
 
-SCOPE DECISION — scheduled expiry processing IS part of Phase A.
+if currentTime <= cancellationDeadline:
+    allow cancellation
 
-The scheduled processor already exists in production (`processExpiredPickups`, which runs every 5 minutes) and was in service before this phase. Phase A does not build a scheduler from scratch; it hardens and validates the existing one.
+else:
+    reject cancellation
 
-STEP 18 Tests 4–7 and 10, and the STEP 23 validation items "NO_SHOW processing is idempotent" / "COLLECTED cannot become NO_SHOW", are only satisfiable by the real scheduled processor — so the scheduler must remain in Phase A scope.
+If the deadline has passed:
 
-Current phase: Phase A — NO-SHOW FOUNDATION (stop after Phase A; do not proceed to Phase B).
+The student should receive:
 
-Affected files:
+"Cancellation window has expired."
 
-- functions/index.js — processExpiredPickups + processExpiredOrder
-- firestore.rules — order update/transition guards
-- test/no_show_foundation_test.dart and functions/test/no_show_integration.test.js
-
-Regression risk: the processor is already deployed, so the only risk is behavioural drift during hardening; mitigated by the idempotent transaction guards and the emulator integration suite.
-
-Deferred to later phases (see STEP 22): reliability scores, restrictions, cooldowns, reliability notifications, dashboards.
-
-The transition must verify:
-
-1. Order exists.
-2. Order is currently READY.
-3. Pickup deadline exists.
-4. Pickup deadline has passed.
-5. Order has not already been collected.
-6. Order has not already been marked NO_SHOW.
-
-If any condition fails:
-
-Do nothing.
-
-The operation must be idempotent.
-
-Running it twice must not create two no-show events.
+Do not silently cancel the order after the deadline.
 
 ---
 
-# STEP 10 — IDEMPOTENCY
-
-This is mandatory.
-
-Suppose the no-show processor runs twice.
-
-First execution:
-
-READY → NO_SHOW
-
-Second execution:
-
-NO_SHOW → NO_SHOW
-
-The second execution must have no additional effect.
-
-It must NOT:
-
-- create another no-show
-- increment a counter
-- send duplicate notifications
-- update reliability twice
-- create duplicate audit records
-
-Reliability calculations and notifications will be implemented later.
-
----
-
-# STEP 11 — COLLECTED MUST ALWAYS WIN
-
-Before marking an order NO_SHOW, verify the current server-side order state.
+# 14. EXACT TWO-MINUTE BEHAVIOR
 
 Example:
 
-Processor starts:
+Order created:
 
-READY
+10:00:00
 
-Student collects order:
+Cancellation deadline:
 
-COLLECTED
+10:02:00
 
-Processor attempts:
+At:
+
+10:01:59
+
+Cancellation:
+
+ALLOWED
+
+At:
+
+10:02:00+
+
+Cancellation:
+
+REJECTED
+
+Use a consistent boundary rule.
+
+Prefer:
+
+currentTime < cancellationDeadline
+
+for the cancellable interval.
+
+Document this decision in the code.
+
+---
+
+# 15. APP CLOSE / REOPEN
+
+The cancellation window must survive:
+
+- app closing
+- app restart
+- phone restart
+- navigation away from order screen
+- switching screens
+- temporary network loss
+
+When the student reopens the order:
+
+Read:
+
+status
+createdAt
+cancellationDeadline
+
+Then calculate the remaining UI time.
+
+Do NOT start a new two-minute timer every time the screen opens.
+
+The deadline comes from Firestore.
+
+---
+
+# 16. NETWORK LOSS
+
+If the user presses Cancel while offline:
+
+Do not show:
+
+"Order cancelled"
+
+unless the cancellation was actually confirmed by the backend.
+
+Instead show an appropriate error such as:
+
+"Unable to cancel the order. Check your connection and try again."
+
+When the network returns, the application should refresh the authoritative order state.
+
+---
+
+# 17. CANCELLATION AND RELIABILITY
+
+This is critical.
+
+A CANCELLED order must NOT count as:
 
 NO_SHOW
 
-The processor must detect:
+A CANCELLED order must NOT count as:
 
-current status = COLLECTED
+COLLECTED
 
-and abort the no-show transition.
+A CANCELLED order must NOT increase:
 
-Never overwrite:
+eligibleOrders
 
-COLLECTED → NO_SHOW
+noShowOrders
 
----
+collectedOrders
 
-# STEP 12 — FIRESTORE WRITE STRATEGY
+A cancelled order must be completely excluded from Pickup Reliability calculations.
 
-Keep Firestore operations minimal.
+The reliability system should only process:
 
-Do not perform unnecessary reads.
+COLLECTED
 
-Prefer a transaction or another atomic server-side mechanism where appropriate.
+and:
 
-The no-show operation should not:
+NO_SHOW
 
-- read the entire user's order history
-- calculate reliability
-- update the user profile
-- write strike information
-- generate analytics documents
-
-Those belong to later phases.
-
-For Phase A, only update the affected order.
+terminal pickup outcomes.
 
 ---
 
-# STEP 13 — ORDER DATA AFTER NO-SHOW
+# 18. CANCELLATION AND NO-SHOW ENGINE
 
-When an order is legitimately marked NO_SHOW:
+The NO_SHOW processor must ignore:
 
-update only the necessary fields.
+CANCELLED
 
-For example:
+orders.
 
-status: NO_SHOW
-noShowAt: server timestamp
+It must only process orders that are:
 
-Preserve:
+READY
 
-orderId
-studentId
-items
-totalAmount
-cafe
+and whose:
+
+pickupDeadline
+
+has expired.
+
+A cancelled order must never become NO_SHOW.
+
+---
+
+# 19. CANCELLATION AND NOTIFICATIONS
+
+Review the existing notification system.
+
+When cancellation succeeds, optionally create/send the appropriate order cancellation notification if the existing product notification design requires it.
+
+Do not introduce duplicate notifications.
+
+Do not implement a new notification architecture.
+
+If the independent:
+
+notifications
+
+collection already exists, use the existing architecture.
+
+---
+
+# 20. ADMIN UI
+
+During the cancellation window, the admin should see:
+
+"PENDING — Cancellation window"
+
+rather than treating it as a normal accepted order.
+
+The Accept action should either:
+
+- be disabled until the window expires, or
+- display that the order cannot yet be accepted.
+
+However, UI enforcement is NOT sufficient.
+
+The backend must enforce the rule.
+
+After the deadline expires:
+
+Accept becomes available.
+
+---
+
+# 21. ADMIN RACE CONDITION
+
+Consider:
+
+Order placed at 12:00.
+
+Deadline = 12:02.
+
+At 12:01:30:
+
+Admin tries Accept.
+
+Expected:
+
+REJECTED.
+
+At 12:02:01:
+
+Admin tries Accept.
+
+Expected:
+
+ALLOWED.
+
+At 12:01:45:
+
+Student cancels.
+
+At 12:01:50:
+
+Admin tries Accept.
+
+Expected:
+
+REJECTED because status is already CANCELLED.
+
+---
+
+# 22. CANCELLATION REASON
+
+Allow an optional cancellation reason.
+
+Recommended initial choices:
+
+- Changed my mind
+- Ordered by mistake
+- Need to change my order
+- Ordered the wrong item
+- Other
+
+Do not require free-form text initially unless the product requires it.
+
+If "Other" is supported, limit the length.
+
+Example:
+
+max 200 characters.
+
+Do not allow arbitrary massive strings.
+
+---
+
+# 23. ORDER ITEM MODIFICATION
+
+Do NOT implement editing of an existing order during the cancellation window unless explicitly required.
+
+The safest initial implementation is:
+
+Cancel existing order
++
+Create a new order
+
+if the student wants a different order.
+
+This prevents partial order modifications and pricing inconsistencies.
+
+---
+
+# 24. CART BEHAVIOR
+
+After an order is successfully placed:
+
+Do not automatically restore the cancelled order's items into the cart unless the existing UX explicitly requires this.
+
+If implementing "Reorder" later, handle it separately.
+
+For now:
+
+Order cancellation should only change the order state.
+
+---
+
+# 25. PAYMENT COMPATIBILITY
+
+If the app currently has no payment integration:
+
+Do not implement payment logic.
+
+If payment functionality exists:
+
+Cancellation must be designed so the payment state is not incorrectly represented.
+
+Never mark a payment as refunded unless the backend has actually performed the refund.
+
+Do not invent refund behavior.
+
+---
+
+# 26. SECURITY RULES
+
+Students must be able to:
+
+READ their own orders.
+
+They must NOT be able to arbitrarily modify:
+
+status
 createdAt
-readyAt
-pickupDeadline
-
-Do not delete the order.
-
-Historical order information is important for later reliability calculations and cafe analytics.
-
----
-
-# STEP 14 — SECURITY RULES
-
-Review Firestore rules.
-
-Students must NOT be able to arbitrarily set:
-
-status = NO_SHOW
-
-Students must NOT be able to modify:
-
-readyAt
-pickupDeadline
-noShowAt
-collectedAt
-
-unless the existing architecture explicitly requires a safe student-owned operation.
-
-The backend/admin workflow must control authoritative status transitions.
-
-Students should still be able to READ their own order.
-
-Admins should be able to READ orders belonging to cafes they are authorized to manage.
+cancellationDeadline
+cancelledAt
+cancelledBy
 
 Do not use:
 
 allow read, write: if request.auth != null;
 
-for order documents.
+for orders.
 
-Do not weaken existing security rules.
+Admin writes must be restricted according to cafe/admin authorization.
 
----
-
-# STEP 15 — ADMIN STATUS TRANSITIONS
-
-Review the admin application.
-
-Admins should continue to be able to perform the existing legitimate transitions:
-
-ACCEPTED
-PREPARING
-READY
-COLLECTED
-
-Do not remove existing functionality.
-
-For NO_SHOW:
-
-Do not add arbitrary "Mark No-show" functionality unless the existing product design already requires it.
-
-Phase A should establish the backend foundation.
-
-The automatic processing engine is part of Phase A (see STEP 9); only the admin "Mark No-show" UI decision is deferred to later phases.
+Backend operations should perform authoritative state transitions.
 
 ---
 
-# STEP 16 — DATA CONSISTENCY
+# 27. FIRESTORE COST OPTIMIZATION
 
-Ensure these states cannot create contradictory data.
+Do not implement:
 
-Valid examples:
-
-READY
-readyAt = timestamp
-pickupDeadline = timestamp
-collectedAt = null
-noShowAt = null
-
-COLLECTED
-readyAt = timestamp
-pickupDeadline = timestamp
-collectedAt = timestamp
-noShowAt = null
-
-NO_SHOW
-readyAt = timestamp
-pickupDeadline = timestamp
-collectedAt = null
-noShowAt = timestamp
-
-Invalid:
-
-NO_SHOW + collectedAt != null
-
-COLLECTED + noShowAt != null
-
-READY + collectedAt != null
-
-READY + noShowAt != null
-
-If the existing database contains legacy inconsistent data, do not silently rewrite it.
-
-Report it.
-
----
-
-# STEP 17 — TIMEZONE HANDLING
-
-Store timestamps using Firestore Timestamp / UTC-compatible server timestamps.
-
-Do not store local formatted strings as authoritative timestamps.
-
-The UI may display local Tanzania time or the user's local time.
-
-The database should remain timezone-safe.
-
-Do not compare formatted date strings.
-
----
-
-# STEP 18 — TESTING
-
-Create or update tests for the following.
-
-## Test 1 — Ready
-
-Order changes:
-
-PREPARING → READY
-
-Verify:
-
-readyAt exists.
-
----
-
-## Test 2 — Pickup deadline
-
-Verify:
-
-pickupDeadline exists.
-
-Verify it is based on the authoritative ready timestamp.
-
----
-
-## Test 3 — Successful collection
-
-READY → COLLECTED
-
-Verify:
-
-collectedAt exists.
-
-noShowAt remains null.
-
----
-
-## Test 4 — Valid no-show
-
-READY
-
-+
-
-deadline passed
-
-+
-
-not collected
-
-↓
-
-NO_SHOW
-
-Verify:
-
-noShowAt exists.
-
----
-
-## Test 5 — Not yet expired
-
-READY
-
-+
-
-deadline has not passed
-
-↓
-
-must remain READY.
-
----
-
-## Test 6 — Already collected
-
-COLLECTED
-
-+
-
-deadline passed
-
-↓
-
-must remain COLLECTED.
-
----
-
-## Test 7 — Already no-show
-
-NO_SHOW
-
-↓
-
-second processing attempt must do nothing.
-
----
-
-## Test 8 — Student manipulation
-
-Attempt to modify:
-
-status = NO_SHOW
-
-from the student client.
-
-Expected:
-
-PERMISSION_DENIED.
-
----
-
-## Test 9 — Timestamp manipulation
-
-Attempt to modify:
-
-pickupDeadline
-
-from the student client.
-
-Expected:
-
-PERMISSION_DENIED.
-
----
-
-## Test 10 — Concurrent collection/no-show
-
-Simulate:
-
-student collection
-
-and
-
-no-show processing
-
-occurring near the same time.
-
-Verify that the final database state cannot become contradictory.
-
----
-
-# STEP 19 — UI
-
-Do NOT implement the new reliability UI in Phase A.
-
-Only make the minimum UI changes necessary to correctly display:
-
-NO_SHOW
-
-if the application currently displays order statuses.
-
-Use the existing visual design system.
-
-Do not redesign the account screen.
-
-Do not add reliability cards.
-
-Do not add scores.
-
-Do not add warnings.
-
-Those belong to later phases.
-
----
-
-# STEP 20 — FIRESTORE COST REQUIREMENTS
-
-This phase must not introduce:
-
-- polling loops
-- repeated Firestore reads
 - per-second Firestore writes
-- client-side countdown writes
-- reliability recalculation on every screen open
-- background listeners that are not necessary
+- per-second countdown updates
+- polling every second
+- repeated order reads
+- periodic cancellation checks from every student device
 
-The countdown must remain a local UI calculation based on the stored authoritative timestamps.
-
-Firestore should only be accessed when the order state actually needs to change.
-
----
-
-# STEP 21 — LOGGING
-
-Add useful development logging.
+The Flutter countdown must be local.
 
 Example:
 
-[OrderLifecycle] Order marked READY
+Firestore:
 
-[OrderLifecycle] Pickup deadline created
+createdAt
+cancellationDeadline
 
-[OrderLifecycle] Order marked COLLECTED
+Flutter:
 
-[OrderLifecycle] Order eligible for NO_SHOW
+remaining =
+cancellationDeadline - current local time
 
-[OrderLifecycle] Order marked NO_SHOW
+The countdown is UI only.
 
-Do not log:
-
-- student email
-- phone number
-- exact location
-- authentication tokens
-- notification tokens
-
-Avoid excessive production logging.
+Only actual cancellation or status transitions should write to Firestore.
 
 ---
 
-# STEP 22 — DO NOT IMPLEMENT FUTURE PHASES
+# 28. SERVER-SIDE DEADLINE ENFORCEMENT
 
-Do NOT implement:
+Do not create a Cloud Function that wakes up every second for every order.
 
-❌ Reliability score
+That would be unnecessarily expensive.
 
-❌ Collection ratio
+The system only needs to enforce:
 
-❌ Recent-order weighting
+PENDING → ACCEPTED
 
-❌ Restrictions
+and:
 
-❌ Ordering cooldown
+PENDING → CANCELLED
 
-❌ Student reliability dashboard
+using the authoritative deadline.
 
-❌ Reliability notifications
+The actual automatic transition to another state is unnecessary at this stage.
 
-❌ Admin reliability dashboard
+After the cancellation deadline expires, the order can simply remain:
 
-❌ Food rescue system
+PENDING
 
-❌ Food waste analytics
-
-❌ Rewards
-
-❌ Recovery algorithm
-
-❌ Automatic suspension
-
-❌ Strikes
-
-These will be implemented separately.
+until an authorized cafe accepts it.
 
 ---
 
-# STEP 23 — FINAL VALIDATION
+# 29. EXPIRED PENDING ORDERS
 
-Before declaring Phase A complete:
+Do not automatically mark an expired PENDING order as:
+
+NO_SHOW.
+
+NO_SHOW only applies after the order becomes:
+
+READY
+
+and the pickup deadline expires.
+
+An order that remains PENDING after its cancellation window is simply:
+
+PENDING with cancellationExpired = true
+
+or equivalent derived state.
+
+Do not create a new terminal failure state unless the product explicitly requires it.
+
+---
+
+# 30. OPTIONAL DERIVED UI STATE
+
+Do not unnecessarily store:
+
+cancellationWindowActive
+
+in Firestore.
+
+It can be derived from:
+
+status
+createdAt
+cancellationDeadline
+current time
+
+For example:
+
+isCancellable =
+status == PENDING &&
+currentTime < cancellationDeadline
+
+This avoids unnecessary writes.
+
+---
+
+# 31. ORDER STATUS HISTORY
+
+If the existing system already has an order status history mechanism, add:
+
+CANCELLED
+
+to it.
+
+If no history mechanism exists, do not create a complex audit architecture solely for this phase.
+
+At minimum preserve:
+
+cancelledAt
+cancelledBy
+cancellationReason
+
+for the cancelled order.
+
+---
+
+# 32. AUDITABILITY
+
+A cancellation should be traceable.
+
+Store:
+
+cancelledAt
+cancelledBy
+cancellationReason
+
+Use:
+
+cancelledBy = student UID
+
+for student cancellation.
+
+Do not store unnecessary personal information.
+
+---
+
+# 33. TESTING
+
+Create automated tests for:
+
+### Test 1
+Order created.
+
+Expected:
+
+PENDING
+
+Cancellation available.
+
+---
+
+### Test 2
+Cancel after 30 seconds.
+
+Expected:
+
+CANCELLED.
+
+---
+
+### Test 3
+Cancel after 1 minute 59 seconds.
+
+Expected:
+
+CANCELLED.
+
+---
+
+### Test 4
+Cancel after 2 minutes.
+
+Expected:
+
+REJECTED.
+
+---
+
+### Test 5
+Admin attempts Accept before 2 minutes.
+
+Expected:
+
+REJECTED.
+
+---
+
+### Test 6
+Admin accepts after 2 minutes.
+
+Expected:
+
+ACCEPTED.
+
+---
+
+### Test 7
+Student cancels while admin attempts Accept.
+
+Expected:
+
+Only one transition succeeds.
+
+Final state must be either:
+
+CANCELLED
+
+or:
+
+ACCEPTED
+
+Never both.
+
+---
+
+### Test 8
+Try to cancel an ACCEPTED order.
+
+Expected:
+
+REJECTED.
+
+---
+
+### Test 9
+Try to cancel a PREPARING order.
+
+Expected:
+
+REJECTED.
+
+---
+
+### Test 10
+Try to cancel a READY order.
+
+Expected:
+
+REJECTED.
+
+---
+
+### Test 11
+Try to cancel a COLLECTED order.
+
+Expected:
+
+REJECTED.
+
+---
+
+### Test 12
+Try to cancel a NO_SHOW order.
+
+Expected:
+
+REJECTED.
+
+---
+
+### Test 13
+Cancelled order reaches pickup deadline.
+
+Expected:
+
+It remains CANCELLED.
+
+It must NOT become NO_SHOW.
+
+---
+
+### Test 14
+Cancelled order enters reliability processor.
+
+Expected:
+
+Ignored.
+
+---
+
+### Test 15
+Student attempts to cancel another student's order.
+
+Expected:
+
+PERMISSION_DENIED.
+
+---
+
+### Test 16
+Student attempts to modify cancellationDeadline.
+
+Expected:
+
+PERMISSION_DENIED.
+
+---
+
+### Test 17
+Student closes app and reopens it during cancellation window.
+
+Expected:
+
+Remaining cancellation time is calculated from the stored deadline.
+
+---
+
+### Test 18
+Student loses network.
+
+Expected:
+
+No false cancellation confirmation.
+
+---
+
+# 34. UI TESTING
 
 Verify:
 
-✓ Old strike engine remains removed.
+- Countdown displays correctly.
+- Countdown reaches zero.
+- Cancel button disappears/disables after expiry.
+- Order status updates after successful cancellation.
+- Error state appears when cancellation fails.
+- App restart preserves the correct remaining time.
+- Admin cannot accept during the window.
+- Admin can accept after the window.
 
-✓ Order lifecycle still works.
+---
 
-✓ READY remains functional.
+# 35. PERFORMANCE AUDIT
 
-✓ COLLECTED remains functional.
+Before completing this phase, inspect all new Firestore operations.
 
-✓ NO_SHOW exists as a distinct state.
+For every operation document:
 
-✓ Ready timestamp is authoritative.
+WHY is this read required?
 
-✓ Pickup deadline is authoritative.
+WHY is this write required?
 
-✓ Client cannot manipulate no-show state.
+Remove unnecessary operations.
 
-✓ Client cannot manipulate authoritative timestamps.
+The target should be:
 
-✓ NO_SHOW processing is idempotent.
+Order creation:
+1 order write
 
-✓ COLLECTED cannot become NO_SHOW.
+Cancellation:
+1 authoritative order update
 
-✓ Historical order data remains preserved.
+Acceptance:
+1 authoritative order update
 
-✓ No unnecessary Firestore reads/writes were introduced.
+Countdown:
+0 Firestore writes
 
-✓ Existing student UI still works.
+Countdown refresh:
+0 Firestore writes
 
-✓ Existing admin UI still works.
+Reliability update:
+0 additional work for cancellation
 
-✓ Existing notifications are not broken.
+---
 
-✓ Existing order history remains compatible.
+# 36. BACKWARD COMPATIBILITY
+
+Do not break:
+
+- authentication
+- cart
+- checkout
+- student orders
+- admin orders
+- READY
+- COLLECTED
+- NO_SHOW
+- notifications
+- reliability system
+- Firestore security
+- existing order history
+
+Do not modify unrelated collections.
+
+---
+
+# 37. FINAL VALIDATION
+
+Phase B.1 is complete only when:
+
+✓ 2-minute cancellation window works.
+
+✓ Deadline is server-authoritative.
+
+✓ Student can cancel only their own pending order.
+
+✓ Cancellation is atomic.
+
+✓ Admin cannot accept during cancellation window.
+
+✓ Admin can accept after cancellation window expires.
+
+✓ Cancelled orders cannot later become ACCEPTED.
+
+✓ Cancelled orders cannot become PREPARING.
+
+✓ Cancelled orders cannot become READY.
+
+✓ Cancelled orders cannot become COLLECTED.
+
+✓ Cancelled orders cannot become NO_SHOW.
+
+✓ Cancelled orders do not affect reliability.
+
+✓ No per-second Firestore writes exist.
+
+✓ No polling loop has been introduced.
+
+✓ App restart preserves the cancellation window.
+
+✓ Network failures do not create false cancellation confirmations.
+
+✓ Security rules prevent unauthorized modification.
+
+✓ Existing order lifecycle remains functional.
+
+✓ Existing Phase A and Phase B functionality remains functional.
 
 ---
 
 # REQUIRED FINAL REPORT
 
-When finished, provide:
+When complete, report:
 
 1. Files inspected.
-
 2. Files modified.
-
 3. Files created.
+4. Existing order lifecycle.
+5. Cancellation implementation.
+6. Cancellation deadline implementation.
+7. Backend authorization mechanism.
+8. Race-condition handling.
+9. Firestore security changes.
+10. Firestore reads introduced.
+11. Firestore writes introduced.
+12. Reliability-system integration.
+13. Tests performed.
+14. Security tests performed.
+15. Performance/cost audit.
+16. Any unresolved issues.
 
-4. Existing order lifecycle discovered.
+STOP AFTER THIS PHASE.
 
-5. Existing Firestore order structure.
-
-6. Changes made to OrderStatus.
-
-7. Changes made to order timestamps.
-
-8. Changes made to Firestore rules.
-
-9. Backend/no-show transition mechanism.
-
-10. Firestore read/write impact.
-
-11. Tests performed.
-
-12. Any legacy strike-engine code discovered.
-
-13. Any database inconsistencies discovered.
-
-14. Any risks or remaining work.
-
-IMPORTANT:
-
-Do not proceed to Phase B.
-
-Stop after Phase A and wait for further instructions.
+Do not implement account restrictions, suspension, banning, reliability penalties, or additional automatic punishment.
 
 ---
 
 # Phase Completion Criteria
 
-Phase A is complete when:
+Phase B is complete when:
 
 * The new features works well with past features.
 * App runs successfully.

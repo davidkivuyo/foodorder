@@ -27,9 +27,14 @@ class LogoutConfirmationDialog extends StatelessWidget {
           onPressed: () => Navigator.of(context).pop(false),
           child: const Text('No'),
         ),
-        TextButton(
+
+        ElevatedButton(
           onPressed: () => Navigator.of(context).pop(true),
-          child: const Text('Yes', style: TextStyle(color: Colors.red)),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.red,
+            foregroundColor: Colors.white,
+          ),
+          child: const Text('Yes'),
         ),
       ],
     );
