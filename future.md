@@ -1,36 +1,5 @@
 # future implementation plans
 
-# TODOS
-1. REMOVE THE STRIKING ENGINE.
-* Instead of percentage put words from encouraging to reminders.
-* THE RELIABILITY SCORE- The order banning will be calculated based on the number of times they missed their food and the number of times they collected their food on time. The more they collect on time, the more reliable they are and the less likely they will be banned from ordering.
-* WHEN THEY COLLECT ON TIME, A POP UP WILL SHOW UP AND CONGRATS THEM. "KEEP UP".
-
-Order Ready
-      │
-      ▼
-Send Notification
-      │
-      ▼
-Pickup Countdown
-      │
-      ▼
-Reminder Notifications
-      │
-      ▼
-Grace Period
-      │
-      ▼
-Collected? ─────────► Yes → Increase reliability (up to 100)
-      │
-      ▼ No
-Mark as Expired
-      │
-      ├── Lower reliability score
-      ├── Notify student
-      ├── Notify cafe
-      └── Allow cafe to mark food as rescued, donated, discounted, or discarded
-
                   ORDER
                     │
                     ▼
@@ -62,7 +31,9 @@ Mark as Expired
         ▼          ▼          ▼
      Normal     Reminder   Limited orders
 
-     
+# TODOS
+1. add order cancellation and give a 2min cacellation window before placing the order.
+
 2. migrate CI to blacksmith- "runs-on: blacksmith-4vcpu-ubuntu-2404" when you start an organization on Github
 
 3. modify account screen to add app appearance settings, your ratings and meal plans.
