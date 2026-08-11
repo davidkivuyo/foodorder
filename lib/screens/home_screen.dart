@@ -148,7 +148,7 @@ class HomeScreen extends StatelessWidget {
                       height:
                           280, // Height extending behind topbar, search, and banner
                       decoration: const BoxDecoration(
-                        color: Color(0xFFE85D04), // Accent orange color
+                        color: Color.fromARGB(255, 230, 146, 3), // Accent orange color
                         borderRadius: BorderRadius.vertical(
                           bottom: Radius.circular(28),
                         ),

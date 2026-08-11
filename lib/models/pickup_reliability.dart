@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 /// Phase B.2 — pickup reliability status classification.
 /// Informational only; no restrictions are attached to any status.
 enum PickupReliabilityStatus {
@@ -24,43 +26,28 @@ enum PickupReliabilityStatus {
   critical;
 
   static PickupReliabilityStatus fromString(String value) {
-    switch (value) {
-      case 'NEW':
-        return PickupReliabilityStatus.newUser;
-      case 'INSUFFICIENT_HISTORY':
-        return PickupReliabilityStatus.insufficientHistory;
-      case 'EXCELLENT':
-        return PickupReliabilityStatus.excellent;
-      case 'GOOD':
-        return PickupReliabilityStatus.good;
-      case 'NEEDS_IMPROVEMENT':
-        return PickupReliabilityStatus.needsImprovement;
-      case 'POOR':
-        return PickupReliabilityStatus.poor;
-      case 'CRITICAL':
-        return PickupReliabilityStatus.critical;
-      default:
-        return PickupReliabilityStatus.newUser;
-    }
+    return switch (value) {
+      'NEW' => PickupReliabilityStatus.newUser,
+      'INSUFFICIENT_HISTORY' => PickupReliabilityStatus.insufficientHistory,
+      'EXCELLENT' => PickupReliabilityStatus.excellent,
+      'GOOD' => PickupReliabilityStatus.good,
+      'NEEDS_IMPROVEMENT' => PickupReliabilityStatus.needsImprovement,
+      'POOR' => PickupReliabilityStatus.poor,
+      'CRITICAL' => PickupReliabilityStatus.critical,
+      _ => PickupReliabilityStatus.newUser,
+    };
   }
 
   String toShortString() {
-    switch (this) {
-      case PickupReliabilityStatus.newUser:
-        return 'NEW';
-      case PickupReliabilityStatus.insufficientHistory:
-        return 'INSUFFICIENT_HISTORY';
-      case PickupReliabilityStatus.excellent:
-        return 'EXCELLENT';
-      case PickupReliabilityStatus.good:
-        return 'GOOD';
-      case PickupReliabilityStatus.needsImprovement:
-        return 'NEEDS_IMPROVEMENT';
-      case PickupReliabilityStatus.poor:
-        return 'POOR';
-      case PickupReliabilityStatus.critical:
-        return 'CRITICAL';
-    }
+    return switch (this) {
+      PickupReliabilityStatus.newUser => 'NEW',
+      PickupReliabilityStatus.insufficientHistory => 'INSUFFICIENT_HISTORY',
+      PickupReliabilityStatus.excellent => 'EXCELLENT',
+      PickupReliabilityStatus.good => 'GOOD',
+      PickupReliabilityStatus.needsImprovement => 'NEEDS_IMPROVEMENT',
+      PickupReliabilityStatus.poor => 'POOR',
+      PickupReliabilityStatus.critical => 'CRITICAL',
+    };
   }
 }
 
@@ -77,14 +64,14 @@ class PickupReliabilityHistoryEntry {
   });
 
   factory PickupReliabilityHistoryEntry.fromMap(Map<String, dynamic> map) {
+    // Explicit type checks only — never a bare catch (which would also
+    // swallow Error subtypes and mask defects). Firestore timestamps arrive
+    // as Timestamp objects; anything else is not a valid timestamp.
     DateTime? parseTimestamp(dynamic value) {
       if (value == null) return null;
       if (value is DateTime) return value;
-      try {
-        return (value as dynamic).toDate() as DateTime;
-      } catch (_) {
-        return null;
-      }
+      if (value is Timestamp) return value.toDate();
+      return null;
     }
 
     return PickupReliabilityHistoryEntry(
@@ -127,21 +114,21 @@ class PickupReliabilitySummary {
     this.reliabilityScore = 100,
     this.status = PickupReliabilityStatus.newUser,
     this.updatedAt,
-    this.recentPickupHistory = const [],
+    this.recentPickupHistory = const <PickupReliabilityHistoryEntry>[],
   });
 
   /// True when the student has no eligible pickup history yet.
   bool get isNewUser => status == PickupReliabilityStatus.newUser;
 
   factory PickupReliabilitySummary.fromMap(Map<String, dynamic> map) {
+    // Explicit type checks only — never a bare catch (which would also
+    // swallow Error subtypes and mask defects). Firestore timestamps arrive
+    // as Timestamp objects; anything else is not a valid timestamp.
     DateTime? parseTimestamp(dynamic value) {
       if (value == null) return null;
       if (value is DateTime) return value;
-      try {
-        return (value as dynamic).toDate() as DateTime;
-      } catch (_) {
-        return null;
-      }
+      if (value is Timestamp) return value.toDate();
+      return null;
     }
 
     final history = map['recentPickupHistory'];
@@ -161,12 +148,19 @@ class PickupReliabilitySummary {
         map['status'] as String? ?? 'NEW',
       ),
       updatedAt: parseTimestamp(map['updatedAt']),
+      // Normalise each entry with Map<String, dynamic>.from() rather than a
+      // strict whereType<Map<String, dynamic>>() filter: Firestore-returned
+      // maps can carry a different runtime generic instantiation, and the
+      // strict check would silently drop valid entries. Non-Map entries are
+      // still skipped (fail closed for malformed data).
       recentPickupHistory: history is List
           ? history
-                .whereType<Map<String, dynamic>>()
-                .map(PickupReliabilityHistoryEntry.fromMap)
+                .whereType<Map>()
+                .map((e) => PickupReliabilityHistoryEntry.fromMap(
+                      Map<String, dynamic>.from(e),
+                    ))
                 .toList()
-          : const [],
+          : const <PickupReliabilityHistoryEntry>[],
     );
   }
 }

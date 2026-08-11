@@ -240,6 +240,47 @@ void main() {
       // Student-only routing in the push allowlist.
       expect(fn, contains('ORDER_CANCELLED: ["student"]'));
     });
+
+    test('foodIds backfill is transactional and never clobbers existing values',
+        () {
+      final backfillFn = fn.substring(
+        fn.indexOf('async function backfillOrderFoodIds('),
+        fn.indexOf('async function normalizeOrderPricing('),
+      );
+      // The presence check and the write happen atomically in one
+      // transaction with a fresh re-read of the order.
+      expect(backfillFn, contains('db.runTransaction'));
+      expect(backfillFn, contains('transaction.get(orderRef)'));
+      expect(backfillFn, contains('transaction.update(orderRef'));
+      // ANY existing foodIds value — populated, empty, or malformed —
+      // aborts the backfill; the field is never overwritten or
+      // reinterpreted.
+      expect(backfillFn, contains('data.foodIds !== undefined'));
+      // The check must not trust the caller-supplied snapshot's foodIds.
+      expect(backfillFn, isNot(contains('orderData.foodIds')));
+    });
+
+    test('normalizeOrderPricing holds the order instead of falling back to '
+        'client prices, and validates before persisting', () {
+      final pricingFn = fn.substring(
+        fn.indexOf('async function normalizeOrderPricing('),
+        fn.indexOf('// PHASE B.2 — PICKUP RELIABILITY ENGINE'),
+      );
+      // Missing food doc or failed lookup → hold (retriable throw).
+      expect(pricingFn, contains('throw new Error('));
+      expect(pricingFn, contains('!snap.exists'));
+      expect(pricingFn, contains('lookup failed — holding order'));
+      // The resolved menu price must be finite and the quantity a positive
+      // integer before the line contributes to the total.
+      expect(pricingFn, contains('Number.isFinite(unitPrice)'));
+      expect(pricingFn, contains('Number.isInteger(quantity)'));
+      expect(pricingFn, contains('quantity <= 0'));
+      // No fallback to the client-supplied price anywhere.
+      expect(
+        pricingFn,
+        isNot(contains('typeof item.price === "number"')),
+      );
+    });
   });
 
   group('OrderCancellationService — client contract', () {

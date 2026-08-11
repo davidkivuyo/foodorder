@@ -57,12 +57,53 @@ void main() {
       expect(favoriteFn, contains("!('pickupReliability' in changed)"));
     });
 
-    test('reliabilityProcessed is a protected order field', () {
+    test('favourite list elements are validated (non-empty strings ≤ 100)',
+        () {
+      final favoriteListFn = rules.substring(
+        rules.indexOf('function validFavoriteMenuList('),
+        rules.indexOf('function validFavoriteMenuUpdate()'),
+      );
+      // Element-level constraints: up to 5 entries, each a non-empty string
+      // of at most 100 characters (a food_items document ID), validated per
+      // known index because the rules language cannot iterate lists.
+      expect(favoriteListFn, contains('list.size() <= 5'));
+      expect(favoriteListFn, contains('list[0] is string'));
+      expect(favoriteListFn, contains('list[4] is string'));
+      expect(favoriteListFn, contains('list[0].size() > 0'));
+      expect(favoriteListFn, contains('list[0].size() <= 100'));
+      expect(favoriteListFn, contains('list.size() < 1'));
+      expect(favoriteListFn, contains('list.size() < 5'));
+      // validFavoriteMenuUpdate must delegate to the element validator.
+      final updateFn = rules.substring(
+        rules.indexOf('function validFavoriteMenuUpdate()'),
+        rules.indexOf('function validAdminStrikeUpdate()'),
+      );
+      expect(
+        updateFn,
+        contains('validFavoriteMenuList(request.resource.data.favoriteMenu)'),
+      );
+    });
+
+    test('reliabilityProcessed and reliabilityOutcome are protected order fields',
+        () {
       final protectedFn = rules.substring(
         rules.indexOf('function adminNotModifyingProtectedOrderFields()'),
         rules.indexOf('function canonicalOrderStatus(status)'),
       );
       expect(protectedFn, contains("!('reliabilityProcessed' in changed)"));
+      // The counted outcome is immutable: clients may not forge or change it.
+      expect(protectedFn, contains("!('reliabilityOutcome' in changed)"));
+    });
+
+    test('deferral/skip markers are protected order fields', () {
+      final protectedFn = rules.substring(
+        rules.indexOf('function adminNotModifyingProtectedOrderFields()'),
+        rules.indexOf('function canonicalOrderStatus(status)'),
+      );
+      expect(protectedFn, contains("!('reliabilityPending' in changed)"));
+      expect(protectedFn, contains("!('reliabilityPendingSince' in changed)"));
+      expect(protectedFn, contains("!('reliabilitySkippedReason' in changed)"));
+      expect(protectedFn, contains("!('reliabilitySkippedAt' in changed)"));
     });
 
     test('user read is owner-or-admin — a student can read their own summary',
@@ -91,6 +132,8 @@ void main() {
       expect(engineFn, contains('transaction.get(userRef)'));
       expect(engineFn, contains('transaction.update(userRef'));
       expect(engineFn, contains('reliabilityProcessed'));
+      // The counted outcome is persisted immutably alongside the marker.
+      expect(engineFn, contains('reliabilityOutcome: outcome'));
       // No collection-wide order query inside the engine.
       expect(engineFn, isNot(contains('.collection("orders").where')));
     });
@@ -98,6 +141,76 @@ void main() {
     test('idempotency marker prevents double counting (Test 7)', () {
       expect(fn, contains('orderData.reliabilityProcessed === true'));
       expect(fn, contains('e.orderId !== orderId'));
+    });
+
+    test('a missing user doc defers the event instead of dropping it', () {
+      final engineFn = fn.substring(
+        fn.indexOf('async function processReliabilityEvent('),
+        fn.indexOf('// FUNCTION 2: onOrderStatusChanged'),
+      );
+      // The old permanent-drop path (marking the order processed when the
+      // user doc is missing) must be gone.
+      expect(engineFn, isNot(contains('marking order')));
+      // The counting transaction returns a deferral sentinel; the deferral
+      // writes its pending marker in its OWN transaction, so the marker
+      // survives the retriable throw.
+      expect(engineFn, contains('DEFER_RELIABILITY_EVENT'));
+      expect(engineFn, contains('deferReliabilityEvent(orderRef)'));
+      // The give-up is explicit and auditable (reason + timestamp).
+      expect(engineFn, contains('reliabilitySkippedReason'));
+      expect(engineFn, contains('MISSING_USER'));
+      expect(engineFn, contains('reliabilitySkippedAt'));
+      expect(fn, contains('RELIABILITY_MISSING_USER_RETRY_MS'));
+    });
+
+    test('the deferral re-reads order + user in a transaction and re-checks '
+        'before writing skip metadata', () {
+      final deferFn = fn.substring(
+        fn.indexOf('async function deferReliabilityEvent('),
+        fn.indexOf('// FUNCTION 2: onOrderStatusChanged'),
+      );
+      // Order + user re-read and the marker writes happen in one
+      // transaction, so a concurrent count or restored user doc cannot be
+      // overwritten by a stale skip.
+      expect(deferFn, contains('db.runTransaction'));
+      expect(deferFn, contains('transaction.get(orderRef)'));
+      expect(deferFn, contains('db.collection("users").doc(studentId)'));
+      // No changes when the event was already counted by a concurrent
+      // delivery or the user document now exists.
+      expect(deferFn, contains('orderData.reliabilityProcessed === true'));
+      expect(deferFn, contains('userSnapshot.exists'));
+      expect(deferFn, contains('return "countNow"'));
+      // The skip metadata write is inside the transaction, guarded by the
+      // re-reads above.
+      expect(deferFn, contains('transaction.update(orderRef,'));
+      expect(deferFn, contains('reliabilitySkippedReason: "MISSING_USER"'));
+      // The retriable 'deferred' contract the reconciler classifies on is
+      // preserved for both the pending and the countNow paths, and countNow
+      // must never return false (that would drop the race-window event).
+      expect(deferFn, contains('result === "defer" || result === "countNow"'));
+      expect(deferFn, contains('— deferred'));
+    });
+
+    test('successful counting clears stale deferral/skip markers', () {
+      final engineFn = fn.substring(
+        fn.indexOf('async function processReliabilityEvent('),
+        fn.indexOf('// FUNCTION 2: onOrderStatusChanged'),
+      );
+      expect(engineFn, contains('reliabilityPending: admin.firestore.FieldValue.delete()'));
+      expect(engineFn, contains('reliabilitySkippedReason: admin.firestore.FieldValue.delete()'));
+    });
+
+    test('the scheduled processor reconciles deferred events (never stranded)',
+        () {
+      // Cloud Functions redelivers a failed trigger only for a bounded
+      // window, so the scheduled processor must also reconcile
+      // reliabilityPending orders (count when the user doc appears, give up
+      // explicitly after the window) — otherwise an event could be stranded
+      // forever.
+      expect(fn, contains('async function reconcilePendingReliabilityOrders()'));
+      expect(fn, contains('.where("reliabilityPending", "==", true)'));
+      expect(fn, contains('reconcilePendingReliabilityOrders()'));
+      expect(fn, contains('RELIABILITY_MISSING_USER_RETRY_MS'));
     });
 
     test('the recent window is capped at 10 (Tests 5 & 12)', () {
@@ -140,6 +253,16 @@ void main() {
         () {
       expect(fn, contains('processReliabilityEvent(event.data.after.ref, "COLLECTED")'));
       expect(fn, contains('processReliabilityEvent(event.data.after.ref, "NO_SHOW")'));
+    });
+
+    test('only genuine READY → terminal transitions count (never-READY orders '
+        'never affect reliability)', () {
+      // A terminal event whose before-status is not "ready" (e.g. an order
+      // jumping straight from pending to collected) must never reach the
+      // reliability engine — this is the guard the pending→terminal
+      // regression tests rely on.
+      expect(fn, contains('const beforeStatus ='));
+      expect(fn, contains('if (beforeStatus === "ready") {'));
     });
 
     test('the old strike engine remains removed', () {
@@ -186,6 +309,39 @@ void main() {
       expect(summary.status, PickupReliabilityStatus.needsImprovement);
       expect(summary.recentPickupHistory, hasLength(2));
       expect(summary.recentPickupHistory[0].outcome, 'COLLECTED');
+    });
+
+    test('history entries with a non-Map<String,dynamic> generic instantiation '
+        'are still parsed (normalised, not dropped)', () {
+      // Firestore-returned maps can carry a different runtime generic
+      // instantiation (e.g. Map<dynamic, dynamic>); the parser must
+      // normalise with Map<String, dynamic>.from() instead of strictly
+      // filtering by generic type.
+      final rawHistory = <Map<dynamic, dynamic>>[
+        {'orderId': 'o1', 'outcome': 'COLLECTED'},
+        {'orderId': 'o2', 'outcome': 'NO_SHOW'},
+      ];
+      final summary = PickupReliabilitySummary.fromMap({
+        'status': 'NEW',
+        'recentPickupHistory': rawHistory,
+      });
+      expect(summary.recentPickupHistory, hasLength(2));
+      expect(summary.recentPickupHistory[0].orderId, 'o1');
+      expect(summary.recentPickupHistory[0].outcome, 'COLLECTED');
+      expect(summary.recentPickupHistory[1].outcome, 'NO_SHOW');
+    });
+
+    test('non-Map history entries are skipped (fail closed)', () {
+      final summary = PickupReliabilitySummary.fromMap({
+        'status': 'NEW',
+        'recentPickupHistory': [
+          {'orderId': 'o1', 'outcome': 'COLLECTED'},
+          'not-a-map',
+          42,
+        ],
+      });
+      expect(summary.recentPickupHistory, hasLength(1));
+      expect(summary.recentPickupHistory[0].orderId, 'o1');
     });
 
     test('status string round-trips', () {

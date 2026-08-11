@@ -805,6 +805,17 @@ describe("onNewOrder — authoritative cancellation deadline", () => {
       // Client estimate is wildly wrong (10 minutes ahead).
       cancellationDeadline: new Date(created.getTime() + 10 * 60000),
     }));
+    // The pricing normalizer requires an authoritative food_items record
+    // for every line item; seed the menu doc (matching the client price so
+    // no pricing correction interferes with the deadline assertions).
+    await db.collection("food_items").doc("food_1").set({
+      title: "Rice & Beans",
+      price: 3000,
+      available: true,
+      cafe: "Cafe A",
+      section: "main",
+      createdAt: new Date(),
+    });
 
     const ref = db.collection("orders").doc("cancel-deadline-1");
     const createdData = await orderById("cancel-deadline-1");
@@ -826,5 +837,108 @@ describe("onNewOrder — authoritative cancellation deadline", () => {
       CANCELLATION_WINDOW_MINUTES,
       "authoritative deadline is createdAt + 2 minutes",
     );
+  });
+});
+
+describe("normalizeOrderPricing — authoritative pricing (Phase 15)", () => {
+  async function seedMenuFood() {
+    await db.collection("food_items").doc("food_1").set({
+      title: "Rice & Beans",
+      price: 3000,
+      available: true,
+      cafe: "Cafe A",
+      section: "main",
+      createdAt: new Date(),
+    });
+  }
+
+  async function runOnNewOrder(orderId) {
+    const ref = db.collection("orders").doc(orderId);
+    const data = await orderById(orderId);
+    await functionsModule.onNewOrder.run({
+      data: { data: () => data, ref },
+      params: { orderId },
+    });
+  }
+
+  it("corrects tampered line-item prices and the total from the menu", async () => {
+    await seedOrder("pricing-correct-1", validOrderPayload({
+      status: "pending",
+      price: 1000,
+      items: [{
+        foodItemId: "food_1",
+        title: "Rice & Beans",
+        price: 1000, // client understates the price
+        quantity: 1,
+        image: "",
+        selectedCafe: "Cafe A",
+      }],
+    }));
+    await seedMenuFood();
+    await runOnNewOrder("pricing-correct-1");
+    const after = await orderById("pricing-correct-1");
+    assert.equal(after.price, 3000, "total corrected from the menu");
+    assert.equal(after.items[0].price, 3000, "line-item price corrected");
+  });
+
+  it("holds the order when the food doc is missing — no client-price fallback",
+      async () => {
+    await seedOrder("pricing-missing-1", validOrderPayload({
+      status: "pending",
+      price: 3000,
+    }));
+    // No food_items/food_1 doc exists.
+    await assert.rejects(
+      runOnNewOrder("pricing-missing-1"),
+      /missing food_items\/food_1/,
+    );
+    // The stored total is untouched — nothing was persisted as authoritative.
+    const after = await orderById("pricing-missing-1");
+    assert.equal(after.price, 3000, "client total never persisted as corrected");
+  });
+
+  it("holds the order when the quantity is not a positive integer", async () => {
+    await seedOrder("pricing-qty-1", validOrderPayload({
+      status: "pending",
+      price: 0,
+      items: [{
+        foodItemId: "food_1",
+        title: "Rice & Beans",
+        price: 3000,
+        quantity: 0, // invalid
+        image: "",
+        selectedCafe: "Cafe A",
+      }],
+    }));
+    await seedMenuFood();
+    await assert.rejects(
+      runOnNewOrder("pricing-qty-1"),
+      /invalid quantity/,
+    );
+    // No corrected total was persisted on failure.
+    const after = await orderById("pricing-qty-1");
+    assert.equal(after.price, 0, "no partial total persisted on hold");
+  });
+
+  it("holds the order when the menu price is not a finite number", async () => {
+    await seedOrder("pricing-price-1", validOrderPayload({
+      status: "pending",
+      price: 3000,
+    }));
+    await db.collection("food_items").doc("food_1").set({
+      title: "Rice & Beans",
+      price: "3000", // non-numeric menu price
+      available: true,
+      cafe: "Cafe A",
+      section: "main",
+      createdAt: new Date(),
+    });
+    await assert.rejects(
+      runOnNewOrder("pricing-price-1"),
+      /no finite price/,
+    );
+    // No corrected total was persisted on failure.
+    const after = await orderById("pricing-price-1");
+    assert.equal(after.price, 3000, "no partial total persisted on hold");
   });
 });

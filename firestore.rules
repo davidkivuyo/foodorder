@@ -182,10 +182,22 @@ service cloud.firestore {
         && !('deadlineExtended' in changed)
         && !('extensionAt' in changed)
         && !('expiredAt' in changed)
-        // Phase B.2 — reliabilityProcessed is written only by the backend
-        // reliability engine (Admin SDK). Neither student nor admin client
-        // may forge it: setting it early would skip the student's event.
+        // Phase B.2 — reliabilityProcessed and the immutable
+        // reliabilityOutcome are written only by the backend reliability
+        // engine (Admin SDK). Neither student nor admin client may forge
+        // them: setting reliabilityProcessed early would skip the student's
+        // event, and reliabilityOutcome must stay the exact outcome that was
+        // counted.
         && !('reliabilityProcessed' in changed)
+        && !('reliabilityOutcome' in changed)
+        // Phase B.2 — deferral/skip markers are written only by the backend
+        // reliability engine (Admin SDK). Clients may not forge them:
+        // reliabilityPending/Since control the deferred-retry state and
+        // reliabilitySkippedReason/At record an explicit give-up.
+        && !('reliabilityPending' in changed)
+        && !('reliabilityPendingSince' in changed)
+        && !('reliabilitySkippedReason' in changed)
+        && !('reliabilitySkippedAt' in changed)
         // Phase B — cancellation metadata is written only by the cancelOrder
         // callable (Admin SDK); neither student nor admin client may forge it.
         && !('cancellationDeadline' in changed)
@@ -326,6 +338,37 @@ service cloud.firestore {
 
     // The app persists the favourite list as `favoriteMenu` (a list of up
     // to 5 food IDs) plus a `favoriteMenuUpdatedAt` timestamp.
+    //
+    // The rules language cannot iterate over list elements, so the up-to-5
+    // known indices are validated conditionally on the list size: each
+    // element must be a non-empty string of at most 100 characters (a
+    // Firestore food_items document ID), and the whole list must not exceed
+    // the app's kMaxFavoriteIds (5).
+    function validFavoriteMenuList(list) {
+      return list is list
+        && list.size() <= 5
+        && (list.size() < 1
+          || (list[0] is string
+            && list[0].size() > 0
+            && list[0].size() <= 100))
+        && (list.size() < 2
+          || (list[1] is string
+            && list[1].size() > 0
+            && list[1].size() <= 100))
+        && (list.size() < 3
+          || (list[2] is string
+            && list[2].size() > 0
+            && list[2].size() <= 100))
+        && (list.size() < 4
+          || (list[3] is string
+            && list[3].size() > 0
+            && list[3].size() <= 100))
+        && (list.size() < 5
+          || (list[4] is string
+            && list[4].size() > 0
+            && list[4].size() <= 100));
+    }
+
     function validFavoriteMenuUpdate() {
       let changed = request.resource.data.diff(resource.data).affectedKeys();
       let hasFavoriteMenu = 'favoriteMenu' in changed;
@@ -335,8 +378,7 @@ service cloud.firestore {
       return !('pickupReliability' in changed)
         && changed.hasOnly(['favoriteMenu', 'favoriteMenuUpdatedAt'])
         && (!hasFavoriteMenu
-          || (request.resource.data.favoriteMenu is list
-            && request.resource.data.favoriteMenu.size() <= 5))
+          || validFavoriteMenuList(request.resource.data.favoriteMenu))
         && (!hasTimestamp
           || request.resource.data.favoriteMenuUpdatedAt is timestamp);
     }
