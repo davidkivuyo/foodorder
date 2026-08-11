@@ -454,6 +454,24 @@ firebase functions:secrets:set CLOUDINARY_API_SECRET
 | `lastPardonAt` | timestamp | Timestamp of last strike pardon |
 | `createdAt` | timestamp | Registration date |
 | `updatedAt` | timestamp | Last document update timestamp |
+| `pickupReliability` | map | **Phase B.2** server-authoritative pickup reliability summary (see below) — students can read it but never write it |
+
+#### `pickupReliability` nested map (server-written only)
+
+| Field | Type | Description |
+|---|---|---|
+| `eligibleOrders` | number | Lifetime eligible pickup events (COLLECTED + NO_SHOW) |
+| `collectedOrders` | number | Lifetime orders collected on time |
+| `noShowOrders` | number | Lifetime no-show orders |
+| `collectionRate` | number | Lifetime collection rate 0–100 (100 for new users — never 0) |
+| `recentEligibleOrders` | number | Eligible events in the recent 10-order window |
+| `recentCollectedOrders` | number | Collected orders in the recent window |
+| `recentNoShowOrders` | number | No-shows in the recent window |
+| `recentCollectionRate` | number | Recent-window collection rate 0–100 |
+| `reliabilityScore` | number | Weighted score = 70% lifetime + 30% recent (0–100) |
+| `status` | string | `NEW` \| `INSUFFICIENT_HISTORY` \| `EXCELLENT` \| `GOOD` \| `NEEDS_IMPROVEMENT` \| `POOR` \| `CRITICAL` |
+| `updatedAt` | timestamp | Last reliability update |
+| `recentPickupHistory` | array | Last 10 `{orderId, outcome, timestamp}` entries (max 10, never duplicated) |
 
 ### `users/{userId}/cart/{itemId}` (subcollection)
 
@@ -670,6 +688,11 @@ Student places order
         │
         └── Deadline expires ──→ NO_SHOW (deadlineStatus = EXPIRED)
                                   └──→ Student notified (ORDER_NO_SHOW)
+
+COLLECTED and NO_SHOW are the only reliability-eligible outcomes:
+                COLLECTED ──→ reliability +collected, +eligible
+                NO_SHOW   ──→ reliability +no-show, +eligible
+                (cancelled / rejected / never-ready orders are never counted)
 ```
 
 ---
@@ -734,6 +757,17 @@ All checks run inside a Firestore transaction, so two concurrent taps cannot bot
 A scheduled Cloud Function runs every 5 minutes and marks any ready order whose `pickupDeadline` has passed as `no_show` (`deadlineStatus = "EXPIRED"`), then sends the student an `ORDER_NO_SHOW` notification. It also sends `PICKUP_REMINDER` notifications for orders nearing their deadline.
 
 **The automatic strike engine has been removed from the customer app and its backend.** No strikes are issued and accounts are never auto-suspended for missed pickups; only the no-show notification remains. Strike management is exclusively an admin-app concern.
+
+### 3b. Pickup Reliability Engine (Phase B.2)
+The `onOrderStatusChanged` trigger feeds a server-side reliability engine that measures — never punishes — how consistently a student collects their food:
+- **Eligible events only:** an order counts only when it reaches `COLLECTED` (success) or `NO_SHOW` (miss). Cancelled, rejected, or never-`READY` orders never affect reliability.
+- **Idempotent & atomic:** each order carries a `reliabilityProcessed` marker written in the **same Firestore transaction** as the summary update, so redelivered or concurrent events can never double-count.
+- **No history scans:** updates are event-driven; the account screen reads the existing `users/{uid}` document (≈1 read) — reliability is never recomputed by scanning order history.
+- **Recent window:** the last 10 eligible outcomes are kept in `recentPickupHistory` (bounded, per-order unique).
+- **Score:** `reliabilityScore = collectionRate × 0.70 + recentCollectionRate × 0.30` (rounded to 1 decimal).
+- **Status:** 0 eligible → `NEW`; 1–2 → `INSUFFICIENT_HISTORY`; 3+ → `EXCELLENT` (90+), `GOOD` (75+), `NEEDS_IMPROVEMENT` (50+), `POOR` (25+), `CRITICAL` (<25). New users are `NEW` with score 100 — never 0%.
+- **Security:** `pickupReliability` is server-authoritative. Firestore rules deny any student write to the nested map and any client write of `reliabilityProcessed`; students read only their own summary via the existing owner read rule.
+- **No restrictions:** this phase is measurement only — no suspension, bans, cooldowns, or checkout blocking are attached to any status. UI display and admin tooling belong to later phases.
 
 ### 4. Suspension Enforcement
 Account suspension is still honoured when ordering: if `accountStatus == "SUSPENDED"` (managed by the admin app), `CartService.isAccountSuspended()` blocks the student from placing new orders or adding items to the cart.

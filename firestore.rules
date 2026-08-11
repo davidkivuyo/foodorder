@@ -182,6 +182,10 @@ service cloud.firestore {
         && !('deadlineExtended' in changed)
         && !('extensionAt' in changed)
         && !('expiredAt' in changed)
+        // Phase B.2 — reliabilityProcessed is written only by the backend
+        // reliability engine (Admin SDK). Neither student nor admin client
+        // may forge it: setting it early would skip the student's event.
+        && !('reliabilityProcessed' in changed)
         // Phase B — cancellation metadata is written only by the cancelOrder
         // callable (Admin SDK); neither student nor admin client may forge it.
         && !('cancellationDeadline' in changed)
@@ -257,7 +261,13 @@ service cloud.firestore {
     function studentNotModifyingProtectedFields() {
       let allowed = ['fullName', 'email', 'phoneNumber', 'cafeName'];
       let changed = request.resource.data.diff(resource.data).affectedKeys();
-      return changed.hasOnly(allowed)
+      // Phase B.2 — pickupReliability is server-authoritative: students may
+      // READ their own summary (via the users/{uid} read rule) but never
+      // WRITE it. The nested map is absent from the allowed list, so any
+      // student update carrying it fails hasOnly(); this explicit guard is
+      // defence-in-depth against a future loosening of the allowlist.
+      return !('pickupReliability' in changed)
+        && changed.hasOnly(allowed)
         && (!('fullName' in changed)
           || (request.resource.data.fullName is string
             && request.resource.data.fullName.size() > 0
@@ -320,7 +330,10 @@ service cloud.firestore {
       let changed = request.resource.data.diff(resource.data).affectedKeys();
       let hasFavoriteMenu = 'favoriteMenu' in changed;
       let hasTimestamp = 'favoriteMenuUpdatedAt' in changed;
-      return changed.hasOnly(['favoriteMenu', 'favoriteMenuUpdatedAt'])
+      // Phase B.2 — a favourite-list update must never smuggle in a
+      // client-supplied pickupReliability summary.
+      return !('pickupReliability' in changed)
+        && changed.hasOnly(['favoriteMenu', 'favoriteMenuUpdatedAt'])
         && (!hasFavoriteMenu
           || (request.resource.data.favoriteMenu is list
             && request.resource.data.favoriteMenu.size() <= 5))

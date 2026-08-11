@@ -922,9 +922,9 @@ No punishment.
 
 Lifetime:
 
-50 eligible
-47 collected
-3 no-show
+100 eligible
+94 collected
+6 no-show
 
 lifetimeRate = 94%
 

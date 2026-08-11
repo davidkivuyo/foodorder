@@ -56,6 +56,12 @@ const PICKUP_WINDOW_MINUTES = 20;
 const CANCELLATION_WINDOW_MINUTES = 2;
 
 /**
+ * Maximum number of recent eligible pickup outcomes retained in the
+ * student's `pickupReliability.recentPickupHistory` (Phase B.2).
+ */
+const RECENT_PICKUP_WINDOW_SIZE = 10;
+
+/**
  * Lease duration for delivery claim records.
  *
  * When a claim is created with status 'pending' and a claimedAt timestamp,
@@ -1703,6 +1709,264 @@ async function normalizeOrderPricing(orderRef, orderData) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+// PHASE B.2 — PICKUP RELIABILITY ENGINE
+// ════════════════════════════════════════════════════════════════════════════
+//
+// Event-driven, server-authoritative reliability measurement. Only genuine
+// terminal pickup outcomes (COLLECTED / NO_SHOW) update a student's
+// reliability summary — cancelled, rejected, and never-READY orders never
+// count. The summary lives in the existing `users/{uid}.pickupReliability`
+// nested map (no new collection, no full order-history scans).
+//
+// Idempotency: each order carries a `reliabilityProcessed` marker that is
+// set in the SAME Firestore transaction that updates the summary, so a
+// redelivered event can never double-count. The recent-history window is
+// capped at RECENT_PICKUP_WINDOW_SIZE entries and the same order can never
+// appear twice (marker + explicit orderId filter).
+
+/**
+ * Default reliability summary for a student with no pickup history.
+ * @return {Object}
+ */
+function emptyReliabilitySummary() {
+  return {
+    eligibleOrders: 0,
+    collectedOrders: 0,
+    noShowOrders: 0,
+    collectionRate: 100,
+    recentEligibleOrders: 0,
+    recentCollectedOrders: 0,
+    recentNoShowOrders: 0,
+    recentCollectionRate: 100,
+    reliabilityScore: 100,
+    status: "NEW",
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    recentPickupHistory: [],
+  };
+}
+
+/**
+ * Round a 0-100 rate/score to one decimal place to keep stored values
+ * predictable without cumulative rounding errors in intermediate steps.
+ * @param {number} value
+ * @return {number}
+ */
+function roundRate(value) {
+  return Math.round(value * 10) / 10;
+}
+
+/**
+ * Milliseconds for a Firestore Timestamp, Date, or missing history timestamp.
+ * Used to keep recentPickupHistory ordered by the actual terminal event time
+ * so a delayed or out-of-order event can never evict a genuinely newer one.
+ * @param {*} value — Timestamp, Date, or null/undefined
+ * @return {number}
+ */
+function historyTimestampMillis(value) {
+  if (value instanceof admin.firestore.Timestamp) return value.toMillis();
+  if (value instanceof Date) return value.getTime();
+  return 0;
+}
+
+/**
+ * Classify a reliability score into an informational status.
+ *
+ * Minimum-history rule: 0 eligible → NEW; 1-2 eligible →
+ * INSUFFICIENT_HISTORY (raw metrics still computed, no conclusion drawn);
+ * 3+ eligible → normal thresholds. Never punishes a new user.
+ *
+ * @param {number} eligibleOrders
+ * @param {number} score
+ * @return {string}
+ */
+function reliabilityStatusFor(eligibleOrders, score) {
+  if (eligibleOrders === 0) return "NEW";
+  if (eligibleOrders <= 2) return "INSUFFICIENT_HISTORY";
+  if (score >= 90) return "EXCELLENT";
+  if (score >= 75) return "GOOD";
+  if (score >= 50) return "NEEDS_IMPROVEMENT";
+  if (score >= 25) return "POOR";
+  return "CRITICAL";
+}
+
+/**
+ * Recompute a student's reliability summary after one terminal pickup event.
+ *
+ * Weighted model: 70% lifetime collection rate + 30% recent (last 10)
+ * collection rate. Zero-eligible handling keeps rates/score at 100 with
+ * status NEW (no NaN, no division by zero, no "0%" for a new user).
+ *
+ * @param {Object|undefined} existing — current pickupReliability map (or none)
+ * @param {'COLLECTED'|'NO_SHOW'} outcome
+ * @param {string} orderId
+ * @param {admin.firestore.Timestamp} timestamp — event timestamp for history
+ * @return {Object} the new summary map (safe to write as a nested map)
+ */
+function recomputeReliability(existing, outcome, orderId, timestamp) {
+  // Start from the neutral NEW defaults so every field has a concrete value
+  // even when the student has no summary yet (never 0% for a new user).
+  const prev = existing && typeof existing === "object"
+    ? { ...emptyReliabilitySummary(), ...existing }
+    : emptyReliabilitySummary();
+  const history = Array.isArray(prev.recentPickupHistory)
+    ? prev.recentPickupHistory.filter((e) => e && e.orderId !== orderId)
+    : [];
+  // The marker guarantees the order was not counted before; the filter above
+  // is defence-in-depth so a legacy/foreign duplicate can never double-count.
+  history.push({ orderId, outcome, timestamp });
+  // Retain the latest RECENT_PICKUP_WINDOW_SIZE by ACTUAL event time, not
+  // insertion order: events can arrive out of order (a delayed trigger, a
+  // scheduled no-show processed after a later collection), and trimming the
+  // front of an unsorted list would evict the wrong entries.
+  history.sort(
+    (a, b) => historyTimestampMillis(a.timestamp) - historyTimestampMillis(b.timestamp),
+  );
+  if (history.length > RECENT_PICKUP_WINDOW_SIZE) {
+    history.splice(0, history.length - RECENT_PICKUP_WINDOW_SIZE);
+  }
+
+  const eligibleOrders = prev.eligibleOrders + 1;
+  const collectedOrders =
+    prev.collectedOrders + (outcome === "COLLECTED" ? 1 : 0);
+  const noShowOrders =
+    prev.noShowOrders + (outcome === "NO_SHOW" ? 1 : 0);
+
+  // Unrounded rates drive the weighted score so rounding is applied exactly
+  // once, on the values that are stored/displayed. Rounding the inputs first
+  // would skew the weighted result (e.g. 80.952…% → 81.0 before the 0.7
+  // weight). Empty-order defaults (100) are preserved.
+  const rawCollectionRate =
+    eligibleOrders === 0
+      ? 100
+      : (collectedOrders / eligibleOrders) * 100;
+
+  const recentEligibleOrders = history.length;
+  const recentCollectedOrders = history.filter(
+    (e) => e.outcome === "COLLECTED"
+  ).length;
+  const recentNoShowOrders = history.filter(
+    (e) => e.outcome === "NO_SHOW"
+  ).length;
+  const rawRecentCollectionRate =
+    recentEligibleOrders === 0
+      ? 100
+      : (recentCollectedOrders / recentEligibleOrders) * 100;
+
+  const rawReliabilityScore =
+    eligibleOrders === 0
+      ? 100
+      : rawCollectionRate * 0.7 + rawRecentCollectionRate * 0.3;
+
+  // Round only for storage/display; the status threshold check uses the
+  // unrounded score so a boundary value (e.g. 74.96) is classified
+  // accurately instead of being nudged across a threshold by rounding.
+  const collectionRate = roundRate(rawCollectionRate);
+  const recentCollectionRate = roundRate(rawRecentCollectionRate);
+  const reliabilityScore = roundRate(rawReliabilityScore);
+  const status = reliabilityStatusFor(eligibleOrders, rawReliabilityScore);
+
+  return {
+    eligibleOrders,
+    collectedOrders,
+    noShowOrders,
+    collectionRate,
+    recentEligibleOrders,
+    recentCollectedOrders,
+    recentNoShowOrders,
+    recentCollectionRate,
+    reliabilityScore,
+    status,
+    updatedAt: timestamp,
+    recentPickupHistory: history,
+  };
+}
+
+/**
+ * Process a terminal pickup event (COLLECTED or NO_SHOW) for one order.
+ *
+ * Runs inside a Firestore transaction so the student summary update and the
+ * order's `reliabilityProcessed` marker commit atomically: a concurrent or
+ * redelivered event can never double-count, and two simultaneous terminal
+ * events for the same student are serialised correctly by the transaction.
+ *
+ * @param {admin.firestore.DocumentReference} orderRef
+ * @param {'COLLECTED'|'NO_SHOW'} outcome
+ * @return {Promise<boolean>} true when the event updated the summary
+ */
+async function processReliabilityEvent(orderRef, outcome) {
+  return db.runTransaction(async (transaction) => {
+    const orderSnapshot = await transaction.get(orderRef);
+    if (!orderSnapshot.exists) return false;
+    const orderData = orderSnapshot.data();
+    if (!orderData) return false;
+
+    // The order must still be in the terminal state that triggered this
+    // event (guards against a concurrent transition reverting it).
+    const canonicalStatus =
+      orderData.status === "COLLECTED" ? "collected" : orderData.status;
+    if (outcome === "COLLECTED" && canonicalStatus !== "collected") {
+      return false;
+    }
+    if (outcome === "NO_SHOW" && canonicalStatus !== "no_show") {
+      return false;
+    }
+    // Idempotency: never count the same order twice.
+    if (orderData.reliabilityProcessed === true) return false;
+
+    const studentId = orderData.studentId || orderData.userId;
+    if (!studentId) {
+      console.warn("[PickupReliability] Order without studentId — skipping");
+      return false;
+    }
+
+    const userRef = db.collection("users").doc(studentId);
+    const userSnapshot = await transaction.get(userRef);
+    if (!userSnapshot.exists) {
+      // No user doc (e.g. legacy/deleted user): the order cannot be counted.
+      // Mark it processed so redeliveries do not retry forever.
+      console.warn(
+        `[PickupReliability] Missing user doc ${studentId} — ` +
+        `marking order ${orderRef.id} processed`
+      );
+      transaction.update(orderRef, { reliabilityProcessed: true });
+      return false;
+    }
+
+    // The recent-window timestamp is the order's persisted terminal outcome
+    // time (collectedAt for COLLECTED, expiredAt for NO_SHOW), NOT the event
+    // processing time — a delayed or redelivered event must not shift the
+    // recent window. The scheduled no-show processor writes expiredAt before
+    // the trigger fires; for a fresh admin transition the trigger writes
+    // collectedAt/expiredAt right after this transaction, so fall back to
+    // the current time only when the field has not been persisted yet.
+    const outcomeAt = outcome === "COLLECTED"
+      ? orderData.collectedAt
+      : orderData.expiredAt;
+    const timestamp = outcomeAt instanceof admin.firestore.Timestamp
+      ? outcomeAt
+      : admin.firestore.Timestamp.now();
+    const summary = recomputeReliability(
+      userSnapshot.data().pickupReliability,
+      outcome,
+      orderRef.id,
+      timestamp,
+    );
+
+    transaction.update(userRef, { pickupReliability: summary });
+    transaction.update(orderRef, {
+      reliabilityProcessed: true,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    console.log(
+      `[PickupReliability] ${outcome} order ${orderRef.id} → ` +
+      `score ${summary.reliabilityScore} (${summary.status})`
+    );
+    return true;
+  });
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 // FUNCTION 2: onOrderStatusChanged  (Firestore trigger)
 // ════════════════════════════════════════════════════════════════════════════
 
@@ -1812,6 +2076,18 @@ exports.onOrderStatusChanged = onDocumentUpdated(
 
     // ── COLLECTED: record the authoritative collectedAt ─────────────
     if (status === "collected") {
+      // Phase B.2 — terminal pickup outcome: update the student's
+      // reliability summary. Runs BEFORE the bookkeeping guard so both
+      // the admin-transition path AND the scheduled-expiry path (whose
+      // update already carried the fields) are covered; idempotency is
+      // enforced by the reliabilityProcessed marker inside the
+      // transaction, never by this branch. A transient failure is
+      // rethrown so Cloud Functions retries the whole event — the marker
+      // makes the retry safe, and swallowing it would permanently lose
+      // the event (orders are rarely updated again after a terminal
+      // state).
+      await processReliabilityEvent(event.data.after.ref, "COLLECTED");
+
       if (afterData.collectedAt != null) return;
       await event.data.after.ref.update({
         collectedAt: admin.firestore.Timestamp.now(),
@@ -1826,6 +2102,11 @@ exports.onOrderStatusChanged = onDocumentUpdated(
     //    order no_show directly. The scheduled processor already writes
     //    these fields, so its updates make this branch a no-op.
     if (status === "no_show") {
+      // Phase B.2 — terminal pickup outcome: update the student's
+      // reliability summary (see the COLLECTED branch above for why this
+      // runs before the bookkeeping guard, and why failures are rethrown).
+      await processReliabilityEvent(event.data.after.ref, "NO_SHOW");
+
       if (afterData.expiredAt != null) return;
       await event.data.after.ref.update({
         expiredAt: admin.firestore.Timestamp.now(),

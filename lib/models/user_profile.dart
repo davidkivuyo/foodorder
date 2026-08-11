@@ -13,6 +13,7 @@
 // limitations under the License.
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'pickup_reliability.dart';
 
 /// Represents a student user profile stored under `users/{uid}`.
 ///
@@ -30,6 +31,10 @@ class UserProfile {
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
+  // Phase B.2 — server-authoritative pickup reliability summary. Null for
+  // new users whose summary has not been written yet; treat as NEW.
+  final PickupReliabilitySummary? pickupReliability;
+
   const UserProfile({
     this.id = '',
     required this.fullName,
@@ -41,6 +46,7 @@ class UserProfile {
     this.lastPardonAt,
     this.createdAt,
     this.updatedAt,
+    this.pickupReliability,
   });
 
   /// Build a [UserProfile] from a Firestore document snapshot.
@@ -57,6 +63,7 @@ class UserProfile {
       return null;
     }
 
+    final pickupRaw = data['pickupReliability'];
     return UserProfile(
       id: docId,
       fullName: data['fullName'] as String? ?? '',
@@ -69,6 +76,9 @@ class UserProfile {
       lastPardonAt: parseTimestamp(data['lastPardonAt']),
       createdAt: parseTimestamp(data['createdAt']),
       updatedAt: parseTimestamp(data['updatedAt']),
+      pickupReliability: pickupRaw is Map<String, dynamic>
+          ? PickupReliabilitySummary.fromMap(pickupRaw)
+          : null,
     );
   }
 
