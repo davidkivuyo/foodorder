@@ -56,6 +56,25 @@ const PICKUP_WINDOW_MINUTES = 20;
 const CANCELLATION_WINDOW_MINUTES = 2;
 
 /**
+ * Maximum number of recent eligible pickup outcomes retained in the
+ * student's `pickupReliability.recentPickupHistory` (Phase B.2).
+ */
+const RECENT_PICKUP_WINDOW_SIZE = 10;
+
+/**
+ * How long a reliability event may stay deferred waiting for the student's
+ * user document before the engine gives up EXPLICITLY and audibly
+ * (reliabilitySkippedReason: 'MISSING_USER') instead of silently dropping
+ * the event. 7 days is far beyond any legitimate account-restoration delay.
+ */
+const RELIABILITY_MISSING_USER_RETRY_MS = 7 * 24 * 60 * 60 * 1000;
+
+// Sentinel returned by the reliability transaction when the user document
+// does not exist, so the deferral (marker write + retriable throw) runs
+// outside the transaction instead of aborting it.
+const DEFER_RELIABILITY_EVENT = Symbol("deferReliabilityEvent");
+
+/**
  * Lease duration for delivery claim records.
  *
  * When a claim is created with status 'pending' and a claimedAt timestamp,
@@ -1034,6 +1053,93 @@ async function processExpiredOrder(transaction, orderSnapshot) {
   return true;
 }
 
+/**
+ * Reconcile deferred reliability events (reliabilityPending orders).
+ *
+ * Cloud Functions redelivers a failed trigger event only for a bounded
+ * window, so a terminal event whose user document is missing must ALSO be
+ * reconciled by the scheduled processor: once the user doc appears, the
+ * order is counted normally; orders whose pending marker is older than
+ * RELIABILITY_MISSING_USER_RETRY_MS are given up explicitly (MISSING_USER).
+ *
+ * This is the deferred-reconciliation complement to the trigger's own
+ * retry path — together they guarantee a terminal event is never silently
+ * dropped and never retried forever.
+ *
+ * @return {Promise<{counted: number, stillPending: number, errors: number}>}
+ */
+async function reconcilePendingReliabilityOrders() {
+  let counted = 0;
+  let stillPending = 0;
+  let errors = 0;
+
+  let pendingSnapshot;
+  try {
+    pendingSnapshot = await db
+        .collection("orders")
+        .where("reliabilityPending", "==", true)
+        .limit(100)
+        .get();
+  } catch (err) {
+    console.error("[PickupReliability] Reconcile query failed:", err);
+    return { counted: 0, stillPending: 0, errors: 1 };
+  }
+
+  if (pendingSnapshot.size === 0) {
+    return { counted: 0, stillPending: 0, errors: 0 };
+  }
+
+  console.log(
+    `[PickupReliability] Reconcile: ${pendingSnapshot.size} pending order(s)`
+  );
+
+  const promises = pendingSnapshot.docs.map(async (orderSnapshot) => {
+    try {
+      const orderData = orderSnapshot.data();
+      // The outcome is derivable from the order's terminal status; anything
+      // else is a stale marker and is cleared.
+      const outcome = orderData.status === "collected"
+        ? "COLLECTED"
+        : orderData.status === "no_show"
+          ? "NO_SHOW"
+          : null;
+
+      if (outcome == null) {
+        await orderSnapshot.ref.update({
+          reliabilityPending: admin.firestore.FieldValue.delete(),
+          reliabilityPendingSince: admin.firestore.FieldValue.delete(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        return;
+      }
+
+      // processReliabilityEvent returns true when counted, false when given
+      // up, and throws when the event is still deferred (user doc still
+      // missing within the retry window).
+      const processed = await processReliabilityEvent(
+        orderSnapshot.ref,
+        outcome,
+      );
+      if (processed) counted++;
+    } catch (err) {
+      // A deferral keeps the pending marker so the next scheduled run
+      // retries it; any other failure is a real error and is reported.
+      if (String(err && err.message).includes("deferred")) {
+        stillPending++;
+      } else {
+        errors++;
+        console.error(
+          `[PickupReliability] Reconcile failed for order ${orderSnapshot.id}:`,
+          err,
+        );
+      }
+    }
+  });
+
+  await Promise.all(promises);
+  return { counted, stillPending, errors };
+}
+
 exports.processExpiredPickups = functions
     .runWith({
       memory: "256MB",
@@ -1189,6 +1295,28 @@ exports.processExpiredPickups = functions
         }
       } catch (reminderErr) {
         console.error("[PickupExpiry] PICKUP_REMINDER error:", reminderErr);
+      }
+
+      // ── Phase B.2 — reconcile deferred reliability events ────────────
+      // Terminal events whose user document did not exist yet are marked
+      // reliabilityPending by the trigger (never dropped). Cloud Functions
+      // only redelivers a failed trigger event for a bounded window, so the
+      // scheduled processor also reconciles them: orders whose user doc now
+      // exists are counted, orders beyond the retry window are given up
+      // explicitly (MISSING_USER), and still-missing orders are retried on
+      // the next scheduled run.
+      try {
+        const reconcileResult = await reconcilePendingReliabilityOrders();
+        console.log(
+          `[PickupExpiry] Reliability reconcile: ` +
+          `${reconcileResult.counted} counted, ` +
+          `${reconcileResult.stillPending} still pending, ` +
+          `${reconcileResult.errors} errors`
+        );
+      } catch (reconcileErr) {
+        console.error(
+          "[PickupExpiry] Reliability reconcile error:", reconcileErr
+        );
       }
 
       return null;
@@ -1568,8 +1696,11 @@ exports.cancelOrder = onCall(
 //
 // These helpers backfill `foodIds` server-side (admin SDK bypasses the
 // student-write restriction on orders) by deriving the IDs from the nested
-// `items` data — the authoritative purchase record.  Orders that already
-// have a populated `foodIds` list are left unchanged.
+// `items` data — the authoritative purchase record.  The presence check and
+// the write run inside a single Firestore transaction (the order is re-read
+// immediately before the write), and ANY existing `foodIds` value — a
+// populated list, an empty array, or a malformed historical value — aborts
+// the backfill so existing data is never clobbered or reinterpreted.
 
 /**
  * Derive the deduplicated `foodIds` list from an order's nested `items` array.
@@ -1592,32 +1723,44 @@ function deriveOrderFoodIds(items) {
 /**
  * Backfill `foodIds` on an order document when the field is absent.
  *
- * No-op when the order already has a populated `foodIds` list, so already
- * migrated orders are never rewritten.  Never clears or overwrites an
- * existing list.
+ * The presence check and the write are performed inside a single Firestore
+ * transaction: the order is re-read immediately before the write, so a
+ * concurrent write can never slip in between the check and the update, and
+ * the transaction aborts (retrying) if the document changed since the
+ * trigger's snapshot.
+ *
+ * ANY existing `foodIds` value — a populated list, an empty array, or a
+ * malformed historical value — aborts the backfill: the field was written
+ * either by the creating client or by a prior backfill, so it is never
+ * clobbered or reinterpreted.
  *
  * @param {admin.firestore.DocumentReference} orderRef
- * @param {Object} orderData
+ * @param {Object} orderData — the trigger snapshot, used only for the early
+ *   no-data guard; the authoritative presence check re-reads the document
+ *   inside the transaction.
  * @return {Promise<boolean>} true when a backfill write was performed
  */
 async function backfillOrderFoodIds(orderRef, orderData) {
   if (!orderData) return false;
-  // Only a NON-EMPTY foodIds list counts as already populated.  An empty
-  // array (or missing / non-array values) falls through to derivation from
-  // the authoritative `items` data so the order becomes reviewable.
-  if (Array.isArray(orderData.foodIds) && orderData.foodIds.length > 0) {
-    return false; // Already populated.
-  }
-  const foodIds = deriveOrderFoodIds(orderData.items);
-  if (!foodIds) return false; // Nothing derivable — leave unchanged.
-  await orderRef.update({
-    foodIds,
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  const migrated = await db.runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(orderRef);
+    if (!snapshot.exists) return false;
+    const data = snapshot.data();
+    // Presence of the field with ANY value means it is already populated —
+    // never overwrite or reinterpret empty/malformed historical values.
+    if (data.foodIds !== undefined) return false;
+    const foodIds = deriveOrderFoodIds(data.items);
+    if (!foodIds) return false; // Nothing derivable — leave unchanged.
+    transaction.update(orderRef, {
+      foodIds,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    return true;
   });
-  console.log(
-    "[backfillFoodIds] Backfilled foodIds for order"
-  );
-  return true;
+  if (migrated) {
+    console.log("[backfillFoodIds] Backfilled foodIds for order");
+  }
+  return migrated;
 }
 
 /**
@@ -1632,9 +1775,11 @@ async function backfillOrderFoodIds(orderRef, orderData) {
  * the actual menu price for every purchased item (and quantity), so the
  * total the cafeteria sees is always derived from the source of truth.
  *
- * Items that resolve to a missing food document keep their client-supplied
- * price (there is nothing authoritative to compare against); the order's
- * overall `price` is recomputed as the sum of all resolved line totals.
+ * The order is HELD (a retriable error is thrown) whenever any line item
+ * cannot be priced authoritatively: the food doc is missing, its lookup
+ * fails, its menu price is not a finite number, or the quantity is not a
+ * positive integer. The client-supplied price is never used as a fallback
+ * and no partial total is ever persisted.
  *
  * @param {admin.firestore.DocumentReference} orderRef
  * @param {Object} orderData
@@ -1651,30 +1796,67 @@ async function normalizeOrderPricing(orderRef, orderData) {
 
   for (const item of orderData.items) {
     const foodId = item && (item.foodItemId || item.id);
-    let unitPrice = typeof item.price === "number" ? item.price : 0;
 
-    if (typeof foodId === "string" && foodId.length > 0) {
-      try {
-        const snap = await orderRef.firestore
-            .collection("food_items")
-            .doc(foodId)
-            .get();
-        if (snap.exists) {
-          const menuData = snap.data();
-          if (menuData && typeof menuData.price === "number") {
-            unitPrice = menuData.price;
-          }
-        }
-      } catch (err) {
-        console.warn(
-          `[normalizeOrderPricing] food_items/${foodId} lookup failed: ${err.message}`
-        );
-        // Fall through with the client-supplied price — not authoritative
-        // but non-destructive.
-      }
+    // Every line item must resolve to an authoritative menu record — never
+    // fall back to the client-supplied price. A missing or unreadable
+    // record holds the order (the trigger's retry policy redelivers the
+    // event) until the menu is authoritative again.
+    //
+    // Trade-off: because the throw precedes notification creation, a held
+    // order delays (and, if the item never reappears, ultimately drops) its
+    // NEW_ORDER admin notification. In practice CartService re-reads every
+    // food_items doc inside the order-placement transaction and aborts on
+    // missing items, so a missing doc at trigger time is a rare anomaly
+    // (deleted post-placement / legacy order) and the retry is bounded by
+    // the Cloud Functions retry window.
+    if (typeof foodId !== "string" || foodId.length === 0) {
+      throw new Error(
+        `[normalizeOrderPricing] Order ${orderRef.id} has an item without a ` +
+        `food ID — holding order`
+      );
     }
 
-    const quantity = typeof item.quantity === "number" ? item.quantity : 1;
+    let snap;
+    try {
+      snap = await orderRef.firestore
+          .collection("food_items")
+          .doc(foodId)
+          .get();
+    } catch (err) {
+      console.warn(
+        `[normalizeOrderPricing] food_items/${foodId} lookup failed: ${err.message}`
+      );
+      throw new Error(
+        `[normalizeOrderPricing] Order ${orderRef.id} food_items/${foodId} ` +
+        `lookup failed — holding order`,
+        { cause: err },
+      );
+    }
+    if (!snap.exists) {
+      throw new Error(
+        `[normalizeOrderPricing] Order ${orderRef.id} references missing ` +
+        `food_items/${foodId} — holding order`
+      );
+    }
+    const menuData = snap.data();
+    const unitPrice = menuData && menuData.price;
+    const quantity = item && item.quantity;
+
+    // The resolved menu price must be finite and the quantity a positive
+    // integer before the line may contribute to the total.
+    if (typeof unitPrice !== "number" || !Number.isFinite(unitPrice)) {
+      throw new Error(
+        `[normalizeOrderPricing] food_items/${foodId} has no finite price — ` +
+        `cannot price order ${orderRef.id} — holding order`
+      );
+    }
+    if (typeof quantity !== "number" || !Number.isInteger(quantity) || quantity <= 0) {
+      throw new Error(
+        `[normalizeOrderPricing] Order ${orderRef.id} item ${foodId} has ` +
+        `invalid quantity (${quantity}) — holding order`
+      );
+    }
+
     prices.push({ price: unitPrice, quantity });
     resolvedTotal.value += unitPrice * quantity;
   }
@@ -1700,6 +1882,403 @@ async function normalizeOrderPricing(orderRef, orderData) {
     `[normalizeOrderPricing] Corrected order pricing → Tsh ${resolvedTotal.value}`
   );
   return resolvedTotal.value;
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// PHASE B.2 — PICKUP RELIABILITY ENGINE
+// ════════════════════════════════════════════════════════════════════════════
+//
+// Event-driven, server-authoritative reliability measurement. Only genuine
+// terminal pickup outcomes (COLLECTED / NO_SHOW) update a student's
+// reliability summary — cancelled, rejected, and never-READY orders never
+// count. The summary lives in the existing `users/{uid}.pickupReliability`
+// nested map (no new collection, no full order-history scans).
+//
+// Idempotency: each order carries a `reliabilityProcessed` marker that is
+// set in the SAME Firestore transaction that updates the summary, so a
+// redelivered event can never double-count. The recent-history window is
+// capped at RECENT_PICKUP_WINDOW_SIZE entries and the same order can never
+// appear twice (marker + explicit orderId filter).
+
+/**
+ * Default reliability summary for a student with no pickup history.
+ * @return {Object}
+ */
+function emptyReliabilitySummary() {
+  return {
+    eligibleOrders: 0,
+    collectedOrders: 0,
+    noShowOrders: 0,
+    collectionRate: 100,
+    recentEligibleOrders: 0,
+    recentCollectedOrders: 0,
+    recentNoShowOrders: 0,
+    recentCollectionRate: 100,
+    reliabilityScore: 100,
+    status: "NEW",
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    recentPickupHistory: [],
+  };
+}
+
+/**
+ * Round a 0-100 rate/score to one decimal place to keep stored values
+ * predictable without cumulative rounding errors in intermediate steps.
+ * @param {number} value
+ * @return {number}
+ */
+function roundRate(value) {
+  return Math.round(value * 10) / 10;
+}
+
+/**
+ * Milliseconds for a Firestore Timestamp, Date, or missing history timestamp.
+ * Used to keep recentPickupHistory ordered by the actual terminal event time
+ * so a delayed or out-of-order event can never evict a genuinely newer one.
+ * @param {*} value — Timestamp, Date, or null/undefined
+ * @return {number}
+ */
+function historyTimestampMillis(value) {
+  if (value instanceof admin.firestore.Timestamp) return value.toMillis();
+  if (value instanceof Date) return value.getTime();
+  return 0;
+}
+
+/**
+ * Classify a reliability score into an informational status.
+ *
+ * Minimum-history rule: 0 eligible → NEW; 1-2 eligible →
+ * INSUFFICIENT_HISTORY (raw metrics still computed, no conclusion drawn);
+ * 3+ eligible → normal thresholds. Never punishes a new user.
+ *
+ * @param {number} eligibleOrders
+ * @param {number} score
+ * @return {string}
+ */
+function reliabilityStatusFor(eligibleOrders, score) {
+  if (eligibleOrders === 0) return "NEW";
+  if (eligibleOrders <= 2) return "INSUFFICIENT_HISTORY";
+  if (score >= 90) return "EXCELLENT";
+  if (score >= 75) return "GOOD";
+  if (score >= 50) return "NEEDS_IMPROVEMENT";
+  if (score >= 25) return "POOR";
+  return "CRITICAL";
+}
+
+/**
+ * Recompute a student's reliability summary after one terminal pickup event.
+ *
+ * Weighted model: 70% lifetime collection rate + 30% recent (last 10)
+ * collection rate. Zero-eligible handling keeps rates/score at 100 with
+ * status NEW (no NaN, no division by zero, no "0%" for a new user).
+ *
+ * @param {Object|undefined} existing — current pickupReliability map (or none)
+ * @param {'COLLECTED'|'NO_SHOW'} outcome
+ * @param {string} orderId
+ * @param {admin.firestore.Timestamp} timestamp — event timestamp for history
+ * @return {Object} the new summary map (safe to write as a nested map)
+ */
+function recomputeReliability(existing, outcome, orderId, timestamp) {
+  // Start from the neutral NEW defaults so every field has a concrete value
+  // even when the student has no summary yet (never 0% for a new user).
+  const prev = existing && typeof existing === "object"
+    ? { ...emptyReliabilitySummary(), ...existing }
+    : emptyReliabilitySummary();
+  const history = Array.isArray(prev.recentPickupHistory)
+    ? prev.recentPickupHistory.filter((e) => e && e.orderId !== orderId)
+    : [];
+  // The marker guarantees the order was not counted before; the filter above
+  // is defence-in-depth so a legacy/foreign duplicate can never double-count.
+  history.push({ orderId, outcome, timestamp });
+  // Retain the latest RECENT_PICKUP_WINDOW_SIZE by ACTUAL event time, not
+  // insertion order: events can arrive out of order (a delayed trigger, a
+  // scheduled no-show processed after a later collection), and trimming the
+  // front of an unsorted list would evict the wrong entries.
+  history.sort(
+    (a, b) => historyTimestampMillis(a.timestamp) - historyTimestampMillis(b.timestamp),
+  );
+  if (history.length > RECENT_PICKUP_WINDOW_SIZE) {
+    history.splice(0, history.length - RECENT_PICKUP_WINDOW_SIZE);
+  }
+
+  const eligibleOrders = prev.eligibleOrders + 1;
+  const collectedOrders =
+    prev.collectedOrders + (outcome === "COLLECTED" ? 1 : 0);
+  const noShowOrders =
+    prev.noShowOrders + (outcome === "NO_SHOW" ? 1 : 0);
+
+  // Unrounded rates drive the weighted score so rounding is applied exactly
+  // once, on the values that are stored/displayed. Rounding the inputs first
+  // would skew the weighted result (e.g. 80.952…% → 81.0 before the 0.7
+  // weight). Empty-order defaults (100) are preserved.
+  const rawCollectionRate =
+    eligibleOrders === 0
+      ? 100
+      : (collectedOrders / eligibleOrders) * 100;
+
+  const recentEligibleOrders = history.length;
+  const recentCollectedOrders = history.filter(
+    (e) => e.outcome === "COLLECTED"
+  ).length;
+  const recentNoShowOrders = history.filter(
+    (e) => e.outcome === "NO_SHOW"
+  ).length;
+  const rawRecentCollectionRate =
+    recentEligibleOrders === 0
+      ? 100
+      : (recentCollectedOrders / recentEligibleOrders) * 100;
+
+  const rawReliabilityScore =
+    eligibleOrders === 0
+      ? 100
+      : rawCollectionRate * 0.7 + rawRecentCollectionRate * 0.3;
+
+  // Round only for storage/display; the status threshold check uses the
+  // unrounded score so a boundary value (e.g. 74.96) is classified
+  // accurately instead of being nudged across a threshold by rounding.
+  const collectionRate = roundRate(rawCollectionRate);
+  const recentCollectionRate = roundRate(rawRecentCollectionRate);
+  const reliabilityScore = roundRate(rawReliabilityScore);
+  const status = reliabilityStatusFor(eligibleOrders, rawReliabilityScore);
+
+  return {
+    eligibleOrders,
+    collectedOrders,
+    noShowOrders,
+    collectionRate,
+    recentEligibleOrders,
+    recentCollectedOrders,
+    recentNoShowOrders,
+    recentCollectionRate,
+    reliabilityScore,
+    status,
+    updatedAt: timestamp,
+    recentPickupHistory: history,
+  };
+}
+
+/**
+ * Process a terminal pickup event (COLLECTED or NO_SHOW) for one order.
+ *
+ * Runs inside a Firestore transaction so the student summary update and the
+ * order's `reliabilityProcessed` marker commit atomically: a concurrent or
+ * redelivered event can never double-count, and two simultaneous terminal
+ * events for the same student are serialised correctly by the transaction.
+ *
+ * When the student's user document does not exist (deleted user, or a user
+ * doc created only AFTER the order reached a terminal state), the event is
+ * DEFERRED — never permanently dropped. The transaction returns a sentinel,
+ * and the deferral runs outside it (a throw would abort the transaction and
+ * roll back the pending marker). The event is retried by the trigger's
+ * `retry: true` policy and, if the user doc never appears, is given up
+ * explicitly and audibly after RELIABILITY_MISSING_USER_RETRY_MS.
+ *
+ * @param {admin.firestore.DocumentReference} orderRef
+ * @param {'COLLECTED'|'NO_SHOW'} outcome
+ * @return {Promise<boolean>} true when the event updated the summary
+ */
+async function processReliabilityEvent(orderRef, outcome) {
+  const result = await db.runTransaction(async (transaction) => {
+    const orderSnapshot = await transaction.get(orderRef);
+    if (!orderSnapshot.exists) return false;
+    const orderData = orderSnapshot.data();
+    if (!orderData) return false;
+
+    // The order must still be in the terminal state that triggered this
+    // event (guards against a concurrent transition reverting it).
+    const canonicalStatus =
+      orderData.status === "COLLECTED" ? "collected" : orderData.status;
+    if (outcome === "COLLECTED" && canonicalStatus !== "collected") {
+      return false;
+    }
+    if (outcome === "NO_SHOW" && canonicalStatus !== "no_show") {
+      return false;
+    }
+    // Idempotency: never count the same order twice.
+    if (orderData.reliabilityProcessed === true) return false;
+
+    const studentId = orderData.studentId || orderData.userId;
+    if (!studentId) {
+      console.warn("[PickupReliability] Order without studentId — skipping");
+      return false;
+    }
+
+    const userRef = db.collection("users").doc(studentId);
+    const userSnapshot = await transaction.get(userRef);
+    if (!userSnapshot.exists) {
+      // Defer, do NOT drop: the user doc may be created or restored later
+      // (e.g. account restored after deletion, or a user doc written after
+      // the order reached a terminal state). The order is NOT marked
+      // reliabilityProcessed here, so a later retry can still count it.
+      // deferReliabilityEvent re-reads order + user and writes its
+      // pending/skip markers in its OWN transaction; only the retriable
+      // throw happens after that transaction commits.
+      return DEFER_RELIABILITY_EVENT;
+    }
+
+    // The recent-window timestamp is the order's persisted terminal outcome
+    // time (collectedAt for COLLECTED, expiredAt for NO_SHOW), NOT the event
+    // processing time — a delayed or redelivered event must not shift the
+    // recent window. The trigger persists the terminal timestamp BEFORE
+    // reliability processing (and the scheduled no-show processor writes
+    // expiredAt in the same update that flips the status), so this re-read
+    // normally finds it; the current-time fallback only guards a field that
+    // is somehow still absent.
+    const outcomeAt = outcome === "COLLECTED"
+      ? orderData.collectedAt
+      : orderData.expiredAt;
+    const timestamp = outcomeAt instanceof admin.firestore.Timestamp
+      ? outcomeAt
+      : admin.firestore.Timestamp.now();
+    const summary = recomputeReliability(
+      userSnapshot.data().pickupReliability,
+      outcome,
+      orderRef.id,
+      timestamp,
+    );
+
+    transaction.update(userRef, { pickupReliability: summary });
+    transaction.update(orderRef, {
+      reliabilityProcessed: true,
+      // Immutable record of which outcome was counted ("COLLECTED" or
+      // "NO_SHOW"), written atomically with the processed marker so a
+      // redelivered event can never record a different outcome for the same
+      // order.
+      reliabilityOutcome: outcome,
+      // Clear any stale deferral/skip markers when the event finally counts.
+      reliabilityPending: admin.firestore.FieldValue.delete(),
+      reliabilityPendingSince: admin.firestore.FieldValue.delete(),
+      reliabilitySkippedReason: admin.firestore.FieldValue.delete(),
+      reliabilitySkippedAt: admin.firestore.FieldValue.delete(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    console.log(
+      `[PickupReliability] ${outcome} order ${orderRef.id} → ` +
+      `score ${summary.reliabilityScore} (${summary.status})`
+    );
+    return true;
+  });
+
+  if (result === DEFER_RELIABILITY_EVENT) {
+    return deferReliabilityEvent(orderRef);
+  }
+  return result;
+}
+
+/**
+ * Defer a reliability event whose student user document is missing.
+ *
+ * The order re-read, the user re-read, and the pending/skip-marker writes
+ * all run inside a single Firestore transaction. Before writing skip
+ * metadata the transaction re-checks the re-read state and returns without
+ * changes when the event was already counted (`reliabilityProcessed` true)
+ * or the user document now exists — a concurrent count or a restored user
+ * doc can never be overwritten by a stale skip.
+ *
+ * Otherwise it records an auditable pending marker (`reliabilityPending` +
+ * `reliabilityPendingSince`) — WITHOUT setting `reliabilityProcessed` — and
+ * throws a retriable error so the trigger's `retry: true` policy redelivers
+ * the event. If the user doc never appears within
+ * RELIABILITY_MISSING_USER_RETRY_MS, the engine gives up EXPLICITLY: it
+ * records `reliabilitySkippedReason: 'MISSING_USER'` with a timestamp and
+ * only then marks the order processed so redeliveries stop.
+ *
+ * @param {admin.firestore.DocumentReference} orderRef
+ * @return {Promise<false>} false once the event is resolved (counted by a
+ *   concurrent delivery, order gone, or given up after the window); throws
+ *   a retriable 'deferred' error while the event remains pending.
+ */
+async function deferReliabilityEvent(orderRef) {
+  const now = admin.firestore.Timestamp.now();
+  const result = await db.runTransaction(async (transaction) => {
+    const orderSnapshot = await transaction.get(orderRef);
+    if (!orderSnapshot.exists) return "done";
+    const orderData = orderSnapshot.data();
+    if (!orderData) return "done";
+
+    // Idempotency: if a concurrent delivery (or the scheduled reconciler)
+    // already counted this order, stop without writing any marker —
+    // duplicate events count once.
+    if (orderData.reliabilityProcessed === true) return "done";
+
+    const studentId = orderData.studentId || orderData.userId;
+    if (typeof studentId !== "string" || studentId.length === 0) {
+      // No user doc can be located — nothing meaningful to defer. Do not
+      // write skip metadata for an unresolvable order.
+      return "done";
+    }
+    const userSnapshot = await transaction.get(
+      db.collection("users").doc(studentId),
+    );
+
+    // The user doc now exists, so the event is countable — do not write
+    // pending or skip markers. Throw below so the redelivered event counts
+    // it normally instead of dropping it.
+    if (userSnapshot.exists) return "countNow";
+
+    const pendingSince = orderData.reliabilityPendingSince;
+    const pendingTimestamp = pendingSince instanceof admin.firestore.Timestamp
+      ? pendingSince
+      : null;
+
+    if (
+      pendingTimestamp != null &&
+      now.toMillis() - pendingTimestamp.toMillis() >= RELIABILITY_MISSING_USER_RETRY_MS
+    ) {
+      // Explicit, auditable give-up after the retry window: record WHY and
+      // WHEN the event was skipped, then mark it processed so the trigger
+      // stops retrying forever. Guarded by the re-reads above (not already
+      // processed, user still missing), so a concurrent count or a restored
+      // user doc can never be overwritten by a stale skip.
+      console.warn(
+        `[PickupReliability] Missing user doc for order ${orderRef.id} ` +
+        `beyond the retry window — recording explicit skip (MISSING_USER)`
+      );
+      // Note: reliabilityOutcome is intentionally NOT written here — the
+      // event was skipped, not counted, so there is no outcome to record.
+      // reliabilitySkippedReason/At disambiguate this from a counted event.
+      transaction.update(orderRef, {
+        reliabilityProcessed: true,
+        reliabilitySkippedReason: "MISSING_USER",
+        reliabilitySkippedAt: now,
+        // The deferred state is resolved; drop the pending markers so the
+        // scheduled reconciler does not pick this order up again.
+        reliabilityPending: admin.firestore.FieldValue.delete(),
+        reliabilityPendingSince: admin.firestore.FieldValue.delete(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      return "skip";
+    }
+
+    if (pendingTimestamp == null) {
+      console.warn(
+        `[PickupReliability] Missing user doc for order ${orderRef.id} — ` +
+        `deferring event for retry`
+      );
+      transaction.update(orderRef, {
+        reliabilityPending: true,
+        reliabilityPendingSince: now,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    }
+    return "defer";
+  });
+
+  if (result === "defer" || result === "countNow") {
+    // Retriable error: the trigger's retry: true policy redelivers the
+    // event until the user doc appears (counted normally on a retry), the
+    // retry window elapses (explicit MISSING_USER skip above), or the event
+    // is already counted by a concurrent delivery. countNow keeps the
+    // redelivery flowing so the next attempt counts the event — it must
+    // never return false here, or the race-window event would be dropped.
+    throw new Error(result === "countNow"
+      ? `[PickupReliability] Order ${orderRef.id} deferral re-check — ` +
+        `user doc now exists, redelivering to count — deferred`
+      : `[PickupReliability] Missing user doc for order ${orderRef.id} — deferred`
+    );
+  }
+  return false;
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -1729,8 +2308,8 @@ exports.onOrderStatusChanged = onDocumentUpdated(
     // transient write failures are retried in-invocation (withRetry), and
     // if the backfill still fails the error is rethrown after logging so
     // Cloud Functions retries the whole event.  Retries are safe because
-    // backfillOrderFoodIds is idempotent (no-op when foodIds is already
-    // populated) and the ORDER_READY notification is deduplicated by
+    // backfillOrderFoodIds is idempotent (no-op when foodIds is present,
+    // with any value) and the ORDER_READY notification is deduplicated by
     // eventId in createNotification — no side effects are duplicated.
     try {
       await withRetry(
@@ -1762,6 +2341,8 @@ exports.onOrderStatusChanged = onDocumentUpdated(
     // Legacy admin writes may store uppercase 'COLLECTED'; canonicalise
     // before branching (mirrors canonicalOrderStatus in the rules).
     const status = afterData.status === "COLLECTED" ? "collected" : afterData.status;
+    const beforeStatus =
+      beforeData.status === "COLLECTED" ? "collected" : beforeData.status;
 
     // ── READY: record the authoritative readyAt + pickupDeadline ────
     if (status === "ready") {
@@ -1812,13 +2393,43 @@ exports.onOrderStatusChanged = onDocumentUpdated(
 
     // ── COLLECTED: record the authoritative collectedAt ─────────────
     if (status === "collected") {
-      if (afterData.collectedAt != null) return;
-      await event.data.after.ref.update({
-        collectedAt: admin.firestore.Timestamp.now(),
-        deadlineStatus: "COLLECTED",
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
-      console.log(`[onOrderStatusChanged] Order marked COLLECTED.`);
+      // Persist the authoritative terminal timestamp BEFORE reliability
+      // processing: the reliability engine's transaction re-reads the order
+      // and uses the persisted collectedAt (never a fresh now) for the
+      // recent-window history entry, so the history timestamp always equals
+      // the order's authoritative collection time. The write is guarded by
+      // a fresh re-read so a redelivered event cannot re-stamp (drift) the
+      // persisted timestamp; the scheduled-expiry path already carries its
+      // terminal fields in the update, so its event snapshot skips this.
+      // The get → update is intentionally a single atomic write (not a
+      // read-modify-write): a concurrent same-event redelivery could at
+      // worst overwrite collectedAt with another ~now value, which is
+      // harmless because the engine re-reads whichever value won.
+      if (afterData.collectedAt == null) {
+        const freshSnapshot = await event.data.after.ref.get();
+        if (freshSnapshot.exists && freshSnapshot.data().collectedAt == null) {
+          await event.data.after.ref.update({
+            collectedAt: admin.firestore.Timestamp.now(),
+            deadlineStatus: "COLLECTED",
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+          console.log(`[onOrderStatusChanged] Order marked COLLECTED.`);
+        }
+      }
+
+      // Phase B.2 — terminal pickup outcome: update the student's
+      // reliability summary. Only a genuine READY → COLLECTED transition
+      // counts: an order that jumps straight to a terminal state without
+      // ever being READY (an invalid transition per the rules) must never
+      // affect reliability. Idempotency is enforced by the
+      // reliabilityProcessed marker inside the transaction, never by this
+      // branch. A transient failure is rethrown so Cloud Functions retries
+      // the whole event — the marker makes the retry safe, and swallowing
+      // it would permanently lose the event (orders are rarely updated
+      // again after a terminal state).
+      if (beforeStatus === "ready") {
+        await processReliabilityEvent(event.data.after.ref, "COLLECTED");
+      }
       return;
     }
 
@@ -1826,14 +2437,31 @@ exports.onOrderStatusChanged = onDocumentUpdated(
     //    order no_show directly. The scheduled processor already writes
     //    these fields, so its updates make this branch a no-op.
     if (status === "no_show") {
-      if (afterData.expiredAt != null) return;
-      await event.data.after.ref.update({
-        expiredAt: admin.firestore.Timestamp.now(),
-        noShowProcessed: true,
-        deadlineStatus: "EXPIRED",
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
-      console.log(`[onOrderStatusChanged] Order marked NO_SHOW.`);
+      // Persist the authoritative terminal timestamp BEFORE reliability
+      // processing (same reasoning as the COLLECTED branch): the engine's
+      // history entry uses the persisted expiredAt, and a fresh-read guard
+      // prevents a redelivered event from re-stamping it. The scheduled
+      // processor already writes expiredAt in its update, so its event
+      // snapshot carries it and this write is skipped.
+      if (afterData.expiredAt == null) {
+        const freshSnapshot = await event.data.after.ref.get();
+        if (freshSnapshot.exists && freshSnapshot.data().expiredAt == null) {
+          await event.data.after.ref.update({
+            expiredAt: admin.firestore.Timestamp.now(),
+            noShowProcessed: true,
+            deadlineStatus: "EXPIRED",
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+          console.log(`[onOrderStatusChanged] Order marked NO_SHOW.`);
+        }
+      }
+
+      // Phase B.2 — terminal pickup outcome: update the student's
+      // reliability summary (see the COLLECTED branch above for why the
+      // timestamp is persisted first and why failures are rethrown).
+      if (beforeStatus === "ready") {
+        await processReliabilityEvent(event.data.after.ref, "NO_SHOW");
+      }
       return;
     }
   },
@@ -1866,9 +2494,9 @@ exports.onNewOrder = onDocumentCreated(
     // transient write failures are retried in-invocation (withRetry), and
     // if the backfill still fails the error is rethrown after logging so
     // Cloud Functions retries the whole event.  Retries are safe because
-    // backfillOrderFoodIds is idempotent and NEW_ORDER notifications are
-    // deduplicated by eventId in createNotification — no side effects are
-    // duplicated.
+    // backfillOrderFoodIds is idempotent (no-op when foodIds is present,
+    // with any value) and NEW_ORDER notifications are deduplicated by
+    // eventId in createNotification — no side effects are duplicated.
     try {
       await withRetry(
         () => backfillOrderFoodIds(event.data.ref, orderData),

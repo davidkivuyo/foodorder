@@ -193,6 +193,43 @@ void main() {
       );
     });
 
+    test('the terminal timestamp is persisted before reliability processing '
+        'so history uses the authoritative time', () {
+      final statusFn = fn.substring(
+        fn.indexOf('exports.onOrderStatusChanged'),
+        fn.indexOf('exports.onNewOrder'),
+      );
+      // COLLECTED: the collectedAt write must precede the reliability call.
+      final collectedBranch = statusFn.substring(
+        statusFn.indexOf('status === "collected"'),
+        statusFn.indexOf('status === "no_show"'),
+      );
+      final collectedWrite = collectedBranch.indexOf(
+        'collectedAt: admin.firestore.Timestamp.now()',
+      );
+      final collectedReliability = collectedBranch.indexOf(
+        'processReliabilityEvent(event.data.after.ref, "COLLECTED")',
+      );
+      expect(collectedWrite, greaterThan(-1));
+      expect(collectedReliability, greaterThan(collectedWrite));
+      // NO_SHOW: the expiredAt write must precede the reliability call.
+      final noShowBranch = statusFn.substring(
+        statusFn.indexOf('status === "no_show"'),
+      );
+      final expiredWrite = noShowBranch.indexOf(
+        'expiredAt: admin.firestore.Timestamp.now()',
+      );
+      final noShowReliability = noShowBranch.indexOf(
+        'processReliabilityEvent(event.data.after.ref, "NO_SHOW")',
+      );
+      expect(expiredWrite, greaterThan(-1));
+      expect(noShowReliability, greaterThan(expiredWrite));
+      // A fresh-read guard stops a redelivered event from re-stamping the
+      // persisted terminal timestamp.
+      expect(statusFn, contains('freshSnapshot.data().collectedAt == null'));
+      expect(statusFn, contains('freshSnapshot.data().expiredAt == null'));
+    });
+
     test('onOrderStatusChanged keeps manually marked NO_SHOW orders '
         'self-consistent', () {
       final statusFn = fn.substring(
