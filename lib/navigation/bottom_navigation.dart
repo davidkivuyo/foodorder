@@ -170,10 +170,13 @@ class _NavigationExampleState extends State<MainScreen> {
         );
       },
       child: Scaffold(
+        extendBodyBehindAppBar: true,
         // Top Bar — Visible only on mobile
         appBar: isDesktop
             ? null
             : AppBar(
+                backgroundColor: Colors.transparent,
+                elevation: 0,
                 toolbarHeight: 50,
                 title: const AppLogo(),
                 actions: <Widget>[

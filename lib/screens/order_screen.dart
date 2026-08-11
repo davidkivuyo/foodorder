@@ -1543,7 +1543,7 @@ class _OrdersScreenState extends State<OrdersScreen>
                 children: [
                   Icon(Icons.event_note, color: Colors.orange),
                   SizedBox(width: 8),
-                  Text('Plan an Upcoming Meal'),
+                  Text('Plan a future Meal'),
                 ],
               ),
               content: SingleChildScrollView(

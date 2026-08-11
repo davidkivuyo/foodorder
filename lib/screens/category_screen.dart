@@ -19,8 +19,6 @@ import '../widgets/hover_card_scale.dart';
 import '../widgets/stock_badge.dart';
 import 'food_details.dart';
 
-
-
 class _Category {
   final String display;
   final String value;
@@ -79,59 +77,61 @@ class _CategoryScreenState extends State<CategoryScreen> {
 
         final allItems = snapshot.data ?? [];
 
-        return SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.all(10.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Explore Categories',
-                  style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: .75,
+        return SafeArea(
+          child: SingleChildScrollView(
+            child: Padding(
+              padding: const EdgeInsets.all(10.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Explore Categories',
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: .75,
+                    ),
                   ),
-                ),
-                const Text(
-                  'Find the best meal for your study break!',
-                  style: TextStyle(fontSize: 15),
-                ),
-                const SizedBox(height: 18),
-                _buildCategoryChips(),
-                const SizedBox(height: 18),
-                // Only this subtree rebuilds when the chip changes.
-                ValueListenableBuilder<String>(
-                  valueListenable: _selectedCategory,
-                  builder: (context, selected, _) {
-                    final filteredItems = selected == 'All'
-                        ? allItems
-                        : allItems
-                            .where(
-                              (item) =>
-                                  item.category.toLowerCase() ==
-                                  selected.toLowerCase(),
-                            )
-                            .toList();
+                  const Text(
+                    'Find the best meal for your study break!',
+                    style: TextStyle(fontSize: 15),
+                  ),
+                  const SizedBox(height: 18),
+                  _buildCategoryChips(),
+                  const SizedBox(height: 18),
+                  // Only this subtree rebuilds when the chip changes.
+                  ValueListenableBuilder<String>(
+                    valueListenable: _selectedCategory,
+                    builder: (context, selected, _) {
+                      final filteredItems = selected == 'All'
+                          ? allItems
+                          : allItems
+                                .where(
+                                  (item) =>
+                                      item.category.toLowerCase() ==
+                                      selected.toLowerCase(),
+                                )
+                                .toList();
 
-                    if (filteredItems.isEmpty) {
-                      return Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(32),
-                          child: Text(
-                            'No items found for $selected',
-                            style: const TextStyle(
-                              fontSize: 16,
-                              color: Colors.grey,
+                      if (filteredItems.isEmpty) {
+                        return Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(32),
+                            child: Text(
+                              'No items found for $selected',
+                              style: const TextStyle(
+                                fontSize: 16,
+                                color: Colors.grey,
+                              ),
                             ),
                           ),
-                        ),
-                      );
-                    }
-                    return Cards(items: filteredItems);
-                  },
-                ),
-              ],
+                        );
+                      }
+                      return Cards(items: filteredItems);
+                    },
+                  ),
+                ],
+              ),
             ),
           ),
         );
@@ -162,7 +162,9 @@ class _CategoryScreenState extends State<CategoryScreen> {
                       vertical: 5,
                     ),
                     decoration: BoxDecoration(
-                      color: isSelected ? const Color(0xFFF5820D) : Colors.white,
+                      color: isSelected
+                          ? const Color(0xFFF5820D)
+                          : Colors.white,
                       borderRadius: BorderRadius.circular(25),
                       border: isSelected
                           ? null
@@ -260,9 +262,9 @@ class FoodCard extends StatelessWidget {
                       context,
                       MaterialPageRoute(
                         builder: (_) => FoodDetailsScreen(
-                              item: item,
-                              heroTagPrefix: 'category_',
-                            ),
+                          item: item,
+                          heroTagPrefix: 'category_',
+                        ),
                       ),
                     );
                   },
@@ -446,5 +448,3 @@ class FoodCard extends StatelessWidget {
     );
   }
 }*/
-
-
