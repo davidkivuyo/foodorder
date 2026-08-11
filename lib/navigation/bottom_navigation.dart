@@ -52,9 +52,7 @@ class _NavigationExampleState extends State<MainScreen> {
     if (index == 2) {
       Navigator.push(
         context,
-        MaterialPageRoute(
-          builder: (context) => const SearchBarScreen(),
-        ),
+        MaterialPageRoute(builder: (context) => const SearchBarScreen()),
       );
     } else {
       setState(() {
@@ -80,7 +78,9 @@ class _NavigationExampleState extends State<MainScreen> {
           duration: const Duration(milliseconds: 200),
           padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
           decoration: BoxDecoration(
-            color: isSelected ? Colors.orange.withValues(alpha: 0.1) : Colors.transparent,
+            color: isSelected
+                ? Colors.orange.withValues(alpha: 0.1)
+                : Colors.transparent,
             borderRadius: BorderRadius.circular(12),
           ),
           child: Row(
@@ -120,7 +120,7 @@ class _NavigationExampleState extends State<MainScreen> {
         color: Colors.black,
       ),
       subtitleText:
-          "We're having trouble connecting, but you should have your food shortly.",
+          "We're having trouble connecting, but you should have your food very soon.",
       subtitleTextStyle: const TextStyle(
         fontSize: 15,
         fontWeight: FontWeight.normal,
@@ -315,14 +315,20 @@ class _NavigationExampleState extends State<MainScreen> {
                     decoration: BoxDecoration(
                       color: Colors.white,
                       border: Border(
-                        right: BorderSide(color: Colors.grey.shade200, width: 1.5),
+                        right: BorderSide(
+                          color: Colors.grey.shade200,
+                          width: 1.5,
+                        ),
                       ),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 24.0, vertical: 30.0),
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 24.0,
+                            vertical: 30.0,
+                          ),
                           child: AppLogo(),
                         ),
                         const SizedBox(height: 8),
@@ -360,26 +366,36 @@ class _NavigationExampleState extends State<MainScreen> {
                         // Desktop Notification summary button
                         StreamBuilder<int>(
                           stream: NotificationService().unreadCountStream(
-                            recipientId: FirebaseAuth.instance.currentUser?.uid ?? '',
+                            recipientId:
+                                FirebaseAuth.instance.currentUser?.uid ?? '',
                             recipientRole: NotificationService.roleStudent,
                           ),
                           builder: (context, snapshot) {
-                            final unreadCount = snapshot.hasData ? snapshot.data! : 0;
+                            final unreadCount = snapshot.hasData
+                                ? snapshot.data!
+                                : 0;
                             return Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16.0,
+                                vertical: 8.0,
+                              ),
                               child: TextButton.icon(
                                 onPressed: () {
                                   Navigator.push(
                                     context,
                                     MaterialPageRoute(
-                                      builder: (_) => const NotificationScreen(),
+                                      builder: (_) =>
+                                          const NotificationScreen(),
                                     ),
                                   );
                                 },
                                 icon: Stack(
                                   clipBehavior: Clip.none,
                                   children: [
-                                    Icon(Icons.notifications_outlined, color: Colors.grey.shade700),
+                                    Icon(
+                                      Icons.notifications_outlined,
+                                      color: Colors.grey.shade700,
+                                    ),
                                     if (unreadCount > 0)
                                       Positioned(
                                         right: -4,
@@ -395,7 +411,9 @@ class _NavigationExampleState extends State<MainScreen> {
                                             minHeight: 14,
                                           ),
                                           child: Text(
-                                            unreadCount > 9 ? '9+' : '$unreadCount',
+                                            unreadCount > 9
+                                                ? '9+'
+                                                : '$unreadCount',
                                             style: const TextStyle(
                                               color: Colors.white,
                                               fontSize: 8,
@@ -409,7 +427,10 @@ class _NavigationExampleState extends State<MainScreen> {
                                 ),
                                 label: Text(
                                   "Notifications",
-                                  style: TextStyle(color: Colors.grey.shade800, fontSize: 14),
+                                  style: TextStyle(
+                                    color: Colors.grey.shade800,
+                                    fontSize: 14,
+                                  ),
                                 ),
                               ),
                             );
@@ -444,7 +465,10 @@ class _NavigationExampleState extends State<MainScreen> {
                         decoration: BoxDecoration(
                           color: Colors.white,
                           border: Border(
-                            left: BorderSide(color: Colors.grey.shade200, width: 1.5),
+                            left: BorderSide(
+                              color: Colors.grey.shade200,
+                              width: 1.5,
+                            ),
                           ),
                         ),
                         child: SafeArea(
@@ -480,14 +504,17 @@ class _NavigationExampleState extends State<MainScreen> {
                 selectedIndex: currentPageIndex,
                 onDestinationSelected: _onPageSelected,
                 indicatorColor: Colors.orange,
-                labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
+                //labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
                 destinations: const [
                   NavigationDestination(
                     icon: Icon(Icons.home_outlined, semanticLabel: 'home'),
                     label: "Home",
                   ),
                   NavigationDestination(
-                    icon: Icon(Icons.category_outlined, semanticLabel: 'categories'),
+                    icon: Icon(
+                      Icons.category_outlined,
+                      semanticLabel: 'categories',
+                    ),
                     label: "Categories",
                   ),
                   NavigationDestination(
@@ -502,7 +529,10 @@ class _NavigationExampleState extends State<MainScreen> {
                     label: "Orders",
                   ),
                   NavigationDestination(
-                    icon: Icon(Icons.person_outlined, semanticLabel: 'my profile'),
+                    icon: Icon(
+                      Icons.person_outlined,
+                      semanticLabel: 'my profile',
+                    ),
                     label: "Account",
                   ),
                 ],
