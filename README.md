@@ -11,6 +11,7 @@ This Project code changes must be reviewed by:
 * SonarCloud [sonarcloud.io](https://sonarcloud.io/project/overview?id=davidkivuyo_foodorder) 
 
 Scan the QR code to visit the web app
+
 ![Qr code](designs/assets/qrcode.png "The Web app")
 ---
 
