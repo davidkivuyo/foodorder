@@ -10,7 +10,7 @@ This Project code changes must be reviewed by:
 * Qodo ai [qodo.ai](https://www.qodo.ai)
 * SonarCloud [sonarcloud.io](https://sonarcloud.io/project/overview?id=davidkivuyo_foodorder) 
 
-Scan the QR code to visit the web app
+## Scan the QR code to visit the web app
 
 ![Qr code](designs/assets/qrcode.png "The Web app")
 ---
