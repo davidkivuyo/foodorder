@@ -141,140 +141,160 @@ class HomeScreen extends StatelessWidget {
                         return 0;
                       });
 
-                return SingleChildScrollView(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Search bar
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                          child: Material(
-                            color: Colors.transparent,
-                            child: InkWell(
-                              borderRadius: BorderRadius.circular(
-                                28,
-                              ), // Fixed ripple effect to match container pill shape
-                              onTap: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => const SearchBarScreen(),
+                return Stack(
+                  children: [
+                    // ── 1. Orange Header Overlay Background ──────────────────
+                    Container(
+                      height:
+                          280, // Height extending behind topbar, search, and banner
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFE85D04), // Accent orange color
+                        borderRadius: BorderRadius.vertical(
+                          bottom: Radius.circular(28),
+                        ),
+                      ),
+                    ),
+                    SingleChildScrollView(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Search bar
+                            Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8.0,
+                              ),
+                              child: Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(
+                                    28,
+                                  ), // Fixed ripple effect to match container pill shape
+                                  onTap: () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) => const SearchBarScreen(),
+                                      ),
+                                    );
+                                  },
+                                  // Ink (not Container) paints the fill onto the
+                                  // Material so the InkWell ripple renders visibly
+                                  // over the field instead of behind the opaque
+                                  // background.
+                                  child: Ink(
+                                    height:
+                                        50, // Proportional height matching Deliveroo's standard search bar
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 16,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors
+                                          .white, // Off-white/white interior fill
+                                      border: Border.all(
+                                        color: Colors
+                                            .grey
+                                            .shade300, // Light grey outline matching the screenshot
+                                        width: 1,
+                                      ),
+                                      borderRadius: BorderRadius.circular(28),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Icon(
+                                          Icons.search,
+                                          color: Colors.grey.shade700,
+                                          size: 24,
+                                        ),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: Text(
+                                            "Dishes, categories, tags", // Updated placeholder text
+                                            style: TextStyle(
+                                              fontSize: 15,
+                                              fontWeight: FontWeight.w400,
+                                              color: Colors
+                                                  .grey
+                                                  .shade600, // Styled as placeholder hint text
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
+                                ),
+                              ),
+                            ),
+
+                            const SizedBox(height: 8),
+
+                            // Promotional banner carousel
+                            SpecialBannerCard(
+                              imageUrls: const [
+                                'https://res.cloudinary.com/nrwglbxh/image/upload/v1785401129/juicebanner_scbixp.png',
+                                'https://res.cloudinary.com/nrwglbxh/image/upload/v1784272803/grilledmeat_dwcofz.png',
+                                'https://res.cloudinary.com/nrwglbxh/image/upload/v1783345398/banner2_mjqb1u.png',
+                              ],
+                              onTap: (index) {
+                                AppLog.d(
+                                  "Promotional Banner at index $index clicked!",
                                 );
                               },
-                              // Ink (not Container) paints the fill onto the
-                              // Material so the InkWell ripple renders visibly
-                              // over the field instead of behind the opaque
-                              // background.
-                              child: Ink(
-                                height:
-                                    50, // Proportional height matching Deliveroo's standard search bar
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
+                            ),
+
+                            const SizedBox(height: 8),
+
+                            // ── Your Favourites section ───────────────────
+                            // Appears only when favourites exist, before all
+                            // other sections.  Uses the existing CardRowItems.
+                            const _YourFavouritesSection(),
+
+                            // Dynamic sections from firestore
+                            ...validSections.expand((section) {
+                              final sectionItems = allItems
+                                  .where((f) => f.section == section.name)
+                                  .toList();
+                              if (sectionItems.isEmpty) return <Widget>[];
+                              return [
+                                CardRowItems(
+                                  title: _formatTitle(section.name),
+                                  items: sectionItems,
+                                  heroTagPrefix: 'section_${section.name}_',
                                 ),
-                                decoration: BoxDecoration(
-                                  color: Colors
-                                      .white, // Off-white/white interior fill
-                                  border: Border.all(
-                                    color: Colors
-                                        .grey
-                                        .shade300, // Light grey outline matching the screenshot
-                                    width: 1,
+                                // Minimal gap between consecutive horizontal
+                                // section lists — thin hairline (4px) matching
+                                // Uber Eats / Deliveroo compact section spacing
+                                const Divider(height: 12, thickness: 0.5),
+                              ];
+                            }),
+                            const SizedBox(height: 8),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8.0,
+                              ),
+                              child: Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    'Common loved foods',
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                    ),
                                   ),
-                                  borderRadius: BorderRadius.circular(28),
-                                ),
-                                child: Row(
-                                  children: [
-                                    Icon(
-                                      Icons.search,
-                                      color: Colors.grey.shade700,
-                                      size: 24,
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Text(
-                                        "Dishes, categories, tags", // Updated placeholder text
-                                        style: TextStyle(
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.w400,
-                                          color: Colors
-                                              .grey
-                                              .shade600, // Styled as placeholder hint text
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
+                                ],
                               ),
                             ),
-                          ),
-                        ),
-
-                        const SizedBox(height: 8),
-
-                        // Promotional banner carousel
-                        SpecialBannerCard(
-                          imageUrls: const [
-                            'https://res.cloudinary.com/nrwglbxh/image/upload/v1785401129/juicebanner_scbixp.png',
-                            'https://res.cloudinary.com/nrwglbxh/image/upload/v1784272803/grilledmeat_dwcofz.png',
-                            'https://res.cloudinary.com/nrwglbxh/image/upload/v1783345398/banner2_mjqb1u.png',
+                            const SizedBox(height: 8),
+                            const CommonFood(),
+                            const SizedBox(height: 12),
                           ],
-                          onTap: (index) {
-                            AppLog.d(
-                              "Promotional Banner at index $index clicked!",
-                            );
-                          },
                         ),
-
-                        const SizedBox(height: 8),
-
-                        // ── Your Favourites section ───────────────────
-                        // Appears only when favourites exist, before all
-                        // other sections.  Uses the existing CardRowItems.
-                        const _YourFavouritesSection(),
-
-                        // Dynamic sections from firestore
-                        ...validSections.expand((section) {
-                          final sectionItems = allItems
-                              .where((f) => f.section == section.name)
-                              .toList();
-                          if (sectionItems.isEmpty) return <Widget>[];
-                          return [
-                            CardRowItems(
-                              title: _formatTitle(section.name),
-                              items: sectionItems,
-                              heroTagPrefix: 'section_${section.name}_',
-                            ),
-                            // Minimal gap between consecutive horizontal
-                            // section lists — thin hairline (4px) matching
-                            // Uber Eats / Deliveroo compact section spacing
-                            const Divider(height: 12, thickness: 0.5),
-                          ];
-                        }),
-                        const SizedBox(height: 8),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                'Common loved foods',
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        const CommonFood(),
-                        const SizedBox(height: 12),
-                      ],
+                      ),
                     ),
-                  ),
+                  ],
                 );
               },
             );
