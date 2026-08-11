@@ -35,17 +35,43 @@ class MainScreen extends StatefulWidget {
   State<MainScreen> createState() => _NavigationExampleState();
 }
 
-// body and bottom navigation
 class _NavigationExampleState extends State<MainScreen> {
   int currentPageIndex = 0;
+  final ScrollController _homeScrollController = ScrollController();
+  bool _isScrolled = false;
+  late final List<Widget> _pages;
 
-  static const List<Widget> _pages = [
-    HomeScreen(),
-    CategoryScreen(),
-    SearchBarScreen(),
-    OrdersScreen(),
-    AccountScreen(),
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _homeScrollController.addListener(_onScroll);
+    // Built once so setState for _isScrolled never recreates widget instances.
+    _pages = [
+      HomeScreen(scrollController: _homeScrollController),
+      const CategoryScreen(),
+      const SearchBarScreen(),
+      const OrdersScreen(),
+      const AccountScreen(),
+    ];
+  }
+
+  void _onScroll() {
+    if (_homeScrollController.hasClients) {
+      final scrolled = _homeScrollController.offset > 10;
+      if (scrolled != _isScrolled) {
+        setState(() {
+          _isScrolled = scrolled;
+        });
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _homeScrollController.removeListener(_onScroll);
+    _homeScrollController.dispose();
+    super.dispose();
+  }
 
   // Helper method to handle navigation choices
   void _onPageSelected(int index) {
@@ -175,8 +201,16 @@ class _NavigationExampleState extends State<MainScreen> {
         appBar: isDesktop
             ? null
             : AppBar(
-                backgroundColor: Colors.transparent,
-                elevation: 0,
+                backgroundColor: _isScrolled
+                    ? (Theme.of(context).appBarTheme.backgroundColor ??
+                        Colors.grey.shade100)
+                    : Colors.transparent,
+                surfaceTintColor: _isScrolled
+                    ? (Theme.of(context).appBarTheme.surfaceTintColor ??
+                        Colors.grey.shade100)
+                    : Colors.transparent,
+                elevation: _isScrolled ? 2 : 0,
+                scrolledUnderElevation: 2,
                 toolbarHeight: 50,
                 title: const AppLogo(),
                 actions: <Widget>[
@@ -490,7 +524,10 @@ class _NavigationExampleState extends State<MainScreen> {
               )
             : Stack(
                 children: [
-                  _pages[currentPageIndex],
+                  IndexedStack(
+                    index: currentPageIndex,
+                    children: _pages,
+                  ),
                   const Positioned(
                     left: 0,
                     right: 0,

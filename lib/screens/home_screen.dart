@@ -33,7 +33,9 @@ import 'favorites_screen.dart';
 import 'food_details.dart';
 
 class HomeScreen extends StatelessWidget {
-  const HomeScreen({super.key});
+  final ScrollController? scrollController;
+
+  const HomeScreen({super.key, this.scrollController});
 
   /// Phase 13: precache the first [limit] unique food image URLs so the
   /// hero carousels render instantly instead of showing grey placeholders
@@ -143,6 +145,7 @@ class HomeScreen extends StatelessWidget {
                     });
 
               return SingleChildScrollView(
+                controller: scrollController,
                 child: Stack(
                   children: [
                     // ── 1. Orange Header Overlay Background ──────────────────
@@ -151,7 +154,7 @@ class HomeScreen extends StatelessWidget {
                       top: 0,
                       left: 0,
                       right: 0,
-                      height: statusBarHeight + 5 + 50 + 8 + (180 / 2),
+                      height: statusBarHeight + 5 + 50 + 8 + 150,
                       child: Container(
                         decoration: const BoxDecoration(
                           color: Colors.orange, // Accent orange color
