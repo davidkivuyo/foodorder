@@ -151,15 +151,16 @@ class _SearchBarScreenState extends State<SearchBarScreen> {
             onChanged: _onSearchChanged,
             textInputAction: TextInputAction.search,
             onSubmitted: _performSearch,
+            textAlignVertical: TextAlignVertical.center,
             style: const TextStyle(fontSize: 16, color: Colors.black87),
             decoration: InputDecoration(
-              hintText: '  Dishes, tags, category',
+              hintText: 'Dishes, tags, category',
               hintStyle: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.normal,
                 color: Colors.grey.shade400,
               ),
-              prefixIcon: Icon(Icons.search, color: Colors.black, size: 20),
+              prefixIcon: const Icon(Icons.search, color: Colors.black, size: 20),
               suffixIcon: _searchQuery.isNotEmpty
                   ? IconButton(
                       icon: const Icon(
@@ -171,7 +172,8 @@ class _SearchBarScreenState extends State<SearchBarScreen> {
                     )
                   : null,
               border: InputBorder.none,
-              contentPadding: const EdgeInsets.symmetric(vertical: 10),
+              isDense: true,
+              contentPadding: const EdgeInsets.symmetric(vertical: 12),
             ),
           ),
         ),
