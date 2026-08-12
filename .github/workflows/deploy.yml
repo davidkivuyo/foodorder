@@ -11,7 +11,7 @@ jobs:
     # Without this dependency GitHub Actions would run the jobs in parallel
     # and could ship to Cloudflare Pages before (or despite) a failing suite.
     needs: no-show-integration
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     steps:
       # Step 1: Checkout the code
       - uses: actions/checkout@v4
@@ -70,7 +70,7 @@ jobs:
   # order_cancellation_foundation_test.dart). The Firestore emulator
   # requires Java 21+.
   no-show-integration:
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@v4
 
