@@ -157,7 +157,7 @@ class _NavigationExampleState extends State<MainScreen> {
       textAlign: TextAlign.center,
       spacing: 15,
       buttonTextColor: Colors.white,
-      buttonColor: Colors.grey,
+      buttonColor: Colors.orange,
       buttonPadding: const EdgeInsets.symmetric(
         horizontal: 18.0,
         vertical: 8.0,
@@ -203,11 +203,11 @@ class _NavigationExampleState extends State<MainScreen> {
             : AppBar(
                 backgroundColor: _isScrolled
                     ? (Theme.of(context).appBarTheme.backgroundColor ??
-                        Colors.grey.shade100)
+                          Colors.grey.shade100)
                     : Colors.transparent,
                 surfaceTintColor: _isScrolled
                     ? (Theme.of(context).appBarTheme.surfaceTintColor ??
-                        Colors.grey.shade100)
+                          Colors.grey.shade100)
                     : Colors.transparent,
                 elevation: _isScrolled ? 2 : 0,
                 scrolledUnderElevation: 2,
@@ -524,10 +524,7 @@ class _NavigationExampleState extends State<MainScreen> {
               )
             : Stack(
                 children: [
-                  IndexedStack(
-                    index: currentPageIndex,
-                    children: _pages,
-                  ),
+                  IndexedStack(index: currentPageIndex, children: _pages),
                   const Positioned(
                     left: 0,
                     right: 0,
