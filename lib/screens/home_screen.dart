@@ -154,7 +154,7 @@ class HomeScreen extends StatelessWidget {
                       top: 0,
                       left: 0,
                       right: 0,
-                      height: statusBarHeight + 5 + 50 + 8 + 150,
+                      height: statusBarHeight + 5 + 50 + 8 + (180 / 2),
                       child: Container(
                         decoration: const BoxDecoration(
                           color: Colors.orange, // Accent orange color
