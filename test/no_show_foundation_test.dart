@@ -52,8 +52,7 @@ void main() {
       expect(orderBlock, isNot(contains('allow update: if isAuth()')));
     });
 
-    test('ready -> collected and ready -> no_show are the canonical terminal '
-        'transitions (Tests 4 & 6)', () {
+    test('ready -> collected enforces pickupGracePeriodNotExpired cutoff (Tests 4, 5, 14)', () {
       final transitionFn = rules.substring(
         rules.indexOf('function validOrderStatusTransition()'),
         rules.indexOf('// ── User validation ─'),
@@ -63,12 +62,14 @@ void main() {
         transitionFn,
         contains("'ready', 'collected', 'no_show'"),
       );
-      // Terminal transition ready -> collected | no_show is permitted.
+      // Terminal transition ready -> collected requires pickupGracePeriodNotExpired.
       expect(transitionFn, contains("(before == 'ready'"));
       expect(
         transitionFn,
-        contains("(after == 'collected' || after == 'no_show')"),
+        contains("after == 'collected' && pickupGracePeriodNotExpired()"),
       );
+      expect(rules, contains('function pickupGracePeriodNotExpired()'));
+      expect(rules, contains('duration.value(5, \'m\')'));
     });
 
     test('collectedAt is server-protected from admin writes', () {
@@ -79,6 +80,7 @@ void main() {
       expect(protectedFn, contains("!('collectedAt' in changed)"));
       // The no-show state fields remain protected too.
       expect(protectedFn, contains("!('noShowProcessed' in changed)"));
+      expect(protectedFn, contains("!('noShowAt' in changed)"));
       expect(protectedFn, contains("!('expiredAt' in changed)"));
     });
 
@@ -128,8 +130,8 @@ void main() {
       fn = readRepoFile('functions/index.js');
     });
 
-    test('processExpiredOrder verifies every eligibility condition inside '
-        'the transaction (Tests 4, 5, 6, 7)', () {
+    test('processExpiredOrder verifies eligibility and grace period cutoff '
+        'inside the transaction (Tests 4, 5, 6, 7)', () {
       final expiryFn = fn.substring(
         fn.indexOf('async function processExpiredOrder('),
         fn.indexOf('exports.processExpiredPickups'),
@@ -138,13 +140,13 @@ void main() {
       expect(expiryFn, contains('orderData.status !== "ready"'));
       expect(expiryFn, contains('orderData.deadlineStatus !== "ACTIVE"'));
       expect(expiryFn, contains('orderData.noShowProcessed === true'));
-      // A deadline must exist (Timestamp) and must already have passed —
-      // the second run on a no_show order returns false (idempotent).
+      // A deadline must exist (Timestamp) and pickupDeadline + gracePeriod must have passed.
       expect(
         expiryFn,
         contains('pickupDeadline instanceof admin.firestore.Timestamp'),
       );
-      expect(expiryFn, contains('pickupDeadline.toMillis() > now.toMillis()'));
+      expect(expiryFn, contains('DEFAULT_PICKUP_GRACE_PERIOD_MINUTES'));
+      expect(expiryFn, contains('now.toMillis() < noShowEligibleAtMs'));
       // The transition writes exactly the no-show state + timestamp.
       expect(expiryFn, contains('status: "no_show"'));
       expect(
@@ -154,11 +156,12 @@ void main() {
       expect(expiryFn, contains('action: "automatic_no_show"'));
     });
 
-    test('the scheduled query only targets READY/ACTIVE/expired orders '
+    test('the scheduled query runs every 1 minute and targets expired grace period orders '
         '(Test 6 — collected excluded)', () {
+      expect(fn, contains('.schedule("every 1 minutes")'));
       expect(fn, contains('.where("status", "==", "ready")'));
       expect(fn, contains('.where("deadlineStatus", "==", "ACTIVE")'));
-      expect(fn, contains('.where("pickupDeadline", "<=", now)'));
+      expect(fn, contains('.where("pickupDeadline", "<=", graceExpiryThreshold)'));
     });
 
     test('the order is re-read inside a transaction before deciding '
@@ -380,6 +383,9 @@ void main() {
         'expiredAt': Timestamp.fromDate(
           now.subtract(const Duration(minutes: 20)),
         ),
+        'noShowAt': Timestamp.fromDate(
+          now.subtract(const Duration(minutes: 20)),
+        ),
         'noShowProcessed': true,
         'deadlineStatus': 'EXPIRED',
         'pickupWindowMinutes': 20,
@@ -390,6 +396,7 @@ void main() {
 
       expect(order.status, OrderStatus.noShow);
       expect(order.expiredAt, isNotNull);
+      expect(order.noShowAt, isNotNull);
       expect(order.collectedAt, isNull);
       expect(order.noShowProcessed, isTrue);
       expect(order.deadlineStatus, DeadlineStatus.expired);

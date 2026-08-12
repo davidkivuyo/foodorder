@@ -15,6 +15,7 @@
 import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../data/food_data.dart';
+import '../services/pickup_deadline_service.dart';
 import 'cart_item.dart';
 
 /// Represents the current state of an order.
@@ -125,6 +126,7 @@ class FoodOrder {
 
   // No-show processing state (server-written by the pickup expiry function)
   final bool noShowProcessed;
+  final DateTime? noShowAt;
   final DateTime? expiredAt;
 
   // Pickup deadline extension (student-initiated, once per order)
@@ -136,6 +138,10 @@ class FoodOrder {
   final DateTime? cancelledAt;
   final String? cancelledBy;
   final String? cancellationReason;
+
+  /// Calculated server-authoritative hard cutoff time for pickup eligibility.
+  DateTime? get noShowEligibleAt => pickupDeadline?.add(
+      const Duration(minutes: PickupDeadlineService.defaultGracePeriodMinutes));
 
   FoodOrder({
     required this.orderId,
@@ -157,6 +163,7 @@ class FoodOrder {
     this.distanceMeters,
     this.distanceCalculated = false,
     this.noShowProcessed = false,
+    this.noShowAt,
     this.expiredAt,
     this.deadlineExtended = false,
     this.extensionAt,
@@ -249,6 +256,7 @@ class FoodOrder {
       distanceMeters: (data['distanceMeters'] as num?)?.toDouble(),
       distanceCalculated: data['distanceCalculated'] as bool? ?? false,
       noShowProcessed: data['noShowProcessed'] as bool? ?? false,
+      noShowAt: parseTimestamp(data['noShowAt']),
       expiredAt: parseTimestamp(data['expiredAt']),
       deadlineExtended: data['deadlineExtended'] as bool? ?? false,
       extensionAt: parseTimestamp(data['extensionAt']),
