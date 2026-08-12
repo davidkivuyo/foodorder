@@ -1,6 +1,8 @@
 # future implementation plans
 
 # TODOS
+1. Create a My profile screen and move the logout settings to it, in the future add image profile, email change, password
+
 1. add order cancellation and give a 2min cacellation window before placing the order.
 
 2. Making sure that order can be extended only once by a user

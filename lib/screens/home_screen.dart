@@ -203,7 +203,8 @@ class HomeScreen extends StatelessWidget {
                                   ),
                                   decoration: BoxDecoration(
                                     color: Colors
-                                        .white, // Off-white/white interior fill
+                                        .grey
+                                        .shade100, // Off-white/white interior fill
                                     border: Border.all(
                                       color: Colors
                                           .grey
@@ -222,7 +223,7 @@ class HomeScreen extends StatelessWidget {
                                       const SizedBox(width: 12),
                                       Expanded(
                                         child: Text(
-                                          "Dishes, categories, tags", // Updated placeholder text
+                                          "Menu, categories, tags", // Updated placeholder text
                                           style: TextStyle(
                                             fontSize: 15,
                                             fontWeight: FontWeight.w400,

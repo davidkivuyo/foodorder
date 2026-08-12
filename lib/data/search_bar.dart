@@ -154,13 +154,17 @@ class _SearchBarScreenState extends State<SearchBarScreen> {
             textAlignVertical: TextAlignVertical.center,
             style: const TextStyle(fontSize: 16, color: Colors.black87),
             decoration: InputDecoration(
-              hintText: 'Dishes, tags, category',
+              hintText: 'Menu, tags, category',
               hintStyle: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.normal,
                 color: Colors.grey.shade400,
               ),
-              prefixIcon: const Icon(Icons.search, color: Colors.black, size: 20),
+              prefixIcon: const Icon(
+                Icons.search,
+                color: Colors.black,
+                size: 20,
+              ),
               suffixIcon: _searchQuery.isNotEmpty
                   ? IconButton(
                       icon: const Icon(
@@ -361,10 +365,8 @@ class _SearchBarScreenState extends State<SearchBarScreen> {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => FoodDetailsScreen(
-                      item: item,
-                      heroTagPrefix: 'search_',
-                    ),
+                    builder: (_) =>
+                        FoodDetailsScreen(item: item, heroTagPrefix: 'search_'),
                   ),
                 );
               },
