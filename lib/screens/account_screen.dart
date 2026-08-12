@@ -244,7 +244,7 @@ class _UserInitialsAvatar extends StatelessWidget {
       height: 70,
       decoration: BoxDecoration(
         color: color,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(24),
         border: Border.all(
           // Darken the fill colour by 20 % lightness to create a visible,
           // contrasting border ring rather than a near-invisible tinted one.

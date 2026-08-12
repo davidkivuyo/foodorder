@@ -84,7 +84,7 @@ class HomeScreen extends StatelessWidget {
 
   // THE SECTIONS COMES FROM FIRESTORE "section" COLLECTION
   static const Map<String, String> _sectionTitles = {
-    'campus_favourite': 'Favourite on campus',
+    'campus_favourite': 'Campus favourites',
     'todays_deals': "Today's menu",
     'drinks': 'Drinks Deals',
     'other': 'Hot spots',
@@ -154,13 +154,13 @@ class HomeScreen extends StatelessWidget {
                       top: 0,
                       left: 0,
                       right: 0,
-                      height: statusBarHeight + 5 + 50 + 8 + (180 / 2),
+                      height: statusBarHeight + 5 + 50 + 8 + 3,
                       child: Container(
                         decoration: const BoxDecoration(
-                          color: Colors.orange, // Accent orange color
+                          color: Colors.orange,
                           borderRadius: BorderRadius.vertical(
                             bottom: Radius.circular(16),
-                          ),
+                          ), // Accent orange color
                         ),
                       ),
                     ),
@@ -240,7 +240,7 @@ class HomeScreen extends StatelessWidget {
                             ),
                           ),
 
-                          const SizedBox(height: 8),
+                          const SizedBox(height: 24),
 
                           // Promotional banner carousel
                           SpecialBannerCard(
