@@ -100,7 +100,7 @@ service cloud.firestore {
         'cafeId', 'cafeLocation', 'status', 'createdAt',
         'updatedAt', 'deadlineStatus', 'distanceMeters',
         'distanceCalculated', 'pickupWindowMinutes',
-        'noShowProcessed', 'noShowAt', 'expiredAt', 'deadlineExtended',
+        'noShowProcessed', 'expiredAt', 'deadlineExtended',
         'extensionAt', 'foodIds',
         // Phase B cancellation metadata is written only by the cancelOrder
         // callable (Admin SDK); no client may send it on create.
@@ -258,9 +258,9 @@ service cloud.firestore {
     //   DEFAULT_PICKUP_GRACE_PERIOD_MINUTES          (Cloud Functions)
     // Firestore Rules has no import mechanism; the literal cannot be centralised.
     function pickupGracePeriodNotExpired() {
-      return ('pickupDeadline' in resource.data)
-        && (resource.data.pickupDeadline is timestamp)
-        && request.time < resource.data.pickupDeadline + duration.value(5, 'm');
+      return !('pickupDeadline' in resource.data)
+        || !(resource.data.pickupDeadline is timestamp)
+        || request.time < resource.data.pickupDeadline + duration.value(5, 'm');
     }
 
     function validOrderStatusTransition() {
