@@ -100,7 +100,7 @@ service cloud.firestore {
         'cafeId', 'cafeLocation', 'status', 'createdAt',
         'updatedAt', 'deadlineStatus', 'distanceMeters',
         'distanceCalculated', 'pickupWindowMinutes',
-        'noShowProcessed', 'expiredAt', 'deadlineExtended',
+        'noShowProcessed', 'noShowAt', 'expiredAt', 'deadlineExtended',
         'extensionAt', 'foodIds',
         // Phase B cancellation metadata is written only by the cancelOrder
         // callable (Admin SDK); no client may send it on create.
