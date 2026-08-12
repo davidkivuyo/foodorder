@@ -3,6 +3,9 @@
 # TODOS
 1. add order cancellation and give a 2min cacellation window before placing the order.
 
+6. create a new branch to add restaurants other than university ones
+* Their menu items will be able to link to whatsapp easily 
+
 2. migrate CI to blacksmith- "runs-on: blacksmith-4vcpu-ubuntu-2404" when you start an organization on Github
 
 3. modify account screen to add app appearance settings, your ratings and meal plans.
@@ -11,8 +14,6 @@
 
 5. Make the student app and admin app choose which university there in and ensure that the FOOD ITEM and CAFE(add a field to specify which university there in) in university A is not shown or mixed into university B, including their orders.
 * Also add a university collection to list all available universities in which the app serve
-
-6. create a new branch to add restaurants other than university ones
 
 7. Performance Analytics: Daily/weekly revenue, top-selling dishes, peak order hours, average prep time, customer rating trends.
 
