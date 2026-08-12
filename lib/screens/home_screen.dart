@@ -569,7 +569,7 @@ class CardRowItems extends StatelessWidget {
                                   Text(
                                     item.averageRating > 0
                                         ? item.averageRating.toStringAsFixed(1)
-                                        : '0.0',
+                                        : '0',
                                     style: const TextStyle(
                                       fontSize: 12,
                                       fontWeight: FontWeight.w600,
@@ -770,7 +770,7 @@ class CategoriesTitles extends StatelessWidget {
                               size: 16,
                             ),
                             Text(
-                              '${item.averageRating > 0 ? item.averageRating.toStringAsFixed(1) : '0.0'} • ',
+                              '${item.averageRating > 0 ? item.averageRating.toStringAsFixed(1) : '0'} • ',
                               style: const TextStyle(
                                 fontSize: 12,
                                 color: Colors.black,

@@ -337,7 +337,7 @@ class FoodCard extends StatelessWidget {
                 children: [
                   const Icon(Icons.star_rounded, color: Colors.amber, size: 16),
                   Text(
-                    '${item.averageRating > 0 ? item.averageRating.toStringAsFixed(1) : '0.0'} • ',
+                    '${item.averageRating > 0 ? item.averageRating.toStringAsFixed(1) : '0'} • ',
                     style: const TextStyle(fontSize: 12, color: Colors.black),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
