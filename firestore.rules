@@ -128,6 +128,8 @@ service cloud.firestore {
         && request.resource.data.deadlineStatus == 'NOT_READY'
         && (!('expiredAt' in request.resource.data)
           || request.resource.data.expiredAt == null)
+        && (!('noShowAt' in request.resource.data)
+          || request.resource.data.noShowAt == null)
         && (!('deadlineExtended' in request.resource.data)
           || request.resource.data.deadlineExtended == false)
         && (!('extensionAt' in request.resource.data)
@@ -182,6 +184,7 @@ service cloud.firestore {
         && !('noShowProcessed' in changed)
         && !('deadlineExtended' in changed)
         && !('extensionAt' in changed)
+        && !('noShowAt' in changed)
         && !('expiredAt' in changed)
         // Phase B.2 — reliabilityProcessed and the immutable
         // reliabilityOutcome are written only by the backend reliability
@@ -248,11 +251,16 @@ service cloud.firestore {
     }
 
     // Phase C — Collection is permitted only when request.time < noShowEligibleAt
-    // (pickupDeadline + 5 minutes grace period). Hard server-side cutoff.
+    // (pickupDeadline + grace period). Fails closed: missing or non-timestamp
+    // pickupDeadline is treated as expired and blocks collection.
+    // Grace duration: 5 min — keep in sync with
+    //   PickupDeadlineService.defaultGracePeriodMinutes (Flutter)
+    //   DEFAULT_PICKUP_GRACE_PERIOD_MINUTES          (Cloud Functions)
+    // Firestore Rules has no import mechanism; the literal cannot be centralised.
     function pickupGracePeriodNotExpired() {
-      return !('pickupDeadline' in resource.data)
-        || !(resource.data.pickupDeadline is timestamp)
-        || request.time < resource.data.pickupDeadline + duration.value(5, 'm');
+      return ('pickupDeadline' in resource.data)
+        && (resource.data.pickupDeadline is timestamp)
+        && request.time < resource.data.pickupDeadline + duration.value(5, 'm');
     }
 
     function validOrderStatusTransition() {

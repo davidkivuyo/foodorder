@@ -80,6 +80,7 @@ void main() {
       expect(protectedFn, contains("!('collectedAt' in changed)"));
       // The no-show state fields remain protected too.
       expect(protectedFn, contains("!('noShowProcessed' in changed)"));
+      expect(protectedFn, contains("!('noShowAt' in changed)"));
       expect(protectedFn, contains("!('expiredAt' in changed)"));
     });
 
@@ -382,6 +383,9 @@ void main() {
         'expiredAt': Timestamp.fromDate(
           now.subtract(const Duration(minutes: 20)),
         ),
+        'noShowAt': Timestamp.fromDate(
+          now.subtract(const Duration(minutes: 20)),
+        ),
         'noShowProcessed': true,
         'deadlineStatus': 'EXPIRED',
         'pickupWindowMinutes': 20,
@@ -392,6 +396,7 @@ void main() {
 
       expect(order.status, OrderStatus.noShow);
       expect(order.expiredAt, isNotNull);
+      expect(order.noShowAt, isNotNull);
       expect(order.collectedAt, isNull);
       expect(order.noShowProcessed, isTrue);
       expect(order.deadlineStatus, DeadlineStatus.expired);

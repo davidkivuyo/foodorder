@@ -1038,6 +1038,7 @@ async function processExpiredOrder(transaction, orderSnapshot) {
     status: "no_show",
     deadlineStatus: "EXPIRED",
     noShowProcessed: true,
+    noShowAt: admin.firestore.FieldValue.serverTimestamp(),
     expiredAt: admin.firestore.FieldValue.serverTimestamp(),
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
