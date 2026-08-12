@@ -20,7 +20,6 @@ import '../services/auth_service.dart';
 import '../widgets/logout_confirmation_dialog.dart';
 import 'diagnostics_screen.dart';
 import 'notification_screen.dart';
-import 'order_screen.dart';
 
 export 'notification_screen.dart' show NotificationScreen;
 
@@ -245,7 +244,7 @@ class _UserInitialsAvatar extends StatelessWidget {
       height: 70,
       decoration: BoxDecoration(
         color: color,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(
           // Darken the fill colour by 20 % lightness to create a visible,
           // contrasting border ring rather than a near-invisible tinted one.
@@ -256,13 +255,6 @@ class _UserInitialsAvatar extends StatelessWidget {
               .toColor(),
           width: 3,
         ),
-        boxShadow: [
-          BoxShadow(
-            color: color.withAlpha(60),
-            blurRadius: 8,
-            offset: const Offset(0, 4),
-          ),
-        ],
       ),
       alignment: Alignment.center,
       child: Text(
@@ -337,16 +329,16 @@ class AccountSettings extends StatelessWidget {
           clipBehavior: Clip.antiAlias,
           child: Column(
             children: [
-              /* _settingTile(
+              _settingTile(
                 icon: Icons.edit_outlined,
                 iconColor: Colors.green,
                 background: Colors.green.shade50,
-                title: 'Edit Profile',
-                subtitle: 'Manage your personal information',
+                title: 'My Profile',
+                subtitle: 'Manage your profile & appearance',
                 onTap: () {},
               ),
-              const Divider(height: 1),*/
-              _settingTile(
+              const Divider(height: 1, thickness: 0.5),
+              /*_settingTile(
                 icon: Icons.receipt_long_outlined,
                 iconColor: Colors.blue,
                 background: Colors.blue.shade50,
@@ -360,8 +352,7 @@ class AccountSettings extends StatelessWidget {
                 },
               ),
 
-              const Divider(height: 1),
-
+              const Divider(height: 1), */
               _settingTile(
                 icon: Icons.help_outline,
                 iconColor: Colors.grey.shade700,
@@ -371,7 +362,7 @@ class AccountSettings extends StatelessWidget {
                 onTap: () => context.push('/support'),
               ),
 
-              const Divider(height: 1),
+              const Divider(height: 1, thickness: 0.5),
 
               _settingTile(
                 icon: Icons.privacy_tip_outlined,
@@ -382,7 +373,7 @@ class AccountSettings extends StatelessWidget {
                 onTap: () => context.push('/terms'),
               ),
 
-              const Divider(height: 1),
+              const Divider(height: 1, thickness: 0.5),
 
               // Phase 17 — hidden diagnostics entry (debug builds or admins).
               const DiagnosticsEntryTile(),
