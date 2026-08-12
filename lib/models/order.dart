@@ -137,6 +137,13 @@ class FoodOrder {
   final String? cancelledBy;
   final String? cancellationReason;
 
+  /// Configurable pickup grace period in minutes after normal pickup deadline.
+  static const int defaultPickupGracePeriodMinutes = 5;
+
+  /// Calculated server-authoritative hard cutoff time for pickup eligibility.
+  DateTime? get noShowEligibleAt =>
+      pickupDeadline?.add(const Duration(minutes: defaultPickupGracePeriodMinutes));
+
   FoodOrder({
     required this.orderId,
     required this.userId,

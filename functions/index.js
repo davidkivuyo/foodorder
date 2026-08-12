@@ -49,6 +49,12 @@ const db = admin.firestore();
 const PICKUP_WINDOW_MINUTES = 20;
 
 /**
+ * Configurable grace period after pickupDeadline before automatic NO_SHOW.
+ * Initial default: 5 minutes.
+ */
+const DEFAULT_PICKUP_GRACE_PERIOD_MINUTES = 5;
+
+/**
  * Length of the student cancellation window after an order is placed.
  * The order's cancellationDeadline is createdAt + this many minutes.
  * Matches the customer app's OrderCancellationService.windowMinutes.
@@ -1009,13 +1015,15 @@ async function processExpiredOrder(transaction, orderSnapshot) {
   if (orderData.status !== "ready") return false;
   if (orderData.deadlineStatus !== "ACTIVE") return false;
   if (orderData.noShowProcessed === true) return false;
-  // Re-verify inside the transaction: the deadline must exist and have
-  // already passed (the scheduled query filters on it too, but this keeps
-  // the guard complete if the order state changed since the query).
+  // Re-verify inside the transaction using server-authoritative time:
+  // noShowEligibleAt = pickupDeadline + DEFAULT_PICKUP_GRACE_PERIOD_MINUTES.
+  // The transition is permitted ONLY when currentServerTime >= noShowEligibleAt.
   const pickupDeadline = orderData.pickupDeadline;
   if (!(pickupDeadline instanceof admin.firestore.Timestamp)) return false;
   const now = admin.firestore.Timestamp.now();
-  if (pickupDeadline.toMillis() > now.toMillis()) {
+  const noShowEligibleAtMs =
+    pickupDeadline.toMillis() + DEFAULT_PICKUP_GRACE_PERIOD_MINUTES * 60 * 1000;
+  if (now.toMillis() < noShowEligibleAtMs) {
     return false;
   }
 
@@ -1047,7 +1055,7 @@ async function processExpiredOrder(transaction, orderSnapshot) {
 
   console.log(
     `[PickupExpiry] Order ${orderSnapshot.id} marked no_show ` +
-    `(pickup deadline expired)`
+    `(pickup deadline + grace period expired)`
   );
 
   return true;
@@ -1146,11 +1154,15 @@ exports.processExpiredPickups = functions
       timeoutSeconds: 120,
     })
     .pubsub
-    .schedule("every 5 minutes")
+    .schedule("every 1 minutes")
     .onRun(async (context) => {
       console.log("[PickupExpiry] Scheduled run started...");
 
       const now = admin.firestore.Timestamp.now();
+      const graceExpiryThreshold = new admin.firestore.Timestamp(
+        now.seconds - DEFAULT_PICKUP_GRACE_PERIOD_MINUTES * 60,
+        now.nanoseconds,
+      );
       let processedCount = 0;
       let errorCount = 0;
       // Store both studentId and orderId for the notification loop.
@@ -1164,7 +1176,7 @@ exports.processExpiredPickups = functions
             .collection("orders")
             .where("status", "==", "ready")
             .where("deadlineStatus", "==", "ACTIVE")
-            .where("pickupDeadline", "<=", now)
+            .where("pickupDeadline", "<=", graceExpiryThreshold)
             .get();
 
         console.log(`[PickupExpiry] Found ${expiredOrdersSnapshot.size} expired order(s)`);

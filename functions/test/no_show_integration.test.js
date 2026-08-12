@@ -370,11 +370,26 @@ describe("Cloud Functions — no-show processing flow", () => {
     );
   });
 
-  it("marks an expired READY order no_show (Tests 4 & 6)", async () => {
+  it("leaves an order during grace period untouched (Test 2)", async () => {
+    await seedOrder("flow-grace-1", validOrderPayload({
+      status: "ready",
+      deadlineStatus: "ACTIVE",
+      pickupDeadline: new Date(Date.now() - 2 * 60000), // 2 min past deadline, inside 5 min grace
+    }));
+
+    await functionsModule.processExpiredPickups.run({});
+
+    const after = await orderById("flow-grace-1");
+    assert.equal(after.status, "ready");
+    assert.equal(after.deadlineStatus, "ACTIVE");
+    assert.equal(after.noShowProcessed, undefined);
+  });
+
+  it("marks an expired READY order no_show after grace period (Tests 3, 4 & 6)", async () => {
     await seedOrder("flow-exp-1", validOrderPayload({
       status: "ready",
       deadlineStatus: "ACTIVE",
-      pickupDeadline: new Date(Date.now() - 5 * 60000),
+      pickupDeadline: new Date(Date.now() - 6 * 60000), // 6 min past deadline, grace period expired
     }));
 
     await functionsModule.processExpiredPickups.run({});
@@ -387,7 +402,27 @@ describe("Cloud Functions — no-show processing flow", () => {
     assert.equal(await countNotifications("ORDER_NO_SHOW_flow-exp-1"), 1);
   });
 
-  it("leaves a not-yet-expired order untouched (premature expiry, Test 5)", async () => {
+  it("rejects collection attempt after grace expiry before processor runs (Updated Test 5)", async () => {
+    await seedOrder("flow-post-grace-col", validOrderPayload({
+      status: "ready",
+      deadlineStatus: "ACTIVE",
+      pickupDeadline: new Date(Date.now() - 6 * 60000), // 6 min past deadline, grace expired
+    }));
+
+    // Collection attempt after cutoff must be rejected by rules
+    await assert.rejects(
+      adminDb().collection("orders").doc("flow-post-grace-col").update({
+        status: "collected",
+        updatedAt: new Date(),
+      }),
+      /PERMISSION_DENIED/,
+    );
+
+    const after = await orderById("flow-post-grace-col");
+    assert.equal(after.status, "ready");
+  });
+
+  it("leaves a not-yet-expired order untouched (premature expiry)", async () => {
     await seedOrder("flow-future-1", validOrderPayload({
       status: "ready",
       deadlineStatus: "ACTIVE",
@@ -407,7 +442,7 @@ describe("Cloud Functions — no-show processing flow", () => {
     await seedOrder("flow-idem-1", validOrderPayload({
       status: "ready",
       deadlineStatus: "ACTIVE",
-      pickupDeadline: new Date(Date.now() - 5 * 60000),
+      pickupDeadline: new Date(Date.now() - 6 * 60000),
     }));
 
     await functionsModule.processExpiredPickups.run({});

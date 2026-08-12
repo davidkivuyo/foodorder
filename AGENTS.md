@@ -145,1180 +145,390 @@ Do not remove existing comments unless they are directly related to what you are
 
 # Current Phase
 
-# Phase B.2 — PICKUP RELIABILITY CALCULATION
+# PHASE C — GRACE PERIOD & AUTOMATIC EXPIRY
 
 ## OBJECTIVE
 
-Implement Phase B.2 of the CampusBite Pickup Reliability System.
+Implement Phase C of the CampusBite order reliability system.
 
-Phase A has already established the authoritative order-level foundation for:
+Phase C introduces:
 
-- READY
-- COLLECTED
-- NO_SHOW
-- readyAt
-- pickupDeadline
-- collectedAt
-- noShowAt
+1. A configurable pickup grace period after the normal pickup deadline.
+2. Automatic conversion of eligible READY orders to NO_SHOW after the grace period expires.
+3. Server-authoritative deadline handling.
+4. Idempotent NO_SHOW processing.
+5. Integration with the existing Pickup Reliability System.
+6. Correct interaction with the existing 2-minute order cancellation system.
+7. No unnecessary Firestore reads/writes.
+8. No automatic strikes, bans, suspensions, or ordering restrictions.
 
-The old Automatic Strike Engine has been completely removed.
+# IMPORTANT:
 
-This phase replaces the old strike concept with a non-punitive:
+Also The previous Automatic Striking Engine has been removed.
 
-# PICKUP RELIABILITY SYSTEM
+Do NOT recreate it.
 
-The purpose of this phase is to measure how consistently a student collects their food.
+Phase C is ONLY about:
 
-The system must:
+READY → NO_SHOW
 
-1. Track eligible pickup orders.
-2. Track collected orders.
-3. Track no-show orders.
-4. Calculate lifetime collection performance.
-5. Track recent pickup performance.
-6. Calculate a reliability score.
-7. Store the calculated summary efficiently.
-8. Allow the student to read their reliability information.
-9. Prevent the student from modifying reliability data.
-10. Avoid unnecessary Firestore reads and writes.
-
-DO NOT implement account suspension in this phase.
-
-DO NOT implement ordering restrictions in this phase.
-
-DO NOT implement ordering cooldowns.
-
-DO NOT implement strikes.
-
-DO NOT implement automatic bans.
-
-DO NOT implement aggressive penalties.
-
-Those belong to later phases.
+after the pickup deadline + grace period.
 
 ---
 
-# 1. FIRST — AUDIT PHASE A
+# 1. FIRST — AUDIT THE EXISTING IMPLEMENTATION
 
-Before writing code, inspect the implementation from Phase A.
+Before modifying anything, inspect the current codebase.
 
-Confirm the actual existing:
+Specifically inspect:
 
 - Order model
-- OrderStatus
-- Firestore order path
-- student UID field
-- READY state
-- COLLECTED state
-- NO_SHOW state
-- readyAt
+- OrderStatus enum
+- Firestore order structure
+- Order creation logic
+- Admin order processing
+- Student order screen
+- Pickup countdown implementation
 - pickupDeadline
+- readyAt
 - collectedAt
 - noShowAt
-- order creation logic
-- admin order processing
-- backend order processing
+- cancellationDeadline
+- cancelledAt
+- Phase A NO_SHOW implementation
+- Phase B reliability implementation
+- Phase B.1 cancellation implementation
+- existing Cloud Functions
+- existing scheduled functions
 - Firestore security rules
+- existing notifications collection
+- existing FCM implementation
 
 Do NOT assume field names.
 
-Use the actual implementation.
+Use the existing architecture.
 
-If Phase A uses different field names, preserve those names.
+Do not create duplicate order fields if equivalent fields already exist.
 
-Do not create duplicate fields.
+Do not create a second NO_SHOW system.
 
 ---
 
-# 2. IMPORTANT DEFINITION — ELIGIBLE ORDER
+# 2. REQUIRED ORDER FLOW
 
-An order becomes an eligible pickup event only when it reaches:
+The authoritative lifecycle must remain:
 
+PENDING
+    ↓
+ACCEPTED
+    ↓
+PREPARING
+    ↓
+READY
+    ↓
 COLLECTED
 
 or:
 
+READY
+    ↓
+pickup deadline
+    ↓
+grace period
+    ↓
 NO_SHOW
 
-An order that is:
+Cancellation remains:
 
-- cancelled before pickup
-- rejected by cafe
-- cancelled by cafe
-- failed before READY
-- never accepted
-- otherwise legitimately cancelled
+PENDING
+    ↓
+CANCELLED
 
-must NOT count as a failed pickup.
-
-Do not count every order placed as an eligible order.
-
-The reliability system measures:
-
-"Did the student successfully collect an order that was actually prepared and made available for pickup?"
+The cancellation system is separate from the pickup grace period.
 
 ---
 
-# 3. CORE METRICS
+# 3. CANCELLATION MUST REMAIN INTACT
 
-Maintain the following metrics:
+The existing 2-minute cancellation window must not be changed.
 
-eligibleOrders
+A student may cancel only while:
 
-collectedOrders
+status == PENDING
 
-noShowOrders
+and:
 
-collectionRate
+current time < cancellationDeadline
 
-recentEligibleOrders
+Once the order reaches:
 
-recentCollectedOrders
+ACCEPTED
 
-recentNoShowOrders
+the cancellation window is no longer relevant.
 
-recentCollectionRate
+Do NOT allow:
 
-reliabilityScore
+ACCEPTED → CANCELLED
 
-reliabilityStatus
-
-Use the project's existing naming convention if different.
+unless a future phase explicitly introduces that feature.
 
 ---
 
-# 4. LIFETIME COLLECTION RATE
+# 4. PICKUP DEADLINE
 
-Calculate:
+Use the existing:
 
-collectionRate =
-(collectedOrders / eligibleOrders) × 100
+pickupDeadline
+
+field if it already exists.
+
+Do not create another pickup deadline.
+
+The pickup deadline represents the normal time by which the student should collect the order.
 
 Example:
 
-eligibleOrders = 10
+readyAt:
+12:00
 
-collectedOrders = 8
+pickupDeadline:
+12:15
 
-noShowOrders = 2
+The grace period begins after:
 
-collectionRate = 80%
-
-Handle zero correctly.
-
-If:
-
-eligibleOrders = 0
-
-then:
-
-collectionRate = 100
-
-and the student should have a neutral/new-user state rather than being considered unreliable.
-
-Do NOT produce NaN.
-
-Do NOT divide by zero.
+12:15
 
 ---
 
-# 5. RECENT PICKUP PERFORMANCE
+# 5. GRACE PERIOD
 
-Do not rely exclusively on lifetime history.
+Introduce a configurable grace period.
 
-The system must also maintain recent performance.
+Recommended initial value:
 
-Use the student's most recent 10 eligible pickup orders as the initial recent window.
-
-IMPORTANT:
-
-Only eligible terminal pickup events count.
+5 minutes
 
 Therefore:
 
-COLLECTED = recent success
+pickupDeadline = 12:15
 
-NO_SHOW = recent failure
+gracePeriod = 5 minutes
 
-Cancelled orders do not enter the recent window.
+automatic NO_SHOW eligibility:
+
+12:20
+
+Do NOT hard-code the value throughout the application.
+
+Create one centralized configuration value.
+
+For example:
+
+DEFAULT_PICKUP_GRACE_PERIOD_MINUTES = 5
+
+Use the project's existing configuration architecture if one already exists.
 
 ---
 
-# 6. RECENT COLLECTION RATE
+# 6. IMPORTANT — GRACE PERIOD IS NOT AN EXTENSION OF THE DISPLAYED PICKUP TIME
+
+The normal pickup deadline remains unchanged.
+
+Example:
+
+"Pickup by 12:15"
+
+At 12:15:
+
+the normal pickup period has expired.
+
+The system then enters:
+
+GRACE PERIOD
+
+The student may still collect the order during the grace period.
+
+If they collect during the grace period:
+
+READY → COLLECTED
+
+NOT:
+
+READY → NO_SHOW → COLLECTED
+
+NO_SHOW must never happen before the grace period ends.
+
+---
+
+# 7. GRACE PERIOD CALCULATION
 
 Calculate:
 
-recentCollectionRate =
-recentCollectedOrders / recentEligibleOrders × 100
+noShowEligibleAt =
+pickupDeadline + gracePeriod
 
-If there are no recent eligible orders:
+Do not continuously write this calculated value to Firestore unless the architecture genuinely benefits from storing it.
 
-recentCollectionRate should not incorrectly become 0.
+If the existing order model already stores an equivalent field, reuse it.
 
-Treat it as neutral.
+Prefer deriving it from:
 
-Do not punish a new user because they have insufficient history.
+pickupDeadline
 
----
++
 
-# 7. RELIABILITY SCORE
+configured grace period
 
-Use the recommended weighted model:
-
-70% lifetime performance
-
-30% recent performance
-
-Conceptually:
-
-reliabilityScore =
-(lifetimeCollectionRate × 0.70) +
-(recentCollectionRate × 0.30)
-
-However, when there is insufficient history, avoid creating misleading scores.
-
-For a completely new user:
-
-eligibleOrders = 0
-
-The user should be considered:
-
-NEW
-
-rather than:
-
-0%
-
-Do not display:
-
-"0% reliability"
-
-to someone who has never missed an order.
+where practical.
 
 ---
 
-# 8. MINIMUM HISTORY RULE
+# 8. SERVER-AUTHORITATIVE TIME
 
-Do not allow one or two orders to produce aggressive conclusions.
+The student's device clock must NOT determine whether an order becomes NO_SHOW.
 
-Use the following interpretation:
+Do not trust:
 
-0 eligible orders:
-NEW
+DateTime.now()
 
-1–2 eligible orders:
-INSUFFICIENT_HISTORY
+from Flutter
 
-3+ eligible orders:
-Calculate normal reliability status
+for the authoritative transition.
 
-Do not introduce restrictions based on this status.
+The backend must determine:
 
-This phase is measurement only.
+currentTime >= pickupDeadline + gracePeriod
 
----
-
-# 9. RELIABILITY STATUS
-
-Create a simple status classification.
-
-Recommended thresholds:
-
-90–100:
-EXCELLENT
-
-75–89:
-GOOD
-
-50–74:
-NEEDS_IMPROVEMENT
-
-25–49:
-POOR
-
-0–24:
-CRITICAL
-
-For users with:
-
-0 eligible orders:
-
-NEW
-
-For:
-
-1–2 eligible orders:
-
-INSUFFICIENT_HISTORY
-
-Do not attach punishment to these statuses.
-
-They are informational only.
+The Flutter app may use local time for countdown display only.
 
 ---
 
-# 10. IMPORTANT — NO AUTOMATIC PUNISHMENT
+# 9. STUDENT COUNTDOWN
 
-This phase must NOT perform any of the following:
+The student UI may display:
 
-- suspension
-- banning
-- strike creation
-- account disabling
-- ordering cooldown
-- order limit
-- checkout blocking
-- forced confirmation
-- automatic admin escalation
+Pickup deadline
 
-The reliability score is only a measurement at this stage.
+and optionally:
 
----
+Grace period remaining
 
-# 11. FIRESTORE DATA DESIGN
+Example:
 
-Use the existing student user document if appropriate.
+Pickup by 12:15
 
-Recommended structure:
+After 12:15:
 
-users/{uid}
+"Grace period: 04:32 remaining"
 
-pickupReliability: {
-    eligibleOrders: 0,
-    collectedOrders: 0,
-    noShowOrders: 0,
+At:
 
-    collectionRate: 100,
+12:20
 
-    recentEligibleOrders: 0,
-    recentCollectedOrders: 0,
-    recentNoShowOrders: 0,
+the grace period expires.
 
-    recentCollectionRate: 100,
+The UI should then show:
 
-    reliabilityScore: 100,
+"No-show recorded"
 
-    status: "NEW",
+after the backend confirms the status.
 
-    updatedAt: Timestamp
-}
-
-Adapt this structure to the existing CampusBite user schema.
-
-Do not overwrite unrelated user fields.
-
-Use a nested map rather than creating multiple unnecessary documents unless the existing architecture has a strong reason for a separate collection.
+Do NOT locally change the order to NO_SHOW merely because the device timer reached zero.
 
 ---
 
-# 12. DO NOT CALCULATE BY READING ALL ORDERS ON EVERY SCREEN
+# 10. AUTOMATIC NO-SHOW
 
-This is a critical performance requirement.
+When:
 
-DO NOT implement:
+status == READY
 
-Student opens Account screen
-    ↓
-Query all orders
-    ↓
-Count collected
-    ↓
-Count no-show
-    ↓
-Calculate reliability
+and:
 
-This will become increasingly expensive.
+currentServerTime >= pickupDeadline + gracePeriod
 
-Instead:
+and:
 
-Order becomes COLLECTED
-    ↓
-Update reliability summary
+status != COLLECTED
 
-Order becomes NO_SHOW
-    ↓
-Update reliability summary
-
-Account screen
-    ↓
-Read user reliability summary
-
-The account screen should require approximately one existing user-document read rather than querying the entire order history.
-
----
-
-# 13. EVENT-DRIVEN UPDATES
-
-Reliability should be updated only when an eligible order reaches a terminal pickup state.
-
-Eligible events:
-
-COLLECTED
+then the order becomes:
 
 NO_SHOW
 
-Do not update reliability when:
+The transition must be performed server-side.
 
-PENDING
+---
+
+# 11. NEVER MARK THESE ORDERS AS NO_SHOW
+
+The automatic expiry engine must NOT process:
+
+CANCELLED
+
+COLLECTED
 
 ACCEPTED
 
 PREPARING
 
-READY
+PENDING
 
-Do not write reliability every time the countdown changes.
-
-Do not write reliability every second.
-
----
-
-# 14. ATOMICITY
-
-Reliability updates must be safe against duplicate processing.
-
-Suppose the same NO_SHOW event is accidentally processed twice.
-
-The system must NOT produce:
-
-noShowOrders + 2
-
-when there was only one actual no-show.
-
-Likewise, one COLLECTED order must increase:
-
-collectedOrders
-
-by exactly one.
-
-Use an appropriate server-side transaction or idempotent event-processing mechanism.
-
-Do not trust the Flutter client to perform the authoritative reliability update.
-
----
-
-# 15. SERVER-SIDE AUTHORITY
-
-The student application must never be allowed to write:
-
-pickupReliability
-
-directly.
-
-The student can READ their own reliability summary.
-
-The backend should be responsible for updating it.
-
-Conceptually:
-
-Student:
-    READ own reliability = YES
-    WRITE reliability = NO
-
-Backend:
-    UPDATE reliability = YES
-
-Admin:
-    READ authorized reliability = YES
-
-Admin modification:
-    NOT direct arbitrary client write
-
-Admin override functionality will be implemented in a later phase.
-
----
-
-# 16. PREVENT CLIENT MANIPULATION
-
-A malicious client must not be able to send:
-
-{
-  "pickupReliability": {
-      "eligibleOrders": 1000,
-      "collectedOrders": 1000,
-      "reliabilityScore": 100
-  }
-}
-
-and overwrite their actual reliability.
-
-Update Firestore rules accordingly.
-
-Do not weaken the existing user security rules.
-
-Preserve:
-
-users/{userId}
-
-ownership protection.
-
----
-
-# 17. RECENT HISTORY STORAGE
-
-Do not query the entire order collection every time reliability changes.
-
-Use a small server-maintained recent-history representation.
-
-Recommended conceptual structure:
-
-recentPickupHistory: [
-    {
-        orderId: "...",
-        outcome: "COLLECTED",
-        timestamp: Timestamp
-    },
-    {
-        orderId: "...",
-        outcome: "NO_SHOW",
-        timestamp: Timestamp
-    }
-]
-
-Maximum:
-
-10 entries.
-
-When a new eligible event occurs:
-
-1. Add the new outcome.
-2. Remove entries beyond the latest 10.
-3. Recalculate recent counts.
-4. Recalculate recent rate.
-5. Recalculate reliability score.
-6. Update the summary.
-
-Do not allow unbounded history inside the user document.
-
----
-
-# 18. IMPORTANT — DUPLICATE ORDER PROTECTION
-
-The same order must never appear twice in recentPickupHistory.
-
-Before adding an event, verify that its orderId is not already present.
-
-If the event was already processed:
-
-Do nothing.
-
-This is required for reliability correctness.
-
----
-
-# 19. PREFERRED EVENT MODEL
-
-If the existing backend architecture supports it, use the order's terminal state transition as the trigger.
-
-Conceptually:
-
-ORDER UPDATE
-
-READY → COLLECTED
-
-or:
-
-READY → NO_SHOW
-
-then:
-
-Reliability Processor
-        ↓
-Validate transition
-        ↓
-Check whether already processed
-        ↓
-Update reliability
-
-Do not trigger reliability calculations merely because an order document was edited.
-
-Only process genuine terminal pickup outcomes.
-
----
-
-# 20. PROCESSING METADATA
-
-If necessary, maintain a small processing marker on the order.
-
-For example:
-
-reliabilityProcessed: true
-
-or another equivalent mechanism compatible with the architecture.
-
-Do not add redundant markers if the existing transaction/state transition already guarantees idempotency.
-
-Choose the simplest reliable mechanism.
-
----
-
-# 21. TRANSACTION SAFETY
-
-The reliability update should be atomic with respect to concurrent events.
-
-Consider this scenario:
-
-Student has:
-
-eligibleOrders = 10
-collectedOrders = 8
-
-Two orders become terminal simultaneously:
-
-Order A = COLLECTED
-Order B = NO_SHOW
-
-The final state must be:
-
-eligibleOrders = 12
-collectedOrders = 9
-noShowOrders = 3
-
-Not:
-
-eligibleOrders = 11
-
-and not:
-
-collectedOrders = 8
-
-Avoid race conditions.
-
-Use Firestore transactions or another server-side atomic mechanism where appropriate.
-
----
-
-# 22. CALCULATION PRECISION
-
-Keep stored reliability values predictable.
-
-For example:
-
-collectionRate:
-0–100
-
-recentCollectionRate:
-0–100
-
-reliabilityScore:
-0–100
-
-Round the displayed score to a sensible precision.
-
-For example:
-
-82.6%
-
-Do not repeatedly round intermediate calculations if it causes cumulative errors.
-
----
-
-# 23. NEW USER BEHAVIOR
-
-A user with:
-
-eligibleOrders = 0
-
-should have:
-
-status = NEW
-
-Do not tell them:
-
-"Your reliability is 0%."
-
-Instead the UI can later display:
-
-"Build your pickup record by collecting your orders on time."
-
-The UI implementation belongs to a later phase.
-
----
-
-# 24. INSUFFICIENT HISTORY
-
-For:
-
-1–2 eligible orders
-
-set:
-
-status = INSUFFICIENT_HISTORY
-
-Continue calculating the raw metrics.
-
-But do not apply any restriction.
-
-Example:
-
-1 eligible
-1 collected
-
-collectionRate = 100%
-
-status = INSUFFICIENT_HISTORY
-
-This means:
-
-"Not enough history to classify behavior."
-
----
-
-# 25. EXAMPLE CALCULATIONS
-
-## Example A — New user
-
-eligible = 0
-collected = 0
-noShow = 0
-
-status = NEW
-
----
-
-## Example B — One successful order
-
-eligible = 1
-collected = 1
-noShow = 0
-
-collectionRate = 100%
-
-status = INSUFFICIENT_HISTORY
-
----
-
-## Example C — Two no-shows
-
-eligible = 5
-collected = 3
-noShow = 2
-
-collectionRate = 60%
-
-Recent history:
-
-COLLECTED
-COLLECTED
-NO_SHOW
-COLLECTED
-NO_SHOW
-
-recentRate = 60%
-
-score:
-
-60 × 0.70 + 60 × 0.30 = 60
-
-status:
-
-NEEDS_IMPROVEMENT
-
-No punishment.
-
----
-
-## Example D — Historically reliable, recent decline
-
-Lifetime:
-
-100 eligible
-94 collected
-6 no-show
-
-lifetimeRate = 94%
-
-Recent 10:
-
-6 collected
-4 no-show
-
-recentRate = 60%
-
-score:
-
-94 × 0.70 + 60 × 0.30
-= 83.8
-
-status:
-
-GOOD
-
-This demonstrates why the recent component exists.
-
----
-
-## Example E — Historically poor, recovering
-
-Lifetime:
-
-20 eligible
-10 collected
-10 no-show
-
-lifetimeRate = 50%
-
-Recent 10:
-
-8 collected
-2 no-show
-
-recentRate = 80%
-
-score:
-
-50 × 0.70 + 80 × 0.30
-= 59
-
-status:
-
-NEEDS_IMPROVEMENT
-
-The student is improving, but lifetime history still matters.
-
----
-
-# 26. ADMIN EXCUSED NO-SHOW COMPATIBILITY
-
-Phase B.2 must be designed so a future admin "Excuse No-show" feature can correct the reliability calculation.
-
-Do not permanently bake a no-show into an irreversible counter architecture.
-
-If a future phase changes:
-
-NO_SHOW → EXCUSED
-
-the reliability system must be capable of recalculating the affected statistics.
-
-Do not implement the admin pardon feature yet.
-
-Only make sure the data model does not make future correction impossible.
-
----
-
-# 27. DATA PRIVACY
-
-Do not expose reliability information publicly.
-
-A student's:
-
-* reliability score
-* collection rate
-* no-show count
-* recent pickup history
-
-must not be publicly readable.
+orders.
 
 Only:
 
-* the student
-* authorized backend services
-* appropriately authorized cafe admins
+READY
 
-should have access according to the product requirements.
+orders are eligible.
 
-Do not place reliability information inside public food documents.
+This is critical.
 
 ---
 
-# 28. DO NOT STORE UNNECESSARY PERSONAL DATA
+# 12. COLLECTED DURING GRACE PERIOD
 
-The reliability system should use:
+If a student collects during the grace period:
 
-uid
-orderId
-outcome
-timestamps
-aggregated counters
+READY → COLLECTED
 
-Do not copy:
+The automatic NO_SHOW processor must not subsequently change it to NO_SHOW.
 
-* student email
-* phone number
-* physical location
-* device identifiers
-* FCM token
+Use an atomic transaction or conditional update.
 
-into reliability records.
+The transition should conceptually be:
 
----
+IF status == READY
+AND current server time >= noShowEligibleAt
 
-# 29. PERFORMANCE REQUIREMENTS
+THEN:
 
-The implementation must remain efficient for a large student population.
+READY → NO_SHOW
 
-Avoid:
+Otherwise:
 
-* full order-history scans
-* collection-group scans per login
-* periodic polling
-* per-minute reliability writes
-* per-second Firestore writes
-* client-side reliability calculation
-* redundant listeners
-
-Reliability updates should be event-driven.
+do nothing.
 
 ---
 
-# 30. STUDENT ACCOUNT SCREEN
+# 13. RACE CONDITION
 
-Do not redesign the account screen yet.
+Handle this race condition:
 
-Only expose the reliability data through the existing user model/service if necessary so that a future UI phase can consume:
+At exactly the end of the grace period:
 
-reliabilityScore
+Student presses "Collected"
 
-status
+while:
 
-collectionRate
+Automatic expiry processor
 
-collectedOrders
+attempts:
 
-noShowOrders
+READY → NO_SHOW
 
-Do not add visual cards or warnings yet.
+Only one transition may succeed.
 
----
-
-# 31. ADMIN APPLICATION
-
-Do not create the admin reliability dashboard yet.
-
-However, ensure the backend data model can later support authorized admin reads.
-
-Do not expose all students' reliability data to every authenticated user.
-
----
-
-# 32. NOTIFICATIONS
-
-Do NOT implement reliability notifications in Phase B.2.
-
-No:
-
-"Your reliability decreased."
-
-No:
-
-"Your reliability improved."
-
-No:
-
-"Your account is at risk."
-
-Notifications will be handled separately.
-
----
-
-# 33. TESTING REQUIREMENTS
-
-Create automated tests for all of the following.
-
-## Test 1 — New user
-
-0 eligible orders
-
-Expected:
-
-status = NEW
-
----
-
-## Test 2 — First collection
-
-1 eligible
-1 collected
-
-Expected:
-
-collectionRate = 100
-
-status = INSUFFICIENT_HISTORY
-
----
-
-## Test 3 — No-show
-
-1 eligible
-0 collected
-1 no-show
-
-Expected:
-
-collectionRate = 0
-
-status = INSUFFICIENT_HISTORY
-
-No restriction.
-
----
-
-## Test 4 — Normal ratio
-
-10 eligible
-8 collected
-2 no-show
-
-Expected:
-
-collectionRate = 80
-
----
-
-## Test 5 — Recent history
-
-Verify only the latest 10 eligible outcomes are included.
-
----
-
-## Test 6 — Old orders
-
-Verify orders older than the recent 10 are not included in recentCollectionRate.
-
-They must still remain represented by lifetime counters.
-
----
-
-## Test 7 — Duplicate processing
-
-Process the same order twice.
-
-Expected:
-
-eligibleOrders increases only once.
-
----
-
-## Test 8 — Concurrent events
-
-Process a COLLECTED and NO_SHOW event concurrently.
-
-Expected:
-
-both are reflected exactly once.
-
----
-
-## Test 9 — Cancelled order
-
-Cancelled order must not affect reliability.
-
----
-
-## Test 10 — READY order
-
-READY order must not affect reliability.
-
----
-
-## Test 11 — Student write attack
-
-Attempt to modify:
-
-pickupReliability
-
-from the client.
-
-Expected:
-
-PERMISSION_DENIED.
-
----
-
-## Test 12 — Recent history limit
-
-Insert more than 10 eligible events.
-
-Expected:
-
-only the newest 10 remain in recentPickupHistory.
-
----
-
-## Test 13 — Score calculation
-
-Verify:
-
-score =
-70% lifetime +
-30% recent
-
-using several known datasets.
-
----
-
-## Test 14 — Zero division
-
-eligible = 0
-
-Expected:
-
-no NaN
-no Infinity
-status = NEW
-
----
-
-# 34. FIRESTORE COST AUDIT
-
-Before finishing the phase, inspect every new Firestore operation.
-
-For each read/write explain:
-
-WHY is it necessary?
-
-Remove any operation that isn't required.
-
-The preferred pattern is:
-
-COLLECTED/NO_SHOW event
-↓
-one server-side reliability update
-↓
-student account reads existing summary
-
-Do not add a new Firestore listener solely for reliability if the existing user listener already supplies the user document.
-
----
-
-# 35. BACKWARD COMPATIBILITY
-
-Do not break:
-
-* student authentication
-* student account
-* cart
-* ordering
-* admin ordering
-* order history
-* food menu
-* notifications
-* Firebase Auth
-* existing order lifecycle
-
-Do not modify unrelated collections.
-
-Do not migrate all existing historical orders unless absolutely necessary.
-
-If historical orders must be considered, first determine whether their data is sufficient to classify:
-
-COLLECTED
-NO_SHOW
-
-If not, do not guess.
-
----
-
-# 36. MIGRATION STRATEGY
-
-If users already have historical orders from before Phase B.2:
-
-Do NOT blindly calculate reliability from every historical order.
-
-First determine which orders have a trustworthy terminal state.
-
-Only count:
+The system must never end up with an order that is both:
 
 COLLECTED
 
@@ -1326,218 +536,1472 @@ and:
 
 NO_SHOW
 
-that can be confidently identified.
+Use a Firestore transaction or secure conditional state transition.
 
-If historical data is ambiguous, report it.
-
-Do not fabricate reliability statistics.
-
-A safe initial state may be:
-
-eligibleOrders = 0
-status = NEW
-
-for users whose historical data cannot be reliably reconstructed.
+The final state must be authoritative.
 
 ---
 
-# 37. LOGGING
+# 14. IDEMPOTENCY
 
-Use concise development logs such as:
+The automatic expiry process may run more than once.
 
-[PickupReliability] Processing collected order: ORDER_ID
+Therefore:
 
-[PickupReliability] Processing no-show order: ORDER_ID
+Processing the same order twice must not produce:
 
-[PickupReliability] Updated user reliability
+multiple NO_SHOW events.
 
-Do NOT log:
+It must not increment reliability counters twice.
 
-* email
-* phone number
-* location
-* auth token
-* FCM token
-* sensitive personal information
+It must not create duplicate notifications.
 
-Do not flood production logs.
+It must not create duplicate audit records unnecessarily.
 
----
+Use the order status and/or existing event-processing marker to guarantee idempotency.
 
-# 38. SECURITY REVIEW
+Reuse Phase A/B mechanisms if already implemented.
 
-Before declaring Phase B.2 complete, verify:
-
-✓ Student cannot modify reliability.
-
-✓ Student cannot modify lifetime counters.
-
-✓ Student cannot modify recent history.
-
-✓ Student cannot modify score.
-
-✓ Student can read only their own reliability.
-
-✓ Admin access follows existing cafe authorization.
-
-✓ Backend has authoritative update capability.
-
-✓ No public food document exposes reliability.
-
-✓ No sensitive personal information is duplicated.
+Do not create redundant idempotency infrastructure.
 
 ---
 
-# 39. FINAL VALIDATION
+# 15. RELIABILITY INTEGRATION
 
-Phase B.2 is complete only when:
+When:
 
-✓ Lifetime eligible count works.
+READY → NO_SHOW
 
-✓ Lifetime collected count works.
+the existing Phase B reliability system must process the event.
 
-✓ Lifetime no-show count works.
+It should result in:
 
-✓ Lifetime collection rate works.
+eligibleOrders + 1
 
-✓ Recent 10-event history works.
+noShowOrders + 1
 
-✓ Recent collection rate works.
+collectedOrders unchanged
 
-✓ Weighted reliability score works.
+recent history receives:
 
-✓ Reliability status classification works.
+NO_SHOW
 
-✓ NEW state works.
+The reliability update must happen exactly once.
 
-✓ INSUFFICIENT_HISTORY state works.
+Do not recalculate reliability by scanning every historical order.
 
-✓ Duplicate processing is prevented.
+Do not query the student's entire order history.
 
-✓ Concurrent updates are safe.
-
-✓ Cancelled orders are excluded.
-
-✓ READY orders are excluded.
-
-✓ COLLECTED orders count exactly once.
-
-✓ NO_SHOW orders count exactly once.
-
-✓ Student cannot manipulate reliability.
-
-✓ No unnecessary Firestore reads were introduced.
-
-✓ No unnecessary Firestore writes were introduced.
-
-✓ Existing order functionality still works.
-
-✓ Existing authentication still works.
-
-✓ Existing admin functionality still works.
-
-✓ Old strike logic remains removed.
+Use the existing event-driven Phase B architecture.
 
 ---
 
-# 40. DO NOT IMPLEMENT FUTURE PHASES
+# 16. COLLECTED ORDERS
 
-STOP after Phase B.2.
+When:
 
-Do NOT implement:
+READY → COLLECTED
 
-❌ Ordering restrictions
+the existing reliability system should process:
 
-❌ Maximum active orders
+eligibleOrders + 1
 
-❌ Ordering cooldown
+collectedOrders + 1
 
-❌ Account suspension
+noShowOrders unchanged
 
-❌ Account banning
+recent history receives:
 
-❌ Automatic punishment
+COLLECTED
 
-❌ Student reliability UI redesign
+Do not modify this existing behavior unnecessarily.
 
-❌ Reliability notifications
+---
 
-❌ Admin reliability dashboard
+# 17. CANCELLED ORDERS
 
-❌ Admin excuse/pardon functionality
+A:
 
-❌ Food rescue
+CANCELLED
 
-❌ Food waste analytics
+order must never become:
 
-❌ Rewards
+NO_SHOW
 
-These belong to later phases.
+The expiry processor must explicitly reject:
+
+status != READY
+
+before doing any automatic processing.
+
+---
+
+# 18. SCHEDULED BACKEND PROCESSING
+
+Use a server-side scheduled mechanism.
+
+Preferred architecture:
+
+Cloud Functions for Firebase scheduled function
+
+or the existing server-side scheduler already used by the project.
+
+Do not implement the expiry engine using Flutter background timers.
+
+Do not depend on the student's phone being online.
+
+Do not depend on the admin app being open.
+
+The server must be authoritative.
+
+---
+
+# 19. COST-EFFICIENT SCHEDULER
+
+IMPORTANT:
+
+Do NOT scan every order in the entire database every minute.
+
+That would create unnecessary Firestore reads.
+
+Use the most efficient architecture compatible with the current codebase.
+
+Preferred approach:
+
+Maintain a queryable set of READY orders that are potentially awaiting pickup.
+
+Query only orders whose:
+
+status == READY
+
+and whose:
+
+pickupDeadline/grace deadline
+
+is approaching or has expired.
+
+Use indexed Firestore queries.
+
+Do not perform:
+
+get() on every student's orders.
+
+Do not perform:
+
+collection.get()
+
+across the entire order collection every minute.
+
+---
+
+# 20. SCHEDULER FREQUENCY
+
+Use a reasonable scheduler interval.
+
+Recommended initial approach:
+
+Run every 1 minute.
+
+Do NOT run every second.
+
+Do NOT run every 5 seconds.
+
+Do NOT create a timer per order.
+
+The exact execution time may be slightly delayed by scheduler execution.
+
+That is acceptable.
+
+The system should guarantee:
+
+NO_SHOW is not recorded before the grace period expires.
+
+It does not need to guarantee that NO_SHOW is recorded at the exact millisecond of expiry.
+
+---
+
+# 21. DEADLINE SAFETY
+
+If the scheduler executes late:
+
+pickupDeadline + gracePeriod:
+12:20
+
+Scheduler executes:
+
+12:21
+
+The order may be marked NO_SHOW at 12:21.
+
+That is acceptable.
+
+But if scheduler executes:
+
+12:19:59
+
+the order must NOT be marked NO_SHOW.
+
+Server-side time comparison must prevent early processing.
+
+---
+
+# 22. QUERY STRATEGY
+
+Before implementing the scheduler, inspect the existing Firestore order schema and indexes.
+
+Use the fields that already exist.
+
+If the project has:
+
+pickupDeadline
+
+and:
+
+status
+
+use an appropriate compound query/index.
+
+Do not create unnecessary duplicate fields.
+
+If storing a dedicated:
+
+noShowEligibleAt
+
+field significantly simplifies efficient querying, evaluate whether it is justified.
+
+Prefer the simplest architecture that provides reliable indexed querying.
+
+---
+
+# 23. FIRESTORE INDEXES
+
+If the required query needs a composite index:
+
+Create the appropriate Firestore index configuration.
+
+Document why the index exists.
+
+Do not create broad unnecessary indexes.
+
+Verify deployment succeeds.
+
+---
+
+# 24. PROCESSING BATCHES
+
+If the query may return many expired orders:
+
+Process orders in controlled batches.
+
+Do not attempt to load thousands of orders into memory at once.
+
+Use Firestore batch writes or transactions as appropriate.
+
+Do not create a single enormous write batch that could exceed Firestore limits.
+
+---
+
+# 25. TRANSACTIONAL STATE TRANSITION
+
+For each candidate order:
+
+Read the current order state inside the transaction.
+
+Verify:
+
+status == READY
+
+Verify:
+
+currentServerTime >= noShowEligibleAt
+
+Then update:
+
+status = NO_SHOW
+
+noShowAt = server timestamp
+
+Only then should downstream reliability processing occur according to the existing architecture.
+
+If the order is already:
+
+COLLECTED
+
+do nothing.
+
+If it is:
+
+CANCELLED
+
+do nothing.
+
+If it is:
+
+NO_SHOW
+
+do nothing.
+
+---
+
+# 26. DO NOT TRUST QUERY RESULTS ALONE
+
+A query identifies candidates.
+
+It does NOT prove that an order can safely be marked NO_SHOW.
+
+Before updating:
+
+re-check the order state transactionally.
+
+This protects against:
+
+- student collecting at the same time
+- admin updates
+- cancellation
+- retries
+- stale query results
+
+---
+
+# 27. ADMIN MANUAL NO-SHOW
+
+Inspect whether the existing admin app already supports manually marking:
+
+NO_SHOW.
+
+If it does:
+
+make sure manual NO_SHOW follows the same reliability/idempotency rules.
+
+Do not create a second incompatible NO_SHOW implementation.
+
+If an admin manually records NO_SHOW before the automatic expiry:
+
+the automatic processor must later ignore that order.
+
+---
+
+# 28. ADMIN COLLECTION
+
+If the admin marks an order:
+
+COLLECTED
+
+during the grace period:
+
+the order must remain:
+
+COLLECTED.
+
+The automatic expiry processor must not overwrite it.
+
+---
+
+# 29. NO-SHOW TIMESTAMP
+
+When NO_SHOW is actually recorded:
+
+set:
+
+noShowAt = server timestamp
+
+Do not use the scheduled function's local clock.
+
+The timestamp represents when the backend recorded the event.
+
+If the architecture already defines noShowAt differently, preserve the established semantics.
+
+---
+
+# 30. EVENT HISTORY
+
+If Phase A has an order event/status history:
+
+record:
+
+READY → NO_SHOW
+
+with:
+
+timestamp
+actor/source = system
+event type = NO_SHOW
+
+If an event history system does not exist:
+
+do not build a large new event architecture solely for Phase C.
+
+Use the existing architecture.
+
+---
+
+# 31. NOTIFICATIONS
+
+The existing notifications collection is:
+
+notifications
+
+Use the existing notification architecture.
+
+When automatic NO_SHOW is successfully recorded:
+
+create the appropriate student notification:
+
+"No-show recorded"
+
+Do not create the notification if the order transition failed.
+
+Do not send duplicate notifications on retries.
+
+If FCM is already implemented:
+
+use the existing FCM notification pipeline.
+
+Do not create a second notification system.
+
+---
+
+# 32. NOTIFICATION IDEMPOTENCY
+
+If the scheduled function retries:
+
+do not send the same NO_SHOW notification twice.
+
+Tie the notification/event to:
+
+orderId
+
+and the specific:
+
+NO_SHOW
+
+transition.
+
+Reuse the existing notification deduplication mechanism if Phase 7 already implemented one.
+
+---
+
+# 33. NO STRIKE SYSTEM
+
+This phase must NOT implement:
+
+❌ strikes
+
+❌ automatic strikes
+
+❌ strike percentages
+
+❌ account suspension
+
+❌ account banning
+
+❌ ordering restrictions
+
+❌ ordering cooldown
+
+❌ automatic punishment
+
+NO_SHOW is an order outcome.
+
+Reliability is a measurement.
+
+They are not punishment mechanisms.
+
+---
+
+# 34. FOOD WASTE OBJECTIVE
+
+The purpose of automatic NO_SHOW is operational accuracy.
+
+It allows the cafe to know:
+
+"This order was not collected after the allowed pickup period."
+
+It should NOT automatically punish the student.
+
+Future phases may decide how repeated no-shows should be handled.
+
+Do not implement those decisions here.
+
+---
+
+# 35. STUDENT UI STATES
+
+The existing order screen should clearly distinguish:
+
+READY
+
+GRACE PERIOD
+
+NO_SHOW
+
+Suggested conceptual display:
+
+READY:
+"Ready for pickup"
+
+During normal pickup period:
+"Pickup by 12:15"
+
+During grace period:
+"Grace period — please collect your order"
+
+After automatic transition:
+"No-show recorded"
+
+Do not redesign the entire order screen.
+
+Use the existing UI components.
+
+---
+
+# 36. COUNTDOWN BEHAVIOR
+
+The client may calculate a countdown locally.
+
+However:
+
+Countdown reaches zero
+        ↓
+Client refreshes order
+        ↓
+Backend status is checked
+        ↓
+If still READY:
+show waiting/processing state
+        ↓
+Backend marks NO_SHOW
+        ↓
+Client receives updated status
+
+Do not immediately set:
+
+NO_SHOW
+
+from Flutter.
+
+---
+
+# 37. OFFLINE BEHAVIOR
+
+If the student's phone is offline:
+
+the backend must still be capable of marking the order NO_SHOW.
+
+If the student later reconnects:
+
+the order should synchronize to:
+
+NO_SHOW
+
+if it was actually processed.
+
+Do not depend on client-side background execution.
+
+---
+
+# 38. SECURITY RULES
+
+Students must not be allowed to manually write:
+
+NO_SHOW
+
+to their own order.
+
+Do not allow:
+
+status = NO_SHOW
+
+from the client.
+
+Only authorized admin/backend operations may perform the transition.
+
+The existing Firestore security rules must remain restrictive.
+
+Do not weaken security rules to make the feature work.
+
+---
+
+# 39. CLIENT MANIPULATION TEST
+
+Attempt from the Flutter client to update:
+
+status:
+NO_SHOW
+
+Expected:
+
+PERMISSION_DENIED.
+
+Attempt to modify:
+
+noShowAt
+
+Expected:
+
+PERMISSION_DENIED.
+
+Attempt to modify:
+
+pickupDeadline
+
+Expected:
+
+PERMISSION_DENIED.
+
+---
+
+# 40. PRIVACY
+
+The NO_SHOW system must not introduce unnecessary personal data.
+
+Do not duplicate:
+
+- student email
+- phone number
+- location
+- device ID
+- FCM token
+
+into order expiry records.
+
+Use:
+
+student UID
+order ID
+timestamps
+order state
+
+as necessary.
+
+---
+
+# 41. FIRESTORE COST AUDIT
+
+Before completing Phase C, inspect every new read and write.
+
+The preferred architecture is:
+
+READY order
+      ↓
+server scheduler
+      ↓
+query only potentially expired READY orders
+      ↓
+transactional status validation
+      ↓
+READY → NO_SHOW
+      ↓
+existing reliability processor
+      ↓
+existing notification pipeline
+
+Avoid:
+
+❌ scanning all users
+
+❌ scanning all orders
+
+❌ querying each user's order history
+
+❌ per-order scheduled Cloud Functions
+
+❌ per-second timers
+
+❌ per-second writes
+
+❌ client polling every second
+
+---
+
+# 42. SCHEDULER FAILURE
+
+The system must tolerate temporary scheduler failures.
+
+If the scheduler misses a run:
+
+next run should discover the expired READY order.
+
+Example:
+
+Deadline:
+12:20
+
+Scheduler fails at:
+12:20
+
+Next successful run:
+12:21
+
+The order should still be discovered and processed.
+
+Do not rely on a single execution.
+
+---
+
+# 43. FUNCTION RETRY SAFETY
+
+If the Cloud Function executes twice:
+
+The first execution:
+
+READY → NO_SHOW
+
+The second execution:
+
+status != READY
+
+Therefore:
+
+no change.
+
+No duplicate reliability update.
+
+No duplicate notification.
+
+No duplicate event.
+
+---
+
+# 44. EXISTING RELIABILITY SYSTEM
+
+Do not duplicate the calculations from Phase B.
+
+Phase C should emit the authoritative:
+
+NO_SHOW
+
+event.
+
+Phase B should remain responsible for:
+
+eligibleOrders
+noShowOrders
+collectedOrders
+recent history
+collectionRate
+reliabilityScore
+reliabilityStatus
+
+Reuse existing services/functions.
+
+---
+
+# 45. TEST CASES
+
+Create automated tests for:
+
+## TEST 1 — Before pickup deadline
+
+READY order
+
+current time < pickupDeadline
+
+Expected:
+
+remains READY.
+
+---
+
+## TEST 2 — During grace period
+
+READY order
+
+pickupDeadline passed
+
+grace period not finished
+
+Expected:
+
+remains READY.
+
+---
+
+## TEST 3 — Grace period expired
+
+READY order
+
+current time > pickupDeadline + gracePeriod
+
+Expected:
+
+READY → NO_SHOW.
+
+---
+
+## TEST 4 — Collected during grace period
+
+READY → COLLECTED
+
+before grace expiry.
+
+Expected:
+
+remains COLLECTED.
+
+---
+
+## TEST 5 — Collected after grace expiry but before processor runs
+
+Order is still READY.
+
+Student/admin successfully collects.
+
+Expected:
+
+COLLECTED.
+
+Automatic processor later must not change it.
+
+---
+
+## TEST 6 — Cancelled order
+
+CANCELLED
+
+deadline passes.
+
+Expected:
+
+remains CANCELLED.
+
+---
+
+## TEST 7 — Pending order
+
+PENDING
+
+pickup deadline does not apply.
+
+Expected:
+
+not processed.
+
+---
+
+## TEST 8 — Preparing order
+
+PREPARING.
+
+Expected:
+
+not processed.
+
+---
+
+## TEST 9 — Duplicate scheduler execution
+
+Process same order twice.
+
+Expected:
+
+only one NO_SHOW transition.
+
+---
+
+## TEST 10 — Reliability
+
+NO_SHOW event.
+
+Expected:
+
+eligibleOrders + 1
+
+noShowOrders + 1
+
+exactly once.
+
+---
+
+## TEST 11 — Notification
+
+Automatic NO_SHOW.
+
+Expected:
+
+one notification.
+
+---
+
+## TEST 12 — Notification retry
+
+Process same NO_SHOW again.
+
+Expected:
+
+no duplicate notification.
+
+---
+
+## TEST 13 — Student manipulation
+
+Client attempts:
+
+READY → NO_SHOW.
+
+Expected:
+
+PERMISSION_DENIED.
+
+---
+
+## TEST 14 — Race condition
+
+Student/admin attempts:
+
+READY → COLLECTED
+
+while scheduler attempts:
+
+READY → NO_SHOW.
+
+Expected:
+
+only one terminal transition.
+
+---
+
+## TEST 15 — Late scheduler
+
+Deadline expired by several minutes.
+
+Scheduler runs later.
+
+Expected:
+
+order is still discovered and processed.
+
+---
+
+# 46. INTEGRATION TEST
+
+Perform a complete real-world simulation:
+
+1. Student places order.
+2. Cancellation window starts.
+3. Cancellation window expires.
+4. Admin accepts.
+5. Admin marks preparing.
+6. Admin marks ready.
+7. Pickup deadline begins.
+8. Pickup deadline expires.
+9. Grace period begins.
+10. Student does not collect.
+11. Grace period expires.
+12. Scheduler processes order.
+13. Order becomes NO_SHOW.
+14. Reliability updates.
+15. Notification is created.
+16. Student sees NO_SHOW.
+
+Verify no duplicate writes occur.
+
+---
+
+# 47. SECOND INTEGRATION TEST
+
+Test successful pickup:
+
+1. Student orders.
+2. Admin accepts.
+3. Preparing.
+4. Ready.
+5. Pickup deadline approaches.
+6. Grace period begins.
+7. Student collects.
+8. Order becomes COLLECTED.
+9. Scheduler runs.
+10. Scheduler ignores order.
+11. Reliability counts one collection.
+12. No NO_SHOW notification is generated.
+
+---
+
+# 48. THIRD INTEGRATION TEST
+
+Test cancellation:
+
+1. Student orders.
+2. PENDING.
+3. Student cancels within 2 minutes.
+4. Order becomes CANCELLED.
+5. Cancellation window ends.
+6. Pickup deadline logic does not process it.
+7. Scheduler ignores it.
+8. Reliability ignores it.
+9. No NO_SHOW notification is generated.
+
+---
+
+# 49. LOGGING
+
+Use concise logs such as:
+
+[PickupExpiry] Checking expired READY orders
+
+[PickupExpiry] Processing order ORDER_ID
+
+[PickupExpiry] Order transitioned READY → NO_SHOW
+
+[PickupExpiry] Order already terminal, skipping
+
+Do not log:
+
+- student email
+- user uid
+- phone number
+- location
+- authentication tokens
+- FCM tokens
+
+Avoid excessive logs in production.
+
+---
+
+# 50. PRODUCTION HARDENING
+
+Before completing:
+
+Run:
+
+flutter analyze
+
+Run existing tests.
+
+Run new unit tests.
+
+Run integration tests where available.
+
+Deploy backend changes to a development/staging Firebase environment first if the project has one.
+
+Verify:
+
+- scheduled function deployment
+- Firestore indexes
+- security rules
+- Cloud Functions permissions
+- notification integration
+- reliability integration
+
+Do not deploy destructive database migrations automatically.
+
+---
+
+# 51. COST REPORT
+
+The final implementation report MUST state:
+
+1. Scheduler frequency.
+2. Firestore query used.
+3. Number of expected reads per scheduler run.
+4. Number of expected writes per expired order.
+5. Whether indexes were added.
+6. Whether transactions are used.
+7. Whether duplicate processing is prevented.
+8. Why this architecture is cheaper than polling every order/client.
+9. Any potential scaling concerns.
+
+---
+
+# 52. FINAL ACCEPTANCE CRITERIA
+
+Phase C is complete only when:
+
+✓ Grace period exists.
+
+✓ Grace period is configurable.
+
+✓ Server time is authoritative.
+
+✓ READY orders can be collected during grace period.
+
+✓ READY orders are not marked NO_SHOW before grace expires.
+
+✓ Expired READY orders can automatically become NO_SHOW.
+
+✓ Cancellation remains completely separate.
+
+✓ CANCELLED orders never become NO_SHOW.
+
+✓ COLLECTED orders never become NO_SHOW.
+
+✓ PENDING orders never become NO_SHOW.
+
+✓ ACCEPTED orders never become NO_SHOW.
+
+✓ PREPARING orders never become NO_SHOW.
+
+✓ NO_SHOW transition is idempotent.
+
+✓ Race conditions are handled.
+
+✓ Reliability updates exactly once.
+
+✓ Notification is created exactly once.
+
+✓ Student cannot manipulate NO_SHOW.
+
+✓ Student cannot manipulate noShowAt.
+
+✓ Student cannot manipulate pickupDeadline.
+
+✓ No client-side background timer controls the authoritative state.
+
+✓ No per-second Firestore writes exist.
+
+✓ No full order-history scan is performed for each user.
+
+✓ Existing Phase A remains functional.
+
+✓ Existing Phase B remains functional.
+
+✓ Existing Phase B.1 cancellation remains functional.
+
+✓ Existing admin order lifecycle remains functional.
+
+✓ Existing notification architecture remains functional.
+
+✓ Existing FCM implementation remains functional.
+
+✓ No strikes are introduced.
+
+✓ No bans are introduced.
+
+✓ No suspensions are introduced.
+
+✓ No ordering restrictions are introduced.
+
+---
+
+# PHASE C CLARIFICATION — COLLECTION VS NO-SHOW AT GRACE EXPIRY
+
+## AUTHORITATIVE CUTOFF RULE
+
+The pickup grace period has a hard server-side cutoff.
+
+Collection is permitted only when:
+
+currentServerTime < noShowEligibleAt
+
+Collection is NOT permitted when:
+
+currentServerTime >= noShowEligibleAt
+
+This rule applies even when the automatic NO_SHOW processor has not executed yet.
+
+The scheduled processor may run slightly late, but it must never extend the student's pickup entitlement.
+
+---
+
+# COLLECTION TRANSACTION
+
+The transaction that changes:
+
+READY → COLLECTED
+
+MUST verify all of the following using authoritative server time:
+
+1. Order exists.
+2. Current status == READY.
+3. Order is not CANCELLED.
+4. Order is not already NO_SHOW.
+5. Current server time < noShowEligibleAt.
+
+If:
+
+currentServerTime >= noShowEligibleAt
+
+the transaction MUST reject the collection attempt.
+
+Return a clear business error such as:
+
+"Pickup window has expired."
+
+Do not silently mark the order as collected.
+
+Do not let the Flutter client override this rule.
+
+---
+
+# NO-SHOW TRANSACTION
+
+The transaction that changes:
+
+READY → NO_SHOW
+
+MUST verify:
+
+1. Order exists.
+2. Current status == READY.
+3. Current server time >= noShowEligibleAt.
+
+If those conditions are true:
+
+READY → NO_SHOW
+
+Set:
+
+noShowAt = server timestamp
+
+If:
+
+currentServerTime < noShowEligibleAt
+
+the NO_SHOW transaction must do nothing.
+
+The NO_SHOW processor must not create a NO_SHOW before the hard cutoff.
+
+---
+
+# RACE CONDITION RULE
+
+There are two possible situations.
+
+## CASE A — BOTH OPERATIONS OCCUR BEFORE CUTOFF
+
+If:
+
+currentServerTime < noShowEligibleAt
+
+then:
+
+Collection transaction may succeed.
+
+NO_SHOW transaction must reject/do nothing.
+
+The successful COLLECTED transaction wins.
+
+---
+
+## CASE B — BOTH OPERATIONS OCCUR AT OR AFTER CUTOFF
+
+If:
+
+currentServerTime >= noShowEligibleAt
+
+then:
+
+Collection transaction must reject.
+
+NO_SHOW transaction may succeed.
+
+The NO_SHOW outcome wins.
+
+---
+
+## CASE C — SCHEDULER IS DELAYED
+
+Example:
+
+noShowEligibleAt = 12:20
+
+Scheduler does not run at 12:20.
+
+At 12:23 the student attempts to collect.
+
+The collection transaction MUST reject because:
+
+currentServerTime >= noShowEligibleAt
+
+The scheduler may then process:
+
+READY → NO_SHOW
+
+This is intentional.
+
+A delayed scheduler must never extend the grace period.
+
+---
+
+# UPDATED TEST 5
+
+## TEST 5 — Collection Attempt After Grace Expiry Before Processor Runs
+
+Setup:
+
+status = READY
+
+noShowEligibleAt = 12:20
+
+currentServerTime = 12:21
+
+automatic processor has NOT yet run
+
+Student/admin attempts collection.
+
+Expected:
+
+COLLECTION REJECTED.
+
+The order remains:
+
+READY
+
+until the NO_SHOW processor successfully changes it to:
+
+NO_SHOW
+
+The student must not receive a false "Collected" confirmation.
+
+---
+
+# UPDATED TEST 14
+
+## TEST 14 — Concurrent Collection and NO_SHOW Processing
+
+Create two scenarios.
+
+### Scenario A — Before cutoff
+
+currentServerTime < noShowEligibleAt
+
+Collection and NO_SHOW transactions execute concurrently.
+
+Expected:
+
+Collection transaction may succeed.
+
+NO_SHOW transaction must then fail because the order is no longer READY.
+
+Final state:
+
+COLLECTED
+
+---
+
+### Scenario B — At or after cutoff
+
+currentServerTime >= noShowEligibleAt
+
+Collection and NO_SHOW transactions execute concurrently.
+
+Expected:
+
+Collection transaction must reject because the hard cutoff has passed.
+
+NO_SHOW transaction may succeed.
+
+Final state:
+
+NO_SHOW
+
+Never allow:
+
+COLLECTED
+
+after:
+
+noShowEligibleAt
+
+---
+
+# IMPORTANT
+
+Do NOT use:
+
+"first successful transaction wins"
+
+as the sole business rule.
+
+The business rule is:
+
+BEFORE cutoff:
+collection is allowed.
+
+AT OR AFTER cutoff:
+collection is forbidden.
+
+Transactions only enforce this rule atomically.
+
+---
+
+# CLIENT UI
+
+The Flutter app may display the grace-period countdown locally.
+
+When the displayed countdown reaches zero:
+
+Do NOT assume the order has already become NO_SHOW.
+
+Instead:
+
+1. Disable/close the Collect action.
+2. Refresh/read the authoritative order state.
+3. Show the current backend status.
+
+Possible temporary state:
+
+"Pickup window expired — updating order..."
+
+Once backend processing completes:
+
+"No-show recorded."
+
+Do not let the client create the NO_SHOW state.
+
+---
+
+# ACCEPTANCE CRITERIA
+
+The implementation is correct only if:
+
+✓ Collection is allowed before noShowEligibleAt.
+
+✓ Collection is rejected at noShowEligibleAt.
+
+✓ Collection is rejected after noShowEligibleAt.
+
+✓ Scheduler delays never extend the grace period.
+
+✓ NO_SHOW cannot happen before noShowEligibleAt.
+
+✓ COLLECTED and NO_SHOW can never both become valid terminal states.
+
+✓ Concurrent transactions respect the cutoff.
+
+✓ Test 5 expects collection rejection after cutoff.
+
+✓ Test 14 contains both pre-cutoff and post-cutoff race scenarios.
+
+✓ Backend uses authoritative server time for both transitions.
 
 ---
 
 # REQUIRED FINAL REPORT
 
-When Phase B.2 is complete, provide a concise technical report containing:
+After implementation, provide:
 
 1. Files inspected.
 2. Files modified.
 3. Files created.
-4. Existing Phase A architecture discovered.
-5. Reliability data structure implemented.
-6. Lifetime calculation implementation.
-7. Recent-history implementation.
-8. Reliability score formula.
-9. Status thresholds.
-10. Idempotency mechanism.
-11. Transaction/concurrency strategy.
-12. Firestore security changes.
-13. Firestore reads introduced.
-14. Firestore writes introduced.
-15. Cost optimization decisions.
-16. Tests executed and results.
-17. Any historical-data limitations.
-18. Any security concerns.
-19. Any remaining technical risks.
+4. Existing architecture discovered.
+5. Grace period implementation.
+6. Scheduler implementation.
+7. Firestore query strategy.
+8. Indexes added.
+9. Server-time enforcement.
+10. Transaction strategy.
+11. Idempotency strategy.
+12. Reliability integration.
+13. Notification integration.
+14. Security-rule changes.
+15. Firestore reads introduced.
+16. Firestore writes introduced.
+17. Cost analysis.
+18. Tests executed.
+19. Race-condition tests.
+20. Security tests.
+21. Remaining risks.
 
-Do not proceed to Phase C.
+STOP AFTER PHASE C.
 
-Wait for explicit instructions before implementing restrictions or additional reliability features.
-
-````
-
-## The important outcome of Phase B.2
-
-After the agent completes this phase, the architecture should effectively be:
-
-                    ORDER
-                      │
-          ┌───────────┴───────────┐
-          │                       │
-      COLLECTED                NO_SHOW
-          │                       │
-          └───────────┬───────────┘
-                      ↓
-              Reliability Engine
-                      │
-        ┌─────────────┴─────────────┐
-        ↓                           ↓
- Lifetime History             Recent 10 Orders
-        │                           │
-        └─────────────┬─────────────┘
-                      ↓
-              Reliability Score
-                      │
-          ┌───────────┼───────────┐
-          ↓           ↓           ↓
-       Excellent     Good      Needs Improvement
-````
+DO NOT IMPLEMENT PHASE D OR ANY PUNISHMENT/RESTRICTION SYSTEM.
 
 ---
 
 # Phase Completion Criteria
 
-Phase B.2 is complete when:
+Phase C is complete when:
 
 * The new features works well with past features.
 * App runs successfully.

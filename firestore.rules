@@ -178,6 +178,7 @@ service cloud.firestore {
         && !('distanceCalculated' in changed)
         && !('distanceMeters' in changed)
         && !('cafeLocation' in changed)
+        && !('pickupDeadline' in changed)
         && !('noShowProcessed' in changed)
         && !('deadlineExtended' in changed)
         && !('extensionAt' in changed)
@@ -246,6 +247,14 @@ service cloud.firestore {
           && resource.data.createdAt + duration.value(2, 'm') <= request.time);
     }
 
+    // Phase C — Collection is permitted only when request.time < noShowEligibleAt
+    // (pickupDeadline + 5 minutes grace period). Hard server-side cutoff.
+    function pickupGracePeriodNotExpired() {
+      return !('pickupDeadline' in resource.data)
+        || !(resource.data.pickupDeadline is timestamp)
+        || request.time < resource.data.pickupDeadline + duration.value(5, 'm');
+    }
+
     function validOrderStatusTransition() {
       let allowedStatuses = ['pending', 'accepted', 'rejected', 'preparing',
         'ready', 'collected', 'no_show', 'cancelled'];
@@ -265,7 +274,8 @@ service cloud.firestore {
           || (before == 'accepted' && after == 'preparing')
           || (before == 'preparing' && after == 'ready')
           || (before == 'ready'
-            && (after == 'collected' || after == 'no_show')));
+            && ((after == 'collected' && pickupGracePeriodNotExpired())
+                || after == 'no_show')));
     }
 
     // ── User validation ─────────────────────────────────────────────────
