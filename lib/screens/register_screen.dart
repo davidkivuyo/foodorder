@@ -303,7 +303,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       child: ElevatedButton(
                         onPressed: isLoading ? null : _handleRegister,
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF116522),
+                          backgroundColor: Colors.orange,
                           disabledBackgroundColor: const Color(
                             0xFF116522,
                           ).withValues(alpha: 0.6),
@@ -362,7 +362,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           child: const Text(
                             'Login',
                             style: TextStyle(
-                              color: Color(0xFF116522),
+                              color: Colors.orange,
                               fontWeight: FontWeight.bold,
                               fontSize: 15,
                             ),
