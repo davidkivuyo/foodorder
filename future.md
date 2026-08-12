@@ -5,9 +5,7 @@
 
 6. create a new branch to add restaurants other than university ones
 * Their menu items will be able to link to whatsapp easily
-* Or start a messaging platform inside the app 
-
-2. migrate CI to blacksmith- "runs-on: blacksmith-4vcpu-ubuntu-2404" when you start an organization on Github
+* Or start a messaging platform inside the app
 
 3. modify account screen to add app appearance settings, your ratings and meal plans.
 
