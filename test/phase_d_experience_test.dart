@@ -13,6 +13,7 @@
 // limitations under the License.
 
 import 'package:campusbite/models/order.dart';
+import 'package:campusbite/widgets/extend_pickup_action.dart';
 import 'package:campusbite/widgets/no_show_notice.dart';
 import 'package:campusbite/widgets/pickup_countdown.dart';
 import 'package:flutter/material.dart';
@@ -108,6 +109,133 @@ void main() {
       await tester.pump();
 
       expect(find.text('No-show recorded'), findsOneWidget);
+    });
+  });
+
+  group('ExtendPickupAction — self-expiring at the deadline', () {
+    Widget wrap(ExtendPickupAction action) {
+      return MaterialApp(home: Scaffold(body: Center(child: action)));
+    }
+
+    testWidgets('shows the extend button while the deadline is in the future', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        wrap(
+          ExtendPickupAction(
+            canExtend: true,
+            extended: false,
+            isExtending: false,
+            pickupDeadline: DateTime.now().add(const Duration(minutes: 5)),
+            onExtend: () {},
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(
+        find.text('Extend pickup by 10 min'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('hides the extend button once the deadline passes (grace period)', (
+      tester,
+    ) async {
+      // 2 minutes past the deadline — inside the default 5-minute grace window.
+      final inGraceDeadline = DateTime.now().subtract(const Duration(minutes: 2));
+
+      await tester.pumpWidget(
+        wrap(
+          ExtendPickupAction(
+            canExtend: true,
+            extended: false,
+            isExtending: false,
+            pickupDeadline: inGraceDeadline,
+            onExtend: () {},
+          ),
+        ),
+      );
+      await tester.pump();
+
+      // The action must not be offered during the grace period — tapping it
+      // would only produce a confusing rejection from the callable.
+      expect(find.text('Extend pickup by 10 min'), findsNothing);
+    });
+
+    testWidgets('hides the button when the deadline elapses while mounted', (
+      tester,
+    ) async {
+      // Injectable clock so the timer test is deterministic: the widget starts
+      // visible, then the clock advances past the deadline and the internal
+      // 1-second timer must hide the action without any parent rebuild.
+      var now = DateTime(2026, 8, 1, 12, 0, 0);
+      final deadline = now.add(const Duration(minutes: 5));
+
+      await tester.pumpWidget(
+        wrap(
+          ExtendPickupAction(
+            canExtend: true,
+            extended: false,
+            isExtending: false,
+            pickupDeadline: deadline,
+            onExtend: () {},
+            clock: () => now,
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(find.text('Extend pickup by 10 min'), findsOneWidget);
+
+      // Advance the clock past the deadline, then let the timer tick.
+      now = deadline.add(const Duration(minutes: 1));
+      await tester.pump(const Duration(seconds: 3));
+      await tester.pump();
+
+      expect(find.text('Extend pickup by 10 min'), findsNothing);
+    });
+
+    testWidgets('shows the extended chip once the extension is used', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        wrap(
+          ExtendPickupAction(
+            canExtend: false,
+            extended: true,
+            isExtending: false,
+            pickupDeadline: DateTime.now().add(const Duration(minutes: 5)),
+            onExtend: () {},
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(
+        find.text('Pickup extended by 10 min'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('renders nothing when neither extendable nor extended', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        wrap(
+          ExtendPickupAction(
+            canExtend: false,
+            extended: false,
+            isExtending: false,
+            pickupDeadline: null,
+            onExtend: () {},
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.byType(OutlinedButton), findsNothing);
+      expect(find.text('Extend pickup by 10 min'), findsNothing);
+      expect(find.text('Pickup extended by 10 min'), findsNothing);
     });
   });
 }

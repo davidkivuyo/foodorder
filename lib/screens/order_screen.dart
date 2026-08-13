@@ -25,6 +25,7 @@ import '../services/pickup_deadline_service.dart';
 import '../services/pickup_extension_service.dart';
 import '../viewmodels/orders_view_model.dart';
 import '../widgets/cancellation_countdown.dart';
+import '../widgets/extend_pickup_action.dart';
 import '../widgets/pickup_countdown.dart';
 import '../widgets/cart_bottom_sheet.dart';
 import '../widgets/no_show_notice.dart';
@@ -933,10 +934,11 @@ class _OrdersScreenState extends State<OrdersScreen>
                 const SizedBox(height: 6),
                 Align(
                   alignment: Alignment.centerLeft,
-                  child: _ExtendPickupAction(
+                  child: ExtendPickupAction(
                     canExtend: _viewModel.canExtendPickup(order),
                     extended: order.deadlineExtended,
                     isExtending: _viewModel.isExtending(order.orderId),
+                    pickupDeadline: order.pickupDeadline,
                     onExtend: () => _handleExtendPickup(order),
                   ),
                 ),
@@ -1250,12 +1252,13 @@ class _OrdersScreenState extends State<OrdersScreen>
                         const SizedBox(height: 8),
                         Align(
                           alignment: Alignment.centerLeft,
-                          child: _ExtendPickupAction(
+                          child: ExtendPickupAction(
                             canExtend:
                                 !sheetExtended &&
                                 _viewModel.canExtendPickup(order),
                             extended: sheetExtended || order.deadlineExtended,
                             isExtending: sheetExtending,
+                            pickupDeadline: sheetPickupDeadline,
                             onExtend: () async {
                               setSheetState(() => sheetExtending = true);
                               final result = await _viewModel.extendPickup(
@@ -1763,74 +1766,6 @@ class _OrdersScreenState extends State<OrdersScreen>
       'Dec',
     ];
     return '${dt.day} ${months[dt.month - 1]}';
-  }
-}
-
-/// The one-tap "extend pickup" action shown on ready orders, plus the
-/// confirmation chip once the extension has been used.
-///
-/// Shared by the order card and the order details bottom sheet.
-class _ExtendPickupAction extends StatelessWidget {
-  final bool canExtend;
-  final bool extended;
-  final bool isExtending;
-  final VoidCallback onExtend;
-
-  const _ExtendPickupAction({
-    required this.canExtend,
-    required this.extended,
-    required this.isExtending,
-    required this.onExtend,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    if (canExtend) {
-      return OutlinedButton.icon(
-        onPressed: isExtending ? null : onExtend,
-        icon: isExtending
-            ? const SizedBox(
-                width: 14,
-                height: 14,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
-            : const Icon(Icons.timer_outlined, size: 16),
-        label: Text(
-          isExtending
-              ? 'Extending…'
-              : 'Extend pickup by ${PickupExtensionService.extensionMinutes} min',
-        ),
-        style: OutlinedButton.styleFrom(
-          foregroundColor: Colors.orange.shade900,
-          side: BorderSide(color: Colors.orange.shade400),
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          minimumSize: Size.zero,
-          textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-        ),
-      );
-    }
-    if (extended) {
-      return Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.check_circle_outline,
-            size: 14,
-            color: Colors.green.shade700,
-          ),
-          const SizedBox(width: 4),
-          Text(
-            'Pickup extended by ${PickupExtensionService.extensionMinutes} min',
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: Colors.green.shade700,
-            ),
-          ),
-        ],
-      );
-    }
-    return const SizedBox.shrink();
   }
 }
 
