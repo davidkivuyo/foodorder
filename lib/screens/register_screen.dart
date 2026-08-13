@@ -303,7 +303,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       child: ElevatedButton(
                         onPressed: isLoading ? null : _handleRegister,
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.orange,
+                          backgroundColor: Color(
+                  0xFF116522,
+                ),
                           disabledBackgroundColor: const Color(
                             0xFF116522,
                           ).withValues(alpha: 0.6),

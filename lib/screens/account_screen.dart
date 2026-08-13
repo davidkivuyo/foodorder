@@ -12,54 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import 'package:campusbite/screens/myprofile.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import '../services/auth_service.dart';
-import '../widgets/logout_confirmation_dialog.dart';
+import '../widgets/user_initials_avatar.dart';
 import 'diagnostics_screen.dart';
 import 'notification_screen.dart';
 
 export 'notification_screen.dart' show NotificationScreen;
 
-// ── Avatar helpers ──────────────────────────────────────────────────────────
 
-/// Returns uppercase initials from a full name.
-/// Single name  → first letter only  example "lembotor" → "L")
-/// Multiple names → first letter of each of the first two words example "Lembotor larabal" → "LL")
-String _initialsFromName(String fullName) {
-  final parts = fullName.trim().split(RegExp(r'\s+'));
-  if (parts.isEmpty || parts.first.isEmpty) return '?';
-  if (parts.length == 1) return parts.first[0].toUpperCase();
-  return (parts[0][0] + parts[1][0]).toUpperCase();
-}
-
-/// Deterministically picks one of several curated colours based on the name.
-/// The same name always produces the same colour.
-Color _avatarColorFromName(String name) {
-  const List<Color> palette = [
-    Color(0xFFE53935), // red
-    Color(0xFF8E24AA), // purple
-    Color(0xFF1E88E5), // blue
-    Color(0xFF00897B), // teal
-    Color(0xFF43A047), // green
-    Color(0xFFF4511E), // deep orange
-    Color(0xFF6D4C41), // brown
-    Color(0xFF3949AB), // indigo
-    Color(0xFF00ACC1), // cyan
-    Color(0xFFFF8F00), // amber
-  ];
-  if (name.isEmpty) return palette[0];
-  final index = name.codeUnits.fold(0, (acc, c) => acc + c) % palette.length;
-  Color base = palette[index];
-  // If the colour is too light, darken it for better contrast.
-  if (base.computeLuminance() > 0.5) {
-    final hsl = HSLColor.fromColor(base);
-    return hsl.withLightness((hsl.lightness - 0.2).clamp(0.0, 1.0)).toColor();
-  }
-  return base;
-}
 
 //account screen
 class AccountScreen extends StatefulWidget {
@@ -162,9 +127,10 @@ class _AccountScreenState extends State<AccountScreen> {
                           crossAxisAlignment: CrossAxisAlignment.center,
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            _UserInitialsAvatar(
-                              initials: _initialsFromName(rawFullName),
-                              color: _avatarColorFromName(rawFullName),
+                            UserInitialsAvatar(
+                              initials: initialsFromName(rawFullName),
+                              color: avatarColorFromName(rawFullName),
+                              size: 70,
                             ),
                             const SizedBox(height: 5),
                             Text(
@@ -227,90 +193,10 @@ class _AccountScreenState extends State<AccountScreen> {
   }
 }
 
-/// A stylish rounded-border square avatar displaying a user's initials.
-///
-/// The [color] is the background fill; text is always white.
-/// Size is fixed at 70×70 to match the removed image dimensions.
-class _UserInitialsAvatar extends StatelessWidget {
-  final String initials;
-  final Color color;
 
-  const _UserInitialsAvatar({required this.initials, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 70,
-      height: 70,
-      decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          // Darken the fill colour by 20 % lightness to create a visible,
-          // contrasting border ring rather than a near-invisible tinted one.
-          color: HSLColor.fromColor(color)
-              .withLightness(
-                (HSLColor.fromColor(color).lightness - 0.20).clamp(0.0, 1.0),
-              )
-              .toColor(),
-          width: 3,
-        ),
-      ),
-      alignment: Alignment.center,
-      child: Text(
-        initials,
-        style: TextStyle(
-          color: color.computeLuminance() > 0.5 ? Colors.black : Colors.white,
-          fontSize: 26,
-          fontWeight: FontWeight.bold,
-          letterSpacing: 1.5,
-        ),
-      ),
-    );
-  }
-}
 
 class AccountSettings extends StatelessWidget {
   const AccountSettings({super.key});
-  // Instantiate the auth service to access signOut
-  static final _authService = AuthService();
-
-  void _handleLogout(BuildContext context) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => const LogoutConfirmationDialog(),
-    );
-    if (confirmed != true) return;
-    if (!context.mounted) return;
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => const Center(child: CircularProgressIndicator()),
-    );
-
-    try {
-      await _authService.signOut();
-      if (!context.mounted) return;
-      Navigator.of(
-        context,
-        rootNavigator: true,
-      ).pop(); // close the loading dialog
-      context.go('/');
-    } on Exception catch (e) {
-      if (!context.mounted) return;
-      Navigator.of(
-        context,
-        rootNavigator: true,
-      ).pop(); // close the loading dialog
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to logout: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -334,8 +220,13 @@ class AccountSettings extends StatelessWidget {
                 iconColor: Colors.green,
                 background: Colors.green.shade50,
                 title: 'My Profile',
-                subtitle: 'Manage your profile & appearance',
-                onTap: () {},
+                subtitle: 'Manage your profile info',
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const MyProfileScreen()),
+                  );
+                },
               ),
               const Divider(height: 1, thickness: 0.5),
               /*_settingTile(
@@ -377,16 +268,6 @@ class AccountSettings extends StatelessWidget {
 
               // Phase 17 — hidden diagnostics entry (debug builds or admins).
               const DiagnosticsEntryTile(),
-
-              _settingTile(
-                icon: Icons.logout,
-                iconColor: Colors.red,
-                background: Colors.red.shade50,
-                title: 'Logout',
-                subtitle: 'Securely exit your account',
-                titleColor: Colors.red,
-                onTap: () => _handleLogout(context),
-              ),
             ],
           ),
         ),
