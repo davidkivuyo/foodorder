@@ -15,6 +15,7 @@
 import 'package:campusbite/models/pickup_reliability.dart';
 import 'package:campusbite/models/user_profile.dart';
 import 'package:campusbite/services/auth_service.dart';
+import 'package:campusbite/services/input_validator.dart';
 import 'package:campusbite/widgets/pickup_reliability_card.dart';
 import 'package:campusbite/widgets/user_initials_avatar.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -65,7 +66,28 @@ class MyProfileScreen extends StatelessWidget {
     }
   }
 
-  void _handleResetPassword(BuildContext context, String email) async {
+  void _handleResetPassword(BuildContext context) async {
+    // Always reset using the canonical FirebaseAuth email — never the
+    // Firestore copy (which can be stale) and never the 'No email found'
+    // display placeholder. AuthService.sendPasswordReset deliberately
+    // returns null even on invalid-email/user-not-found (anti-enumeration),
+    // so the UI must validate before sending.
+    final email = _authService.currentUser?.email?.trim() ?? '';
+    if (!InputValidator.isValidEmail(email)) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Password reset is unavailable because no valid email address '
+            'is linked to your account.',
+          ),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -379,7 +401,7 @@ class MyProfileScreen extends StatelessWidget {
                   _buildSettingTile(
                     title: 'Password',
                     subtitle: 'Reset password via email verification',
-                    onTap: () => _handleResetPassword(context, displayEmail),
+                    onTap: () => _handleResetPassword(context),
                   ),
 
                   // Section Separator
