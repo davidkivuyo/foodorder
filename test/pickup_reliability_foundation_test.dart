@@ -398,6 +398,100 @@ void main() {
     });
   });
 
+  group('Phase D — student experience guardrails', () {
+    late String myprofileSrc;
+    late String cardSrc;
+    late String countdownSrc;
+    late String orderScreenSrc;
+    late String noticeSrc;
+    setUpAll(() {
+      myprofileSrc = readRepoFile('lib/screens/myprofile.dart');
+      cardSrc = readRepoFile('lib/widgets/pickup_reliability_card.dart');
+      countdownSrc = readRepoFile('lib/widgets/pickup_countdown.dart');
+      orderScreenSrc = readRepoFile('lib/screens/order_screen.dart');
+      noticeSrc = readRepoFile('lib/widgets/no_show_notice.dart');
+    });
+
+    test('MyProfile reuses one realtime user-document listener (Test 11)', () {
+      // Exactly one well-scoped listener for the authenticated user's own
+      // document (the three tokens appear in one StreamBuilder stream) —
+      // never a collection-wide listener, never an orders query.
+      expect(myprofileSrc, contains(".collection('users')"));
+      expect(myprofileSrc, contains('.doc(currentUser.uid)'));
+      expect(myprofileSrc, contains('.snapshots()'));
+      expect(myprofileSrc, isNot(contains("collection('orders')")));
+    });
+
+    test('AccountScreen opens MyProfile — no duplicated reliability card', () {
+      final accountSrc = readRepoFile('lib/screens/account_screen.dart');
+      expect(accountSrc, contains('MyProfileScreen()'));
+      // The card lives only in the MyProfile screen/widget; the Account
+      // screen must not re-implement it.
+      expect(accountSrc, isNot(contains('PickupReliabilityCard(')));
+    });
+
+    test('no-show notice uses non-punitive Phase D wording (Test 8)', () {
+      expect(noticeSrc, contains('No-show recorded'));
+      expect(
+        noticeSrc,
+        contains(
+          'The pickup window and grace period ended before the order ',
+        ),
+      );
+      expect(noticeSrc.toLowerCase(), isNot(contains('strike')));
+      expect(orderScreenSrc, contains('NoShowNotice()'));
+      expect(orderScreenSrc, isNot(contains('_NoShowNotice')));
+    });
+
+    test('grace-period countdown distinguishes the active grace state (Test 9)',
+        () {
+      // The label text lives in PickupDeadlineService (the widget consumes it
+      // through formatGraceCountdown); the widget paints it orange.
+      expect(
+        readRepoFile('lib/services/pickup_deadline_service.dart'),
+        contains('Grace period active'),
+      );
+      expect(countdownSrc, contains('formatGraceCountdown'));
+      expect(countdownSrc, contains('Colors.orange'));
+    });
+
+    test('hard-cutoff state is respected, not advertised as collectable '
+        '(Test 10)', () {
+      expect(countdownSrc, contains('Pickup window expired'));
+      expect(countdownSrc, contains('graceExpired'));
+    });
+
+    test('reliability card shows recent performance without calculating it '
+        '(Phase D §10/§15)', () {
+      // The card consumes the server-maintained recent fields only; it never
+      // recomputes a rate or score.
+      expect(cardSrc, contains('rel.recentEligibleOrders'));
+      expect(cardSrc, contains('rel.recentCollectedOrders'));
+      expect(cardSrc, contains('rel.recentNoShowOrders'));
+      expect(cardSrc, isNot(contains('recentCollectionRate /')));
+      expect(
+        cardSrc,
+        isNot(contains('* 0.7 +')),
+      );
+    });
+
+    test('recent success encouragement is informational only (Phase D §11)', () {
+      // Source file escapes the apostrophe (you\\'ve) — match the tail of the
+      // message to stay robust.
+      expect(cardSrc, contains('collected your recent orders on time.'));
+      expect(cardSrc, isNot(contains('discount')));
+      expect(cardSrc, isNot(contains('privilege')));
+    });
+
+    test('student isolation — reliability is read owner-only (Test 12)', () {
+      final userMatch = readRepoFile('firestore.rules').substring(
+        readRepoFile('firestore.rules').indexOf('match /users/{userId}'),
+        readRepoFile('firestore.rules').indexOf('match /user/{userId}'),
+      );
+      expect(userMatch, contains('allow read: if isOwner(userId) || isAdmin();'));
+    });
+  });
+
   group('Emulator integration coverage — reliability engine', () {
     test('the Firestore-emulator integration suite exists and is runnable', () {
       final integration =

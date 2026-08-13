@@ -24,8 +24,6 @@ import 'notification_screen.dart';
 
 export 'notification_screen.dart' show NotificationScreen;
 
-
-
 //account screen
 class AccountScreen extends StatefulWidget {
   const AccountScreen({super.key});
@@ -178,7 +176,7 @@ class _AccountScreenState extends State<AccountScreen> {
                         style: const TextStyle(fontSize: 10),
                       ),
                       const Text(
-                        'Made with ❤️ for students',
+                        'Made with ❤️ for the hungry(no offence)',
                         style: TextStyle(fontSize: 10),
                       ),
                     ],
@@ -192,8 +190,6 @@ class _AccountScreenState extends State<AccountScreen> {
     );
   }
 }
-
-
 
 class AccountSettings extends StatelessWidget {
   const AccountSettings({super.key});

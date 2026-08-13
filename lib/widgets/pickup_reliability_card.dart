@@ -89,6 +89,26 @@ class PickupReliabilityCard extends StatelessWidget {
         ? '—'
         : '${rel.reliabilityScore.round()}%';
 
+    // Phase D §10 — recent-window performance (server-maintained fields only;
+    // never calculated here). Shown when the student has recent pickup data.
+    final bool hasRecentHistory = rel.recentEligibleOrders > 0;
+    final String recentSummary = hasRecentHistory
+        ? 'Last ${rel.recentEligibleOrders} pickups: '
+              '${rel.recentCollectedOrders} collected · '
+              '${rel.recentNoShowOrders} missed'
+        : '';
+
+    // Phase D §11 — positive reinforcement when recent pickups were collected
+    // on time. Informational only; no rewards or account changes.
+    final bool recentSuccess =
+        !isNewOrInsufficient &&
+        hasRecentHistory &&
+        rel.recentEligibleOrders >= 3 &&
+        rel.recentNoShowOrders == 0;
+    final String? encouragement = recentSuccess
+        ? 'Great job — you\'ve collected your recent orders on time.'
+        : null;
+
     final semanticText = isNewOrInsufficient
         ? 'Pickup reliability: $statusLabel. $statusMsg'
         : 'Pickup reliability: ${rel.reliabilityScore.round()} percent, $statusLabel. ${rel.collectedOrders} collected, ${rel.noShowOrders} missed. $statusMsg';
@@ -205,6 +225,62 @@ class PickupReliabilityCard extends StatelessWidget {
                 height: 1.35,
               ),
             ),
+            if (hasRecentHistory) ...[
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Icon(
+                    Icons.history,
+                    size: 14,
+                    color: Colors.grey.shade600,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      recentSummary,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            if (encouragement != null) ...[
+              const SizedBox(height: 10),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF2E7D32).withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.emoji_events_outlined,
+                      size: 16,
+                      color: Color(0xFF2E7D32),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        encouragement,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF2E7D32),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ],
         ),
       ),

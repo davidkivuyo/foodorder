@@ -39,8 +39,9 @@ These Terms govern your use of the Campus Bite
 • Account Creation: You must provide accurate, current, and complete information (e.g., university email) during registration(We respect your confidentiality).
 • Account Security: You are responsible for safeguarding your password and for all activities under your account.
 
-2. Strict Collection Policy (No Food Waste)
-• In alignment with cafeteria administrative guidelines, uncollected food represents material loss. Users agree to collect their food within given notified time calculated by their current distance from the cafe, after receiving the "Ready for Collection" status. Abandoned bookings will result in immediate suspension.
+2. Pickup & Collection Policy (Reducing Food Waste)
+• In alignment with cafeteria administrative guidelines, uncollected food represents material loss. Users agree to collect their food within the notified pickup window, calculated from their current distance to the cafe, after receiving the "Ready for Collection" status.
+• If an order is not collected by the end of the pickup window and grace period, it is recorded as a no-show and you are notified. Missing a pickup is not a suspension or penalty: your pickup reliability is informational only.
 
 3. Data privacy and Protection.
 • The app will request your device location While Using App location permission only after you press “Place Order”. This is used only to calculate the distance between the cafe and the user.
@@ -64,12 +65,11 @@ These Terms govern your use of the Campus Bite
 7. User Conduct
 You agree to use the application only for lawful purposes. You agree not to place fake orders, harass vendors, or attempt to hack the App's security.
 
-8. Account Penalty System
-To ensure a reliable service for everyone, the App tracks your order collection behavior using a percentage-based status system:
-• 0% (Good Standing): Your account is safe and operating normally.
-• Penalty Increases (up to 50%): Failing to pick up your ordered food increases your penalty percentage. Reaching 50% serves as a critical warning.
-• 100% (Ordering Restricted): If your penalty status reaches 100% due to repeated uncollected food, your ability to place new orders will be disabled. You will still be able to log in, browse the App, and view menus, but you cannot check out.
-• Restoring Order Privileges: To remove the ordering restriction after reaching 100%, you must contact the App Administrator directly to appeal or consider informing the support team.
+8. Pickup Reliability
+To help reduce food waste, the App measures how consistently you collect your orders on time and shows the result in your profile as a pickup reliability score:
+• Reliability is informational only. It does not restrict ordering, suspend your account, or impose penalties.
+• New users and users with limited history see a neutral "building your record" state — never a poor rating.
+• You can always view your own reliability; other users' reliability is never shown to you.
 
 9. Intellectual Property
 All content, features, and functionality of the application are the exclusive property of the application owner(s). Refer the License.
@@ -95,7 +95,7 @@ For support, see the Help & support page or email directly lembotor6@gmail.com''
               ),
               SizedBox(height: 10),
               Text(
-                'Failure to adhere to these rules can disrupt cafeteria efficiency and lead to account bans.',
+                'Please collect your orders within the pickup window to help keep cafeterias efficient and reduce food waste.',
                 style: TextStyle(
                   fontSize: 14.0,
                   height: 1.5,

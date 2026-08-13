@@ -76,7 +76,7 @@ class PickupDeadlineService {
   static String formatGraceCountdown(Duration duration) {
     final minutes = duration.inMinutes.toString().padLeft(2, '0');
     final seconds = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
-    return 'Grace: $minutes:$seconds';
+    return 'Grace period active · $minutes:$seconds';
   }
 
   static String formatPickupTime(DateTime? dateTime) {

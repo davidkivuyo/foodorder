@@ -27,6 +27,7 @@ import '../viewmodels/orders_view_model.dart';
 import '../widgets/cancellation_countdown.dart';
 import '../widgets/pickup_countdown.dart';
 import '../widgets/cart_bottom_sheet.dart';
+import '../widgets/no_show_notice.dart';
 
 class OrdersScreen extends StatefulWidget {
   const OrdersScreen({super.key});
@@ -1166,7 +1167,7 @@ class _OrdersScreenState extends State<OrdersScreen>
                     // No-show notice — mirrors the ORDER_NO_SHOW notification
                     if (order.status == OrderStatus.noShow) ...[
                       const SizedBox(height: 12),
-                      const _NoShowNotice(),
+                      const NoShowNotice(),
                     ],
 
                     // Cancellation window (pending orders) — cancel action, or
@@ -1918,57 +1919,6 @@ class _CancellationActionState extends State<_CancellationAction> {
   }
 }
 
-/// Banner shown in the order details sheet when an order was marked as a
-/// no-show — mirrors the ORDER_NO_SHOW notification the student received.
-class _NoShowNotice extends StatelessWidget {
-  const _NoShowNotice();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.red.shade50,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.red.shade200),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Icon(Icons.cancel_outlined, size: 20, color: Color(0xFFC62828)),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Order marked as no-show',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.red.shade900,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  'You did not collect this order within the pickup window, '
-                  'so it was marked as a no-show. An "Order Missed" '
-                  'notification was sent to you.',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.red.shade800,
-                    height: 1.4,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 /// Resolves a pickup-extension failure to a user-facing message.
 ///

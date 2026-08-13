@@ -100,7 +100,61 @@ void main() {
     );
 
     testWidgets(
-      'Test 4 — Poor status renders non-punitive constructive reminder',
+      'Test 4 — Good status renders score and constructive message',
+      (tester) async {
+        const summary = PickupReliabilitySummary(
+          status: PickupReliabilityStatus.good,
+          reliabilityScore: 82.0,
+          collectedOrders: 16,
+          noShowOrders: 4,
+          eligibleOrders: 20,
+        );
+
+        await tester.pumpWidget(
+          const MaterialApp(
+            home: Scaffold(body: PickupReliabilityCard(summary: summary)),
+          ),
+        );
+
+        expect(find.text('Good'), findsOneWidget);
+        expect(find.text('82%'), findsOneWidget);
+        expect(
+          find.text('Good pickup record. Keep collecting your orders on time.'),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets(
+      'Test 5 — Needs Improvement status shows constructive message',
+      (tester) async {
+        const summary = PickupReliabilitySummary(
+          status: PickupReliabilityStatus.needsImprovement,
+          reliabilityScore: 65.0,
+          collectedOrders: 13,
+          noShowOrders: 7,
+          eligibleOrders: 20,
+        );
+
+        await tester.pumpWidget(
+          const MaterialApp(
+            home: Scaffold(body: PickupReliabilityCard(summary: summary)),
+          ),
+        );
+
+        expect(find.text('Needs Improvement'), findsOneWidget);
+        expect(find.text('65%'), findsOneWidget);
+        expect(
+          find.text(
+            'Your pickup record needs improvement. Please try to collect your orders within the pickup period.',
+          ),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets(
+      'Test 6 — Poor status renders non-punitive constructive reminder',
       (tester) async {
         const summary = PickupReliabilitySummary(
           status: PickupReliabilityStatus.poor,
@@ -124,6 +178,120 @@ void main() {
           ),
           findsOneWidget,
         );
+      },
+    );
+
+    testWidgets(
+      'Test 7 — Critical status shows constructive reminder without restriction',
+      (tester) async {
+        const summary = PickupReliabilitySummary(
+          status: PickupReliabilityStatus.critical,
+          reliabilityScore: 20.0,
+          collectedOrders: 4,
+          noShowOrders: 16,
+          eligibleOrders: 20,
+        );
+
+        await tester.pumpWidget(
+          const MaterialApp(
+            home: Scaffold(body: PickupReliabilityCard(summary: summary)),
+          ),
+        );
+
+        expect(find.text('Critical'), findsOneWidget);
+        expect(find.text('20%'), findsOneWidget);
+        expect(
+          find.text(
+            'Please make every effort to collect future orders within the pickup period.',
+          ),
+          findsOneWidget,
+        );
+        // No restrictions or punishment language.
+        expect(find.textContaining('restricted'), findsNothing);
+        expect(find.textContaining('banned'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'Test 8 — Recent success shows positive reinforcement (Phase D §11)',
+      (tester) async {
+        const summary = PickupReliabilitySummary(
+          status: PickupReliabilityStatus.excellent,
+          reliabilityScore: 92.0,
+          collectedOrders: 18,
+          noShowOrders: 2,
+          eligibleOrders: 20,
+          recentEligibleOrders: 10,
+          recentCollectedOrders: 10,
+          recentNoShowOrders: 0,
+          recentCollectionRate: 100.0,
+        );
+
+        await tester.pumpWidget(
+          const MaterialApp(
+            home: Scaffold(body: PickupReliabilityCard(summary: summary)),
+          ),
+        );
+
+        expect(
+          find.text('Last 10 pickups: 10 collected · 0 missed'),
+          findsOneWidget,
+        );
+        expect(
+          find.text("Great job — you've collected your recent orders on time."),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets(
+      'Test 9 — No recent success means no encouragement shown',
+      (tester) async {
+        const summary = PickupReliabilitySummary(
+          status: PickupReliabilityStatus.needsImprovement,
+          reliabilityScore: 55.0,
+          collectedOrders: 11,
+          noShowOrders: 9,
+          eligibleOrders: 20,
+          recentEligibleOrders: 10,
+          recentCollectedOrders: 6,
+          recentNoShowOrders: 4,
+          recentCollectionRate: 60.0,
+        );
+
+        await tester.pumpWidget(
+          const MaterialApp(
+            home: Scaffold(body: PickupReliabilityCard(summary: summary)),
+          ),
+        );
+
+        expect(
+          find.text('Last 10 pickups: 6 collected · 4 missed'),
+          findsOneWidget,
+        );
+        expect(
+          find.textContaining("Great job — you've collected"),
+          findsNothing,
+        );
+      },
+    );
+
+    testWidgets(
+      'Test 10 — New and insufficient-history users never get recent metrics',
+      (tester) async {
+        const summary = PickupReliabilitySummary(
+          status: PickupReliabilityStatus.newUser,
+          eligibleOrders: 0,
+        );
+
+        await tester.pumpWidget(
+          const MaterialApp(
+            home: Scaffold(body: PickupReliabilityCard(summary: summary)),
+          ),
+        );
+
+        expect(find.textContaining('Last '), findsNothing);
+        expect(find.textContaining("Great job"), findsNothing);
       },
     );
   });

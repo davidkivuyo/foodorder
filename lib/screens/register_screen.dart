@@ -284,7 +284,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                 ),
                                 const TextSpan(
                                   text:
-                                      " to prevent bans or account suspension.",
+                                      " before using CampusBite.",
                                 ),
                               ],
                             ),

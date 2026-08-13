@@ -192,6 +192,7 @@ The system remains non-punitive in this phase.
 Before changing the UI or services, inspect:
 
 - AccountScreen
+- Myprofile Screen
 - Student profile/user model
 - Pickup reliability model
 - Pickup reliability service
@@ -249,15 +250,15 @@ Use actual field names from the current implementation.
 
 ---
 
-# 3. ACCOUNT SCREEN
+# 3. MY PROFILE SCREEN
 
-Add a reusable:
+use an existing reusable:
 
 PickupReliabilityCard
 
-Place it in the existing Account Screen in the location already established for account status/reliability information.
+It is already in place and used in the Myprofile screen in myprofile.dart
 
-Do not redesign the entire Account Screen.
+Do not implement it again on Account Screen.
 
 The card should communicate:
 

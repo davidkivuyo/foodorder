@@ -99,12 +99,16 @@ class FaqScreen extends StatelessWidget {
             ],
           ),
           ExpansionTile(
-            title: Text('What happens my account is suspended?'),
+            title: Text('What if I miss a pickup?'),
             children: [
               Padding(
                 padding: EdgeInsets.all(16.0),
                 child: Text(
-                  'If you accidentally did not collect your food and ended up suspended consider appealing to the cafe admins or report via the support team email.',
+                  'Missing a pickup does not suspend your account. Your pickup '
+                  'record simply reflects orders that were not collected on '
+                  'time, so you can keep ordering normally. If you ever '
+                  'believe your account was suspended by mistake, contact us '
+                  'through the support email or WhatsApp and we will help.',
                 ),
               ),
             ],

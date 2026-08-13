@@ -267,7 +267,7 @@ class MyProfileScreen extends StatelessWidget {
                             ),
                             const SizedBox(width: 16),
                             const Text(
-                              'Settings',
+                              'My Profile',
                               style: TextStyle(
                                 fontSize: 26,
                                 fontWeight: FontWeight.bold,
