@@ -450,9 +450,9 @@ firebase functions:secrets:set CLOUDINARY_API_SECRET
 | `fullName` | string | Student's full name |
 | `email` | string | Email address |
 | `role` | string | Role of the user (`student` or `admin`) |
-| `strikeCount` | number | Current number of active strikes (0, 1, or 2) |
-| `accountStatus` | string | Status of account (`ACTIVE` or `SUSPENDED`) |
-| `lastPardonAt` | timestamp | Timestamp of last strike pardon |
+| `strikeCount` | number | Legacy field, managed by the admin app's strike engine (0, 1, or 2). The customer backend never writes it |
+| `accountStatus` | string | Status of account (`ACTIVE` or `SUSPENDED`). Only the admin app changes it; a suspended account cannot place orders |
+| `lastPardonAt` | timestamp | Legacy field, timestamp of last strike pardon (admin app only) |
 | `createdAt` | timestamp | Registration date |
 | `updatedAt` | timestamp | Last document update timestamp |
 | `pickupReliability` | map | **Phase B.2** server-authoritative pickup reliability summary (see below) — students can read it but never write it |
@@ -603,6 +603,7 @@ The student app uses `go_router` with authentication-aware redirects:
 - **One-Tap Reordering** — Reorder entire past orders with one tap from the order history. Automatically checks current availability/stock levels for each item before loading them into the active cart.
 - **Meal Planning** — Pre-plan customized meals for upcoming days, study breaks, or campus events. Save custom plans directly from the active cart or convert a past order into a plan, then load and purchase in one click when ready.
 - **Pickup Extension** — One-tap **"Extend pickup by 10 min"** action (once per order, before the deadline) available on the order card and in the order details sheet.
+- **Pickup Reliability** — Your pickup reliability score, status, and collection history shown in **My Profile** (Phase D). Informational only: new users and limited-history users are never shown a poor rating, and no restrictions are attached to any status.
 - **Notification Center** — In-app notification feed supporting real-time alerts for order status changes, pickup reminders, missed-pickup (no-show) alerts, and account suspension events.
 
 ### For Cafeteria Admins
@@ -769,7 +770,16 @@ The `onOrderStatusChanged` trigger feeds a server-side reliability engine that m
 - **Score:** `reliabilityScore = collectionRate × 0.70 + recentCollectionRate × 0.30` (rounded to 1 decimal).
 - **Status:** 0 eligible → `NEW`; 1–2 → `INSUFFICIENT_HISTORY`; 3+ → `EXCELLENT` (90+), `GOOD` (75+), `NEEDS_IMPROVEMENT` (50+), `POOR` (25+), `CRITICAL` (<25). New users are `NEW` with score 100 — never 0%.
 - **Security:** `pickupReliability` is server-authoritative. Firestore rules deny any student write to the nested map and any client write of `reliabilityProcessed` or the immutable `reliabilityOutcome` (`COLLECTED`/`NO_SHOW`, written atomically with the processed marker); students read only their own summary via the existing owner read rule.
-- **No restrictions:** this phase is measurement only — no suspension, bans, cooldowns, or checkout blocking are attached to any status. UI display and admin tooling belong to later phases.
+- **No restrictions:** this phase is measurement only — no suspension, bans, cooldowns, or checkout blocking are attached to any status.
+
+### 3c. Pickup Reliability Experience (Phase D)
+The student app surfaces the reliability summary in the **My Profile** screen (reached from Account → My Profile → Reliability Status):
+- **PickupReliabilityCard** shows the reliability score, status label, collection history (`X collected · Y missed`), a progress bar, and a short explanatory message.
+- **New users** (`eligibleOrders == 0`) see "New record" — never 0% — and insufficient-history users see "Building record", both with constructive messages and no punishment language.
+- **Recent performance** shows "Last N pickups: X collected · Y missed" from the server-maintained recent window, and **positive reinforcement** ("Great job — you've collected your recent orders on time.") appears when the recent window is fully collected.
+- **No-show orders** display a non-punitive **"No-show recorded"** notice in the order details sheet: "The pickup window and grace period ended before the order was collected." — no strike or penalty language.
+- **Grace period** is visually distinct in the countdown chip ("Grace period active · MM:SS" in orange), and once the grace window has passed the chip reads "Pickup window expired" (hard cutoff — the client never advertises collection after expiry).
+- **Privacy & cost:** the card reads the existing `users/{uid}` listener (≈0 additional reads, 0 writes); it never queries order history and never recalculates reliability client-side. Students see only their own reliability.
 
 ### 4. Suspension Enforcement
 Account suspension is still honoured when ordering: if `accountStatus == "SUSPENDED"` (managed by the admin app), `CartService.isAccountSuspended()` blocks the student from placing new orders or adding items to the cart.

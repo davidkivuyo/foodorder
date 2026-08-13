@@ -101,7 +101,9 @@ class WelcomeScreen extends StatelessWidget {
                         height: 60,
                         child: ElevatedButton(
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xff2E7D32),
+                            backgroundColor: Color(
+                  0xFF116522,
+                ),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(18),
                             ),

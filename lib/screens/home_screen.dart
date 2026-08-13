@@ -84,7 +84,7 @@ class HomeScreen extends StatelessWidget {
 
   // THE SECTIONS COMES FROM FIRESTORE "section" COLLECTION
   static const Map<String, String> _sectionTitles = {
-    'campus_favourite': 'Favourite on campus',
+    'campus_favourite': 'Campus favourites',
     'todays_deals': "Today's menu",
     'drinks': 'Drinks Deals',
     'other': 'Hot spots',
@@ -154,13 +154,13 @@ class HomeScreen extends StatelessWidget {
                       top: 0,
                       left: 0,
                       right: 0,
-                      height: statusBarHeight + 5 + 50 + 8 + 150,
+                      height: statusBarHeight + 5 + 50 + 8 + 3,
                       child: Container(
                         decoration: const BoxDecoration(
-                          color: Colors.orange, // Accent orange color
+                          color: Colors.orange,
                           borderRadius: BorderRadius.vertical(
                             bottom: Radius.circular(16),
-                          ),
+                          ), // Accent orange color
                         ),
                       ),
                     ),
@@ -203,7 +203,8 @@ class HomeScreen extends StatelessWidget {
                                   ),
                                   decoration: BoxDecoration(
                                     color: Colors
-                                        .white, // Off-white/white interior fill
+                                        .grey
+                                        .shade100, // Off-white/white interior fill
                                     border: Border.all(
                                       color: Colors
                                           .grey
@@ -222,7 +223,7 @@ class HomeScreen extends StatelessWidget {
                                       const SizedBox(width: 12),
                                       Expanded(
                                         child: Text(
-                                          "Dishes, categories, tags", // Updated placeholder text
+                                          "Menu, categories, tags", // Updated placeholder text
                                           style: TextStyle(
                                             fontSize: 15,
                                             fontWeight: FontWeight.w400,
@@ -239,7 +240,7 @@ class HomeScreen extends StatelessWidget {
                             ),
                           ),
 
-                          const SizedBox(height: 8),
+                          const SizedBox(height: 24),
 
                           // Promotional banner carousel
                           SpecialBannerCard(

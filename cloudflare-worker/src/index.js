@@ -1,4 +1,4 @@
-const GITHUB_OWNER = "davidkivuyo";
+const GITHUB_OWNER = "larason";
 const GITHUB_REPO = "foodorder";
 
 const LATEST_META_TTL = 300;

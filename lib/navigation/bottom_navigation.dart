@@ -235,7 +235,7 @@ class _NavigationExampleState extends State<MainScreen> {
                               );
                             },
                             icon: const Icon(
-                              Icons.notifications_outlined,
+                              Icons.notifications,
                               semanticLabel: 'notification bell',
                             ),
                           ),
@@ -294,7 +294,7 @@ class _NavigationExampleState extends State<MainScreen> {
                               );
                             },
                             icon: const Icon(
-                              Icons.shopping_cart_outlined,
+                              Icons.shopping_cart,
                               semanticLabel: 'cart',
                             ),
                           ),
