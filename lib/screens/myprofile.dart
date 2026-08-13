@@ -361,12 +361,6 @@ class MyProfileScreen extends StatelessWidget {
                   ),
                   _buildDivider(),
                   _buildSettingTile(
-                    title: 'Phone number',
-                    subtitle: 'Add your phone number',
-                    onTap: () {},
-                  ),
-                  _buildDivider(),
-                  _buildSettingTile(
                     title: 'Email',
                     subtitle: displayEmail,
                     subtitleColor: brandGreen,

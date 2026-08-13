@@ -283,8 +283,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                     ..onTap = () => context.push('/terms'),
                                 ),
                                 const TextSpan(
-                                  text:
-                                      " before using CampusBite.",
+                                  text: " before using CampusBite.",
                                 ),
                               ],
                             ),
@@ -303,9 +302,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       child: ElevatedButton(
                         onPressed: isLoading ? null : _handleRegister,
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: Color(
-                  0xFF116522,
-                ),
+                          backgroundColor: Color(0xFF116522),
                           disabledBackgroundColor: const Color(
                             0xFF116522,
                           ).withValues(alpha: 0.6),
@@ -385,7 +382,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         const Padding(
           padding: EdgeInsets.symmetric(horizontal: 16.0),
           child: Text(
-            "Join thousands of students saving time on every meal.",
+            "Join others saving time on every meal.",
             textAlign: TextAlign.center,
             style: TextStyle(color: Colors.black54),
           ),
