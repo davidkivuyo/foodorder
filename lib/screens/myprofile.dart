@@ -292,8 +292,7 @@ class MyProfileScreen extends StatelessWidget {
                               'My Profile',
                               style: TextStyle(
                                 fontSize: 26,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.black87,
+                                color: Colors.black,
                                 letterSpacing: -0.5,
                               ),
                             ),
