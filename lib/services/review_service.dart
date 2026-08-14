@@ -42,17 +42,22 @@ class ReviewService {
         _firestore = firestore ?? FirebaseFirestore.instance,
         _auth = auth ?? FirebaseAuth.instance;
 
-  String? get _userId => _auth.currentUser?.uid;
+  /// Current authenticated user ID, if any.
+  ///
+  /// Overridable in tests (FirebaseAuth itself cannot be subclassed).
+  String? get currentUserId => _auth.currentUser?.uid;
 
   // ── Eligibility ────────────────────────────────────────────────────────────
 
   /// Check if the current user can review a food item.
   ///
-  /// Finds all collected orders containing this food item that don't
-  /// yet have a review, plus any existing reviews for edit mode.
-  /// Students can review the same food item from different orders.
+  /// Once the user has reviewed this meal, edit mode is always preferred:
+  /// the button must say "Edit Review" and never fall back to "Write a
+  /// Review", even when the user has other collected (but unreviewed)
+  /// orders of the same meal. The check is scoped per food item, so
+  /// reviews for other meals never affect it.
   Future<ReviewEligibility> checkEligibility(String foodId) async {
-    final userId = _userId;
+    final userId = currentUserId;
     if (userId == null) {
       return ReviewEligibility.notEligible();
     }
@@ -66,18 +71,28 @@ class ReviewService {
       AppLog.e('[ReviewService] checkEligibility review query error', e);
       return ReviewEligibility.notEligible();
     }
-    final reviewedOrderIds = existingReviews.map((r) => r.orderId).toSet();
 
-    // 2. Find collected orders containing this food item that are NOT yet reviewed.
+    // 2. A live review already exists for this meal — always edit mode.
+    //    Soft-deleted reviews don't count: they are invisible and should
+    //    allow a fresh review (createReview revives them by composite key).
+    final liveReviews = existingReviews.where((r) => !r.deleted).toList();
+    if (liveReviews.isNotEmpty) {
+      return ReviewEligibility(
+        eligible: true,
+        hasExistingReview: true,
+        existingReview: liveReviews.first,
+        matchingOrderId: liveReviews.first.orderId,
+      );
+    }
+
+    // 3. No live review yet — find a collected order containing this food
+    //    item to attach the new review to.
     try {
       final orderIds = await _repository.findOrderIdsWithFoodItem(
         userId: userId,
         foodId: foodId,
       );
-
-      // Return the first matching order that hasn't been reviewed yet.
       for (final orderId in orderIds) {
-        if (reviewedOrderIds.contains(orderId)) continue;
         return ReviewEligibility(
           eligible: true,
           hasExistingReview: false,
@@ -88,16 +103,6 @@ class ReviewService {
     } on Exception catch (e) {
       AppLog.e('[ReviewService] checkEligibility order query error', e);
       return ReviewEligibility.notEligible();
-    }
-
-    // 3. No new eligible orders — if there's an existing review, show edit mode.
-    if (existingReviews.isNotEmpty) {
-      return ReviewEligibility(
-        eligible: true,
-        hasExistingReview: true,
-        existingReview: existingReviews.first,
-        matchingOrderId: existingReviews.first.orderId,
-      );
     }
 
     return ReviewEligibility.notEligible();
@@ -137,7 +142,7 @@ class ReviewService {
     bool anonymous = true,
     String? displayName,
   }) async {
-    final userId = _userId;
+    final userId = currentUserId;
     if (userId == null) return null;
 
     // ── Step 1: Verify order eligibility atomically ──────────────────
@@ -293,7 +298,7 @@ class ReviewService {
     bool anonymous = true,
     String? displayName,
   }) async {
-    final userId = _userId;
+    final userId = currentUserId;
     if (userId == null) return false;
 
     // ── Ownership & foodId check ─────────────────────────────────────
@@ -357,7 +362,7 @@ class ReviewService {
     required String reviewId,
     required String foodId,
   }) async {
-    final userId = _userId;
+    final userId = currentUserId;
     if (userId == null) return false;
 
     // ── Ownership & foodId check ─────────────────────────────────────
