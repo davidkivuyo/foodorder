@@ -51,6 +51,33 @@ enum PickupReliabilityStatus {
   }
 }
 
+/// Phase E — graduated ordering restriction level (server-authoritative).
+///
+/// Derived from the reliability summary by the backend restriction engine;
+/// students and admins may read it but never write it. There is deliberately
+/// no BANNED / SUSPENDED / STRIKE state in this system.
+enum PickupRestrictionLevel {
+  normal,
+  limited,
+  highlyLimited;
+
+  static PickupRestrictionLevel fromString(String? value) {
+    return switch (value) {
+      'LIMITED' => PickupRestrictionLevel.limited,
+      'HIGHLY_LIMITED' => PickupRestrictionLevel.highlyLimited,
+      _ => PickupRestrictionLevel.normal,
+    };
+  }
+
+  String toShortString() {
+    return switch (this) {
+      PickupRestrictionLevel.normal => 'NORMAL',
+      PickupRestrictionLevel.limited => 'LIMITED',
+      PickupRestrictionLevel.highlyLimited => 'HIGHLY_LIMITED',
+    };
+  }
+}
+
 /// One entry in the server-maintained recent pickup history window.
 class PickupReliabilityHistoryEntry {
   final String orderId;
@@ -99,6 +126,13 @@ class PickupReliabilitySummary {
   final double recentCollectionRate;
   final double reliabilityScore;
   final PickupReliabilityStatus status;
+
+  // Phase E — graduated ordering restriction (server-authoritative; derived
+  // from this summary by the backend restriction engine). A missing value
+  // (legacy summary) parses to NORMAL — never a restriction.
+  final PickupRestrictionLevel restrictionLevel;
+  final String? restrictionReason;
+
   final DateTime? updatedAt;
   final List<PickupReliabilityHistoryEntry> recentPickupHistory;
 
@@ -113,9 +147,19 @@ class PickupReliabilitySummary {
     this.recentCollectionRate = 100,
     this.reliabilityScore = 100,
     this.status = PickupReliabilityStatus.newUser,
+    this.restrictionLevel = PickupRestrictionLevel.normal,
+    this.restrictionReason,
     this.updatedAt,
     this.recentPickupHistory = const <PickupReliabilityHistoryEntry>[],
   });
+
+  /// Whether the student is currently restricted to a finite active-order
+  /// limit (Phase E). Null when unrestricted (NORMAL).
+  int? get activeOrderLimit => switch (restrictionLevel) {
+        PickupRestrictionLevel.normal => null,
+        PickupRestrictionLevel.limited => 2,
+        PickupRestrictionLevel.highlyLimited => 1,
+      };
 
   /// True when the student has no eligible pickup history yet.
   bool get isNewUser => status == PickupReliabilityStatus.newUser;
@@ -147,6 +191,10 @@ class PickupReliabilitySummary {
       status: PickupReliabilityStatus.fromString(
         map['status'] as String? ?? 'NEW',
       ),
+      restrictionLevel: PickupRestrictionLevel.fromString(
+        map['restrictionLevel'] as String?,
+      ),
+      restrictionReason: map['restrictionReason'] as String?,
       updatedAt: parseTimestamp(map['updatedAt']),
       // Normalise each entry with Map<String, dynamic>.from() rather than a
       // strict whereType<Map<String, dynamic>>() filter: Firestore-returned

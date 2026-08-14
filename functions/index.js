@@ -1697,6 +1697,315 @@ exports.cancelOrder = onCall(
   },
 );
 
+// ════════════════════════════════════════════════════════════════════════════
+// FUNCTION: placeOrder  (Callable — Phase E authoritative order creation)
+// ════════════════════════════════════════════════════════════════════════════
+//
+// Phase E — graduated ordering restrictions. Order creation is moved from a
+// direct client Firestore write to this callable so the backend can enforce
+// the active-order limit authoritatively (Firestore Rules cannot count
+// documents across a collection, so a client-side write could bypass the
+// limit). The existing onNewOrder trigger still runs on the created document
+// (cancellation deadline, price normalization, foodIds backfill, admin
+// notifications) — this callable only gates and creates.
+//
+// Enforcement (AGENTS.md Phase E §12-§14, §18):
+//  - the caller must be authenticated (App Check enforced) and email-verified,
+//  - the active-order limit is derived from the server-maintained
+//    pickupReliability summary (Phase B data — never recomputed here),
+//  - the active-order count is read INSIDE the same transaction that creates
+//    the order, so two concurrent attempts can never both slip past the
+//    limit,
+//  - if the limit/verification cannot be determined the order is NOT created
+//    (fail-safe; a client-side fallback is never allowed to bypass it).
+
+exports.placeOrder = onCall(
+  {
+    authPolicy: "required",
+    enforceAppCheck: true,
+    region: "us-central1",
+  },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError(
+        "unauthenticated",
+        "User must be authenticated to place an order."
+      );
+    }
+
+    const uid = request.auth.uid;
+    const token = request.auth.token || {};
+    if (token.email_verified !== true) {
+      throw new HttpsError(
+        "failed-precondition",
+        "Please verify your email before placing an order.",
+        { code: "EMAIL_NOT_VERIFIED" }
+      );
+    }
+
+    // ── Request envelope validation ───────────────────────────────
+    const data = request.data;
+    if (
+      data === null ||
+      typeof data !== "object" ||
+      Array.isArray(data) ||
+      JSON.stringify(data).length > 65536
+    ) {
+      throw new HttpsError("invalid-argument", "Invalid request payload.");
+    }
+
+    const allowedKeys = [
+      "orderId", "studentId", "userName", "items", "foodIds", "price",
+      "cafeId", "cafeLocation", "distanceMeters", "distanceCalculated",
+      "pickupWindowMinutes",
+    ];
+    if (!Object.keys(data).every((k) => allowedKeys.includes(k))) {
+      throw new HttpsError(
+        "invalid-argument",
+        "Request payload contains unsupported fields."
+      );
+    }
+
+    const {
+      orderId, studentId, userName, items, foodIds, price, cafeId,
+      cafeLocation, distanceMeters, distanceCalculated, pickupWindowMinutes,
+    } = data;
+
+    if (
+      typeof orderId !== "string" ||
+      orderId.length === 0 ||
+      orderId.length > 64 ||
+      !/^[A-Za-z0-9_-]+$/.test(orderId)
+    ) {
+      throw new HttpsError("invalid-argument", "orderId is invalid.");
+    }
+    if (studentId !== uid) {
+      throw new HttpsError(
+        "permission-denied",
+        "You can only place orders for your own account."
+      );
+    }
+    if (typeof userName !== "string" || userName.length === 0 || userName.length > 100) {
+      throw new HttpsError("invalid-argument", "userName is invalid.");
+    }
+    if (!Array.isArray(items) || items.length === 0 || items.length > 50) {
+      throw new HttpsError("invalid-argument", "items is invalid.");
+    }
+    if (!Number.isFinite(price) || price < 0) {
+      throw new HttpsError("invalid-argument", "price is invalid.");
+    }
+    if (
+      !Number.isInteger(pickupWindowMinutes) ||
+      pickupWindowMinutes < 10 ||
+      pickupWindowMinutes > 25
+    ) {
+      throw new HttpsError("invalid-argument", "pickupWindowMinutes is invalid.");
+    }
+    if (typeof distanceCalculated !== "boolean") {
+      throw new HttpsError("invalid-argument", "distanceCalculated is invalid.");
+    }
+    if (
+      distanceMeters !== undefined &&
+      distanceMeters !== null &&
+      (!Number.isFinite(distanceMeters) || distanceMeters < 0)
+    ) {
+      throw new HttpsError("invalid-argument", "distanceMeters is invalid.");
+    }
+    if (cafeId !== undefined && cafeId !== null && typeof cafeId !== "string") {
+      throw new HttpsError("invalid-argument", "cafeId is invalid.");
+    }
+    if (foodIds !== undefined && foodIds !== null) {
+      if (!Array.isArray(foodIds) || foodIds.length > 50) {
+        throw new HttpsError("invalid-argument", "foodIds is invalid.");
+      }
+    }
+
+    // cafeLocation arrives from the client as { latitude, longitude } (a
+    // GeoPoint is not JSON-serializable over a callable); stored as GeoPoint.
+    let cafeGeoPoint = null;
+    if (cafeLocation !== undefined && cafeLocation !== null) {
+      if (
+        typeof cafeLocation !== "object" ||
+        !Number.isFinite(cafeLocation.latitude) ||
+        !Number.isFinite(cafeLocation.longitude)
+      ) {
+        throw new HttpsError("invalid-argument", "cafeLocation is invalid.");
+      }
+      cafeGeoPoint = new admin.firestore.GeoPoint(
+        cafeLocation.latitude,
+        cafeLocation.longitude
+      );
+    }
+
+    // Normalise line items to a safe minimal shape (only accepted fields).
+    const lineItems = items.map((item) => {
+      if (item === null || typeof item !== "object" || Array.isArray(item)) {
+        throw new HttpsError("invalid-argument", "items is invalid.");
+      }
+      const foodItemId = item.foodItemId;
+      if (typeof foodItemId !== "string" || foodItemId.length === 0 || foodItemId.length > 128) {
+        throw new HttpsError("invalid-argument", "items is invalid.");
+      }
+      const quantity = item.quantity;
+      if (!Number.isInteger(quantity) || quantity <= 0 || quantity >= 100) {
+        throw new HttpsError("invalid-argument", "items is invalid.");
+      }
+      const itemPrice = item.price;
+      if (!Number.isFinite(itemPrice) || itemPrice < 0) {
+        throw new HttpsError("invalid-argument", "items is invalid.");
+      }
+      return {
+        foodItemId,
+        title: typeof item.title === "string" ? item.title.slice(0, 200) : "",
+        price: itemPrice,
+        quantity,
+        image: typeof item.image === "string" ? item.image.slice(0, 2000) : "",
+        selectedCafe: typeof item.selectedCafe === "string"
+          ? item.selectedCafe.slice(0, 100)
+          : null,
+      };
+    });
+
+    const orderRef = db.collection("orders").doc(orderId);
+    const userRef = db.collection("users").doc(uid);
+
+    try {
+      const placedOrderId = await db.runTransaction(async (transaction) => {
+        // 1. Read the authoritative user profile: role, suspension state and
+        //    the server-maintained reliability summary (Phase B data).
+        const userSnapshot = await transaction.get(userRef);
+        if (!userSnapshot.exists || userSnapshot.data().role !== "student") {
+          // §18 — fail safely: never assume a NORMAL restriction when the
+          // authoritative state cannot be read.
+          throw new HttpsError(
+            "unavailable",
+            "Unable to verify your active orders. Please try again."
+          );
+        }
+        const userData = userSnapshot.data();
+        if (userData.accountStatus === "SUSPENDED") {
+          throw new HttpsError(
+            "permission-denied",
+            "Your account is suspended and cannot place orders."
+          );
+        }
+
+        // 2. Derive the active-order limit from the authoritative summary.
+        //    restrictionFor reads only server-maintained summary fields and
+        //    never recomputes reliability; it also covers students whose
+        //    stored summary predates Phase E (no restrictionLevel yet).
+        const summary = userData.pickupReliability &&
+            typeof userData.pickupReliability === "object"
+          ? userData.pickupReliability
+          : null;
+        const limit = restrictionFor(summary).activeOrderLimit;
+
+        // 3. Count currently active orders inside the same transaction that
+        //    creates the order — two concurrent attempts can never both pass.
+        if (limit != null) {
+          const activeSnapshot = await transaction.get(
+            db.collection("orders")
+              .where("studentId", "==", uid)
+              .where("status", "in", ACTIVE_ORDER_STATUSES)
+          );
+          if (activeSnapshot.size >= limit) {
+            throw new HttpsError(
+              "failed-precondition",
+              limit === 1
+                ? "You currently have an active order. Please collect it before placing another order."
+                : "You currently have " + limit +
+                  " active orders. Collect one before placing another order.",
+              { code: "ACTIVE_ORDER_LIMIT", activeOrderLimit: limit }
+            );
+          }
+        }
+
+        // 4. Verify the client-generated order ID is not already taken.
+        const existingOrder = await transaction.get(orderRef);
+        if (existingOrder.exists) {
+          throw new HttpsError(
+            "already-exists",
+            "This order has already been placed."
+          );
+        }
+
+        // 5. Authoritative food availability check (previously enforced in
+        //    the client transaction; now server-side so it cannot be skipped).
+        //    All reads must precede all writes in a Firestore transaction.
+        for (const item of lineItems) {
+          const foodSnapshot = await transaction.get(
+            db.collection("food_items").doc(item.foodItemId)
+          );
+          const available = foodSnapshot.exists
+            ? foodSnapshot.data().available !== false
+            : false;
+          if (!available) {
+            throw new HttpsError(
+              "failed-precondition",
+              "Some items are no longer available.",
+              { code: "ITEMS_UNAVAILABLE" }
+            );
+          }
+        }
+
+        // 6. Contention write (only for restricted students, where a limit
+        //    is being enforced): concurrent placeOrder attempts create
+        //    DIFFERENT order documents, so Firestore's write-conflict
+        //    detection on those docs would not serialize them. Touching the
+        //    shared user document forces the transactions to conflict on the
+        //    same document: the loser aborts and retries with a fresh
+        //    snapshot, re-counts the active orders and is rejected (or
+        //    proceeds correctly) — the limit can never be bypassed by two
+        //    devices racing (§14). Unrestricted students skip this write.
+        if (limit != null) {
+          transaction.update(userRef, {
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+        }
+
+        // 7. Create the order (server-authoritative write). The onNewOrder
+        //    trigger still runs afterwards (cancellation deadline, pricing
+        //    normalization, notifications).
+        transaction.set(orderRef, {
+          orderId,
+          studentId: uid,
+          userName,
+          items: lineItems,
+          foodIds: Array.isArray(foodIds) && foodIds.length > 0
+            ? foodIds
+            : lineItems.map((i) => i.foodItemId),
+          price,
+          cafeId: cafeId !== undefined && cafeId !== null ? cafeId : null,
+          cafeLocation: cafeGeoPoint,
+          distanceMeters: distanceMeters !== undefined && distanceMeters !== null
+            ? distanceMeters
+            : null,
+          distanceCalculated,
+          pickupWindowMinutes,
+          status: "pending",
+          deadlineStatus: "NOT_READY",
+          noShowProcessed: false,
+          deadlineExtended: false,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        return orderId;
+      });
+
+      console.log(`[placeOrder] Order ${placedOrderId} placed`);
+      return { success: true, orderId: placedOrderId, orderStatus: "pending" };
+    } catch (err) {
+      if (err instanceof HttpsError) throw err;
+      console.error("[placeOrder] Error:", err);
+      throw new HttpsError(
+        "internal",
+        "Could not place the order. Please try again."
+      );
+    }
+  },
+);
+
 // ── Order foodIds backfill ────────────────────────────────────────────────────
 //
 // The review-eligibility security rule (validReviewOrderEligibility) verifies
@@ -1929,6 +2238,9 @@ function emptyReliabilitySummary() {
     recentCollectionRate: 100,
     reliabilityScore: 100,
     status: "NEW",
+    // Phase E — a new user is never restricted (eligibleOrders == 0).
+    restrictionLevel: RESTRICTION_LEVEL_NORMAL,
+    restrictionReason: null,
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     recentPickupHistory: [],
   };
@@ -1976,6 +2288,95 @@ function reliabilityStatusFor(eligibleOrders, score) {
   if (score >= 50) return "NEEDS_IMPROVEMENT";
   if (score >= 25) return "POOR";
   return "CRITICAL";
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// PHASE E — GRADUATED ORDERING RESTRICTIONS
+// ════════════════════════════════════════════════════════════════════════════
+//
+// Restrictions are DERIVED server-side from the existing Phase B reliability
+// summary. The reliability engine remains the single source of truth; the
+// restriction layer never recalculates reliability independently and never
+// runs inside Flutter. There are NO strikes, NO suspensions and NO permanent
+// bans — restrictions are gradual, reversible and follow the current
+// reliability state.
+//
+// Policy (AGENTS.md Phase E §3, §4-§6):
+//   eligibleOrders < 3              → NORMAL        (insufficient evidence)
+//   score >= 90   (EXCELLENT)       → NORMAL
+//   score 50-89   (GOOD/NEEDS_IMP)  → NORMAL        (WARNING is informational)
+//   score 25-49   (POOR)            → LIMITED        (max 2 active orders)
+//   score 0-24    (CRITICAL)        → HIGHLY_LIMITED (max 1 active order)
+
+/**
+ * Explicit restriction levels (AGENTS.md Phase E §9). BANNED / SUSPENDED /
+ * STRIKE / PUNISHED are intentionally NOT used by this system.
+ */
+const RESTRICTION_LEVEL_NORMAL = "NORMAL";
+const RESTRICTION_LEVEL_LIMITED = "LIMITED";
+const RESTRICTION_LEVEL_HIGHLY_LIMITED = "HIGHLY_LIMITED";
+
+/**
+ * Order statuses that count toward the active-order limit (Phase E §10):
+ * PENDING, ACCEPTED, PREPARING, READY. Terminal states (CANCELLED, COLLECTED,
+ * NO_SHOW, REJECTED) never count. Mirrors the canonical OrderStatus values.
+ */
+const ACTIVE_ORDER_STATUSES = ["pending", "accepted", "preparing", "ready"];
+
+/**
+ * Derive the ordering restriction from an authoritative reliability summary.
+ *
+ * The same function backs both the restriction engine (which writes
+ * restrictionLevel/restrictionReason into the summary on every reliability
+ * event) and the order-creation callable (which enforces the limit for
+ * students whose stored summary predates Phase E). It reads ONLY the
+ * server-maintained summary fields — it never recomputes reliability.
+ *
+ * @param {Object|undefined} summary — pickupReliability map (or none)
+ * @return {{restrictionLevel: string, restrictionReason: string|null, activeOrderLimit: number|null}}
+ */
+function restrictionFor(summary) {
+  const eligibleOrders = summary && Number.isFinite(summary.eligibleOrders)
+    ? summary.eligibleOrders
+    : 0;
+  // Use the UNROUNDED score so the restriction threshold aligns exactly with
+  // the reliability status threshold (a boundary value such as 24.96 is
+  // CRITICAL → HIGHLY_LIMITED, never nudged into LIMITED by rounding).
+  const score = summary && Number.isFinite(summary.reliabilityScore)
+    ? summary.reliabilityScore
+    : 100;
+
+  if (eligibleOrders < 3) {
+    // §4-§6 — insufficient history: no restriction, regardless of score.
+    return {
+      restrictionLevel: RESTRICTION_LEVEL_NORMAL,
+      restrictionReason: null,
+      activeOrderLimit: null,
+    };
+  }
+  if (score >= 50) {
+    // §1-§2 — EXCELLENT / GOOD / NEEDS_IMPROVEMENT: normal ordering (the
+    // WARNING band is informational only; it carries no order limit).
+    return {
+      restrictionLevel: RESTRICTION_LEVEL_NORMAL,
+      restrictionReason: null,
+      activeOrderLimit: null,
+    };
+  }
+  if (score >= 25) {
+    // §3 — POOR: at most 2 active orders.
+    return {
+      restrictionLevel: RESTRICTION_LEVEL_LIMITED,
+      restrictionReason: "Low pickup reliability",
+      activeOrderLimit: 2,
+    };
+  }
+  // §3 — CRITICAL: at most 1 active order.
+  return {
+    restrictionLevel: RESTRICTION_LEVEL_HIGHLY_LIMITED,
+    restrictionReason: "Very low pickup reliability",
+    activeOrderLimit: 1,
+  };
 }
 
 /**
@@ -2054,6 +2455,16 @@ function recomputeReliability(existing, outcome, orderId, timestamp) {
   const reliabilityScore = roundRate(rawReliabilityScore);
   const status = reliabilityStatusFor(eligibleOrders, rawReliabilityScore);
 
+  // Phase E — graduated ordering restriction derived from the authoritative
+  // summary on every event. The summary write is already event-driven
+  // (COLLECTED / NO_SHOW only), so deriving the restriction here adds NO
+  // extra Firestore writes, and the level always follows the current score
+  // (recovery is automatic when the score crosses a threshold).
+  const restriction = restrictionFor({
+    eligibleOrders,
+    reliabilityScore: rawReliabilityScore,
+  });
+
   return {
     eligibleOrders,
     collectedOrders,
@@ -2065,6 +2476,8 @@ function recomputeReliability(existing, outcome, orderId, timestamp) {
     recentCollectionRate,
     reliabilityScore,
     status,
+    restrictionLevel: restriction.restrictionLevel,
+    restrictionReason: restriction.restrictionReason,
     updatedAt: timestamp,
     recentPickupHistory: history,
   };

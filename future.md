@@ -1,7 +1,7 @@
 # future implementation plans
 
 # TODOS
-1. Create a My profile screen and move the logout settings to it, in the future add image profile, email change, password
+2. apply ai to view and monitor images uploaded to be for food only no harm or dangerous materials
 
 1. add order cancellation and give a 2min cacellation window before placing the order.
 
@@ -11,9 +11,7 @@
 * Their menu items will be able to link to whatsapp easily
 * Or start a messaging platform inside the app
 
-3. modify account screen to add app appearance settings, your ratings and meal plans.
-
-4. wire up adminview github release apk workflow to build the app apk on git push tags
+3. in myprofile screen screen add app appearance settings, your ratings.
 
 5. Make the student app and admin app choose which university there in and ensure that the FOOD ITEM and CAFE(add a field to specify which university there in) in university A is not shown or mixed into university B, including their orders.
 * Also add a university collection to list all available universities in which the app serve
