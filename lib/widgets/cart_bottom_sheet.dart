@@ -19,6 +19,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/app_log.dart';
 import '../services/cart_service.dart';
+import '../services/order_placement_service.dart';
 import '../services/pickup_window_service.dart';
 
 class CartBottomSheet extends StatefulWidget {
@@ -800,8 +801,11 @@ class _CartBottomSheetState extends State<CartBottomSheet> {
                           // immediately after use — never persisted.
                           position = null;
 
-                          // Place the order with distance data only
-                          final orderId = await _cartService.placeOrder(
+                          // Place the order with distance data only. Phase E —
+                          // the backend callable is authoritative; the result
+                          // distinguishes the active-order-limit rejection so
+                          // the student gets a clear explanation (§17).
+                          final result = await _cartService.placeOrder(
                             cafeLocation: cafeLocation,
                             cafeId: cafeId,
                             distanceMeters: distanceMeters,
@@ -813,7 +817,7 @@ class _CartBottomSheetState extends State<CartBottomSheet> {
                             Navigator.of(context, rootNavigator: true).pop();
                           }
 
-                          if (orderId != null) {
+                          if (result.failure == null && result.orderId != null) {
                             // Dismiss the bottom sheet ONLY if it was opened as a modal route (mobile)
                             // and NOT when embedded in the main desktop screen layout.
                             if (context.mounted &&
@@ -850,12 +854,43 @@ class _CartBottomSheetState extends State<CartBottomSheet> {
                           } else {
                             // Failure: keep the bottom sheet visible so the
                             // user can retry.  Only dismiss the loading dialog
-                            // (already popped above).
+                            // (already popped above). Phase E messages are
+                            // user-friendly and never mention internal
+                            // implementation details (§17, §34).
+                            final message = switch (
+                              result.failure ?? OrderPlacementFailure.failed
+                            ) {
+                              OrderPlacementFailure.activeOrderLimit =>
+                                result.activeOrderLimit == 1
+                                    ? 'You currently have an active order. '
+                                          'Please collect it before placing '
+                                          'another order.'
+                                    : 'You currently have '
+                                          '${result.activeOrderLimit ?? 2} active '
+                                          'orders. Collect one before placing '
+                                          'another order.',
+                              OrderPlacementFailure.unableToVerify =>
+                                'Unable to verify your active orders. '
+                                    'Please try again.',
+                              OrderPlacementFailure.unavailableFood =>
+                                'Some items in your cart are no longer '
+                                    'available.',
+                              OrderPlacementFailure.permissionDenied =>
+                                'Your account is suspended and cannot place '
+                                    'orders.',
+                              OrderPlacementFailure.unauthenticated ||
+                              OrderPlacementFailure.invalidPayload ||
+                              OrderPlacementFailure.failed ||
+                              OrderPlacementFailure.networkError =>
+                                'Failed to place order. Please try again.',
+                            };
                             if (!context.mounted) return;
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
-                                content: const Text(
-                                  'Failed to place order. Please try again.',
+                                content: Text(
+                                  message,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                                 backgroundColor: Colors.red,
                                 duration: const Duration(seconds: 4),

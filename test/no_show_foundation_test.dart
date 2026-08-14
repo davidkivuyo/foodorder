@@ -86,41 +86,28 @@ void main() {
 
     test('strike-count suspension is removed from the student order path '
         '(STEP 2)', () {
-      final suspendedFn = rules.substring(
-        rules.indexOf('function isStudentSuspended()'),
-        rules.indexOf('// Phase 15 — authentication hardening'),
-      );
-      // Only the accountStatus gate remains — the deleted strike engine's
-      // `strikeCount >= 2` block must not come back.
-      expect(suspendedFn, contains("doc.data.accountStatus == 'SUSPENDED'"));
-      expect(suspendedFn, isNot(contains('strikeCount')));
+      // The old isStudentSuspended() helper only gated the deleted
+      // validOrderCreateRequest(); with order creation moved to the
+      // placeOrder callable it no longer exists. Suspension enforcement now
+      // lives server-side in the callable (reads the user's accountStatus),
+      // and the deleted strike engine's `strikeCount >= 2` block must not
+      // come back in the order path.
+      expect(rules, isNot(contains('function isStudentSuspended()')));
     });
 
-    test('order create still requires status pending and safe no-show '
-        'defaults', () {
-      final createFn = rules.substring(
-        rules.indexOf('function validOrderCreateRequest()'),
-        rules.indexOf('function adminNotModifyingProtectedOrderFields()'),
+    test('order create is exclusively server-authoritative — no client '
+        'create rule (Phase E)', () {
+      // The direct-create rule (and its validOrderCreateRequest() helper)
+      // was revoked when order creation moved to the placeOrder callable:
+      // a client-side create could bypass the Phase E active-order limit
+      // and forge server-owned fields (readyAt, pickupDeadline, collectedAt,
+      // noShowAt, ...). Only the callable (Admin SDK) may create orders.
+      expect(rules, isNot(contains('function validOrderCreateRequest()')));
+      final orderBlock = rules.substring(
+        rules.indexOf('match /orders/{docId}'),
+        rules.indexOf('match /section/{sectionId}'),
       );
-      expect(createFn, contains("request.resource.data.status == 'pending'"));
-      // noShowProcessed is optional on create (legacy builds) but never
-      // forgeable to true.
-      expect(
-        createFn,
-        contains("&& (!('noShowProcessed' in request.resource.data)"),
-      );
-      // Test 9 — a student must not be able to forge authoritative
-      // timestamps by including them on order create: they are absent from
-      // the allowlist, so hasOnly() rejects the whole write. (expiredAt is
-      // allowed but only with its safe null default — guarded above.)
-      final allowlist = createFn.substring(
-        createFn.indexOf('let allowed ='),
-        createFn.indexOf(';'),
-      );
-      expect(allowlist, isNot(contains("'readyAt'")));
-      expect(allowlist, isNot(contains("'pickupDeadline'")));
-      expect(allowlist, isNot(contains("'collectedAt'")));
-      expect(allowlist, isNot(contains("'noShowAt'")));
+      expect(orderBlock, isNot(contains('allow create')));
     });
   });
 

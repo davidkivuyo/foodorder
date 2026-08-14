@@ -111,45 +111,20 @@ void main() {
       expect(protectedFn, contains("!('cancellationDeadline' in changed)"));
     });
 
-    test('order create requires authoritative timestamps — no client '
-        'cancellation deadline (Test 1)', () {
-      final createFn = rules.substring(
-        rules.indexOf('function validOrderCreateRequest()'),
-        rules.indexOf('function adminNotModifyingProtectedOrderFields()'),
+    test('order create is exclusively server-authoritative - no client '
+        'cancellation deadline can be supplied (Test 1)', () {
+      // The direct-create rule was revoked (Phase E - creation happens only
+      // through the placeOrder callable), so a client can never write an
+      // order with any cancellation metadata: no forged cancelledAt,
+      // cancelledBy, cancellationReason or cancellationDeadline (the
+      // authoritative createdAt + 2 min value is written by the onNewOrder
+      // trigger) can reach the document.
+      expect(rules, isNot(contains('function validOrderCreateRequest()')));
+      final orderBlock = rules.substring(
+        rules.indexOf('match /orders/{docId}'),
+        rules.indexOf('match /section/{sectionId}'),
       );
-      // The client must not send any cancellationDeadline on create: the
-      // authoritative value (createdAt + 2 min) is written by the onNewOrder
-      // trigger, so any payload carrying one is rejected.
-      expect(
-        createFn,
-        contains("!('cancellationDeadline' in request.resource.data)"),
-      );
-      // createdAt must be the server-resolved write timestamp — the client's
-      // FieldValue.serverTimestamp() — never a literal client-clock value.
-      expect(
-        createFn,
-        contains('request.resource.data.createdAt == request.time'),
-      );
-      // The old loose ±15-minute request.time band and the ±5-minute createdAt
-      // range must not reappear.
-      expect(createFn, isNot(contains("duration.value(15, 'm')")));
-      expect(
-        createFn,
-        isNot(contains("request.time - duration.value(5, 'm')")),
-      );
-      // cancelledAt/cancelledBy/cancellationReason must be null on create.
-      expect(
-        createFn,
-        contains("request.resource.data.cancelledAt == null"),
-      );
-      expect(
-        createFn,
-        contains("request.resource.data.cancelledBy == null"),
-      );
-      expect(
-        createFn,
-        contains("request.resource.data.cancellationReason == null"),
-      );
+      expect(orderBlock, isNot(contains('allow create')));
     });
 
     test('orders stay admin-gated for updates — no student cancellation write '

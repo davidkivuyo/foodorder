@@ -62,6 +62,16 @@ enum OrderStatus {
         return name;
     }
   }
+
+  /// Order statuses that count toward the active-order limit (Phase E §10).
+  /// Mirrors the backend ACTIVE_ORDER_STATUSES constant. Canonical home of
+  /// the membership so callers never duplicate string literals.
+  static const List<OrderStatus> activeOrderStatuses = [
+    OrderStatus.pending,
+    OrderStatus.accepted,
+    OrderStatus.preparing,
+    OrderStatus.ready,
+  ];
 }
 
 /// Backend-driven pickup deadline status.

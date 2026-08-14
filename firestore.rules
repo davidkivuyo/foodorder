@@ -28,11 +28,6 @@ service cloud.firestore {
     function callerDoc() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid));
     }
-    function isStudentSuspended() {
-      let doc = callerDoc();
-      return doc.data == null
-        || doc.data.accountStatus == 'SUSPENDED';
-    }
 
     // Phase 15 — authentication hardening. Only email-verified accounts may
     // place orders or write reviews. The claim comes from the Firebase ID
@@ -94,85 +89,12 @@ service cloud.firestore {
     }
 
     // ── Order validation ────────────────────────────────────────────────
-
-    function validOrderCreateRequest() {
-      let allowed = ['orderId', 'studentId', 'userName', 'items', 'price',
-        'cafeId', 'cafeLocation', 'status', 'createdAt',
-        'updatedAt', 'deadlineStatus', 'distanceMeters',
-        'distanceCalculated', 'pickupWindowMinutes',
-        'noShowProcessed', 'expiredAt', 'deadlineExtended',
-        'extensionAt', 'foodIds',
-        // Phase B cancellation metadata is written only by the cancelOrder
-        // callable (Admin SDK); no client may send it on create.
-        // cancellationDeadline is deliberately NOT in the allowlist: the
-        // authoritative deadline (createdAt + 2 min) is written by the
-        // onNewOrder trigger, so any payload carrying a client-supplied
-        // deadline is rejected by hasOnly() here.
-        'cancelledAt', 'cancelledBy', 'cancellationReason',
-        // Legacy fields from pre-removal app builds. Kept in the allowlist
-        // so older clients can still place orders until everyone updates;
-        // only the safe default values are accepted.
-        'strikeProcessed', 'strikeIssuedAt'];
-      return hasVerifiedEmail()
-        && request.resource.data.keys().hasOnly(allowed)
-        && request.resource.data.items is list
-        && request.resource.data.items.size() < 50
-        && request.resource.data.price is number
-        && request.resource.data.price >= 0
-        && request.resource.data.status == 'pending'
-        // Backend-protected fields must not be forgeable on create.
-        // noShowProcessed is optional on create so legacy builds (which omit
-        // it) can still order — a missing field reads as null in rules.
-        && (!('noShowProcessed' in request.resource.data)
-          || request.resource.data.noShowProcessed == false)
-        && request.resource.data.deadlineStatus == 'NOT_READY'
-        && (!('expiredAt' in request.resource.data)
-          || request.resource.data.expiredAt == null)
-        && (!('noShowAt' in request.resource.data)
-          || request.resource.data.noShowAt == null)
-        && (!('deadlineExtended' in request.resource.data)
-          || request.resource.data.deadlineExtended == false)
-        && (!('extensionAt' in request.resource.data)
-          || request.resource.data.extensionAt == null)
-        // Phase B cancellation fields: server/callable-written. The
-        // authoritative cancellationDeadline (createdAt + 2 min) is written
-        // by the onNewOrder trigger — the client must not send any deadline
-        // on create (the allowlist above rejects a payload that carries one;
-        // this explicit check is defence-in-depth). The acceptance gap before
-        // the trigger runs is covered by the age gate in
-        // cancellationWindowPassed().
-        && !('cancellationDeadline' in request.resource.data)
-        // createdAt is the authoritative write timestamp: the client sends
-        // FieldValue.serverTimestamp(), which Firestore resolves to exactly
-        // request.time during rule evaluation. A literal client timestamp —
-        // backdated, forward-dated, or even computed at write time — can
-        // never match, so the 2-minute cancellation window (and its
-        // missing-deadline age gate in cancellationWindowPassed) cannot be
-        // forged.
-        && request.resource.data.createdAt == request.time
-        && (!('cancelledAt' in request.resource.data)
-          || request.resource.data.cancelledAt == null)
-        && (!('cancelledBy' in request.resource.data)
-          || request.resource.data.cancelledBy == null)
-        && (!('cancellationReason' in request.resource.data)
-          || request.resource.data.cancellationReason == null)
-        // Legacy strike fields may only be sent with their safe defaults.
-        && (!('strikeProcessed' in request.resource.data)
-          || request.resource.data.strikeProcessed == false)
-        && (!('strikeIssuedAt' in request.resource.data)
-          || request.resource.data.strikeIssuedAt == null)
-        // foodIds is a denormalised list of purchased food IDs used by the
-        // review eligibility rule. Optional on create for backward
-        // compatibility (orders without it simply cannot be reviewed).
-        && (!('foodIds' in request.resource.data)
-          || (request.resource.data.foodIds is list
-            && request.resource.data.foodIds.size() < 50))
-        && request.resource.data.studentId == request.auth.uid
-        && request.resource.data.pickupWindowMinutes is int
-        && request.resource.data.pickupWindowMinutes >= 10
-        && request.resource.data.pickupWindowMinutes <= 25
-        && !isStudentSuspended();
-    }
+    //
+    // Order creation is exclusively server-authoritative through the
+    // placeOrder callable (Admin SDK). Firestore Rules cannot count active
+    // orders across the collection, so a client-side create would bypass the
+    // Phase E active-order limit — therefore no client create rule exists for
+    // /orders and the validOrderCreateRequest() helper has been removed.
 
     function adminNotModifyingProtectedOrderFields() {
       let changed = request.resource.data.diff(resource.data).affectedKeys();
@@ -754,7 +676,9 @@ service cloud.firestore {
           ? resource.data.studentId
           : resource.data.userId))
         || isAdmin();
-      allow create: if isAuth() && validOrderCreateRequest();
+      // No client-side create: orders are created exclusively by the
+      // placeOrder callable (Phase E), so Firestore Rules cannot be used to
+      // bypass the active-order limit or forge server-owned fields.
       allow update: if isAdmin()
         && adminNotModifyingProtectedOrderFields()
         && validOrderStatusTransition();

@@ -18,11 +18,13 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/cart_item.dart';
 import '../models/order.dart';
+import '../models/pickup_reliability.dart';
 import '../models/sync_operation.dart';
 import '../data/food_data.dart';
 import 'analytics_service.dart';
 import 'app_log.dart';
 import 'connectivity_service.dart';
+import 'order_placement_service.dart';
 import 'performance_service.dart';
 import 'sync_queue_service.dart';
 
@@ -37,8 +39,14 @@ class CartService extends ChangeNotifier {
   /// Set by the [CartService.testing] constructor.
   String? _testingUserId;
 
+  /// Injectable Phase E order-placement callable wrapper (null → shared
+  /// [OrderPlacementService.instance], resolved lazily at call time so the
+  /// singleton never touches Firebase during construction).
+  final OrderPlacementService? _placementService;
+
   CartService._internal()
-      : _firestore = FirebaseFirestore.instance {
+      : _firestore = FirebaseFirestore.instance,
+        _placementService = null {
     _initAuthListener();
     _initSyncHandlers();
   }
@@ -51,7 +59,13 @@ class CartService extends ChangeNotifier {
   CartService.testing({
     required this._firestore,
     required String userId,
-  }) : _testingUserId = userId;
+    OrderPlacementService? placementService,
+  })  : _testingUserId = userId,
+        // Private fields cannot be initializing formals for named parameters.
+        _placementService = placementService; // ignore: prefer_initializing_formals
+
+  OrderPlacementService get _orderPlacement =>
+      _placementService ?? OrderPlacementService.instance;
 
   /// Returns the current user ID from the testing override, or from
   /// FirebaseAuth if no override is active.
@@ -526,7 +540,8 @@ class CartService extends ChangeNotifier {
     }
   }
 
-  /// Place the current cart items as an order and save to Firestore.
+  /// Place the current cart items as an order through the backend
+  /// `placeOrder` callable.
   ///
   /// Optionally include [cafeLocation], [cafeId], [distanceMeters], and
   /// [pickupWindowMinutes] for the distance-aware pickup window.
@@ -534,21 +549,35 @@ class CartService extends ChangeNotifier {
   /// Student location is NEVER persisted to Firestore for privacy.
   /// Distance and pickup window are stored as anonymized values.
   ///
-  /// The order is written inside a Firestore transaction that re-reads
-  /// the current `available` field of every food item.  If any item is
-  /// unavailable at that moment, the transaction is aborted and `null`
-  /// is returned — the UI-level check is only a hint; this is the
-  /// authoritative enforcement point.
-  Future<String?> placeOrder({
+  /// Phase E — order creation is authoritative on the backend: the callable
+  /// derives the student's active-order limit from the server-maintained
+  /// reliability summary, counts active orders inside its own transaction
+  /// and re-checks food availability before creating the order. The client
+  /// pre-checks the limit (AGENTS.md §17) and availability as UX hints only;
+  /// if the pre-check cannot run (e.g. offline) the callable still enforces
+  /// everything server-side.
+  Future<OrderPlacementResult> placeOrder({
     GeoPoint? cafeLocation,
     String? cafeId,
     double? distanceMeters,
     int? pickupWindowMinutes,
   }) async {
-    if (_cartItems.isEmpty) return null;
+    if (_cartItems.isEmpty) {
+      return (
+        orderId: null,
+        failure: OrderPlacementFailure.invalidPayload,
+        activeOrderLimit: null,
+      );
+    }
 
     final userId = _currentUserId;
-    if (userId == null) return null;
+    if (userId == null) {
+      return (
+        orderId: null,
+        failure: OrderPlacementFailure.unauthenticated,
+        activeOrderLimit: null,
+      );
+    }
 
     // ── Phase 15: verified-email gate ───────────────────────────────────
     // Only email-verified accounts may place orders. This mirrors the
@@ -557,12 +586,16 @@ class CartService extends ChangeNotifier {
     // malicious client bypasses the UI.
     if (!(FirebaseAuth.instance.currentUser?.emailVerified ?? false)) {
       AppLog.w('[CartService] Order blocked — email not verified');
-      return null;
+      return (
+        orderId: null,
+        failure: OrderPlacementFailure.invalidPayload,
+        activeOrderLimit: null,
+      );
     }
 
-    // Build the serialised order data before the transaction — we need
-    // a snapshot of _cartItems at this point; any stock changes that
-    // happen during the transaction will be caught by the reads inside.
+    // Build the serialised order payload — a plain JSON map, because
+    // FieldValue server timestamps cannot cross the callable wire; the
+    // backend writes createdAt/updatedAt itself.
     final timestamp = DateTime.now().millisecondsSinceEpoch;
     final randomSuffix = timestamp % 9000;
     final newOrderId = 'CB-${1000 + randomSuffix}';
@@ -576,93 +609,111 @@ class CartService extends ChangeNotifier {
       0.0, (total, item) => total + item.foodItem.price * item.quantity,
     );
 
-    final newOrder = FoodOrder(
-      orderId: newOrderId,
-      userId: userId,
-      userName: displayName,
-      items: itemsSnapshot,
-      totalAmount: itemsTotal,
-      orderTime: DateTime.now(),
-      status: OrderStatus.pending,
-      pickupWindowMinutes: pickupWindowMinutes ?? 20,
-      distanceCalculated: hasDistanceData,
-      cafeLocation: cafeLocation,
-      cafeId: cafeId,
-      distanceMeters: distanceMeters,
-    );
+    // Phase E §17 — pre-checkout explanation. The callable is the authority;
+    // this only avoids attempting a checkout that would be rejected. When the
+    // check itself fails (offline, quota, ...) we proceed rather than assume
+    // anything about the limit.
+    final precheck = await _checkActiveOrderLimit(userId);
+    if (precheck != null) return precheck;
 
-    final orderData = newOrder.toFirestore();
+    // Availability is intentionally NOT pre-checked here: the placeOrder
+    // callable re-checks every item authoritatively inside its transaction
+    // and returns unavailableFood, which the cart sheet already surfaces
+    // with a user-friendly message. A client-side pre-check would duplicate
+    // those reads on every checkout attempt (§13 — rely on callable error
+    // codes for user messaging).
+
+    final payload = <String, dynamic>{
+      'orderId': newOrderId,
+      'studentId': userId,
+      'userName': displayName,
+      'items': itemsSnapshot
+          .map(
+            (item) => {
+              'foodItemId': item.foodItem.id,
+              'title': item.foodItem.title,
+              'price': item.foodItem.price,
+              'quantity': item.quantity,
+              'image': item.foodItem.image,
+              'selectedCafe': item.selectedCafe,
+            },
+          )
+          .toList(),
+      'foodIds': itemsSnapshot.map((item) => item.foodItem.id).toList(),
+      'price': itemsTotal,
+      'cafeId': cafeId,
+      'cafeLocation': cafeLocation == null
+          ? null
+          : {
+              'latitude': cafeLocation.latitude,
+              'longitude': cafeLocation.longitude,
+            },
+      'distanceMeters': distanceMeters,
+      'distanceCalculated': hasDistanceData,
+      'pickupWindowMinutes': pickupWindowMinutes ?? 20,
+    };
 
     // Phase 17 — checkout performance trace (stopped on every exit path).
     final checkoutTrace = PerformanceService.instance.startTrace(kTraceCheckout);
     try {
-      await _firestore.runTransaction((transaction) async {
-        // ── 1. Re-read every food item's availability inside the transaction ──
-        final unavailableItems = <String>[];
-
-        for (final item in itemsSnapshot) {
-          final foodRef =
-              _firestore.collection('food_items').doc(item.foodItem.id);
-          final foodSnapshot = await transaction.get(foodRef);
-
-          if (!foodSnapshot.exists) {
-            unavailableItems.add(item.foodItem.title);
-            continue;
-          }
-
-          final foodData =
-              foodSnapshot.data();
-          final available =
-              (foodData?['available'] as bool?) ?? true;
-
-          if (!available) {
-            unavailableItems.add(item.foodItem.title);
-          }
-        }
-
-        // If any item is unavailable, abort — Firestore throws
-        // an AbortedException which we catch below as a failure.
-        if (unavailableItems.isNotEmpty) {
-          throw FirebaseException(
-            plugin: 'firestore',
-            code: 'failed-precondition',
-            message:
-                'Some items are no longer available: ${unavailableItems.join(', ')}',
-          );
-        }
-
-        // ── 2. All items pass — atomically write the order ──
-        transaction.set(
-          _firestore.collection('orders').doc(newOrderId),
-          orderData,
+      final result = await _orderPlacement.placeOrder(payload);
+      if (result.failure == null && result.orderId != null) {
+        await clearCart();
+        AppLog.d('[CartService] Order placed successfully: ${result.orderId}');
+        AnalyticsService.instance.logEvent(
+          AnalyticsEvent.orderPlaced,
+          params: {'item_count': itemsSnapshot.length},
         );
-      });
-
-      // Transaction committed successfully — now clear the cart
-      // (outside the transaction because the cart is a subcollection
-      // of a document we didn't read within the transaction).
-      await clearCart();
-
-      AppLog.d('[CartService] Order placed successfully: $newOrderId');
-      AnalyticsService.instance.logEvent(
-        AnalyticsEvent.orderPlaced,
-        params: {'item_count': itemsSnapshot.length},
-      );
-      return newOrderId;
-    } on FirebaseException catch (e) {
-      if (e.code == 'failed-precondition') {
-        AppLog.e('[CartService] Order rejected — unavailable items', e);
-      } else if (e.code == 'aborted') {
-        AppLog.w('[CartService] Transaction conflict; order not placed');
-      } else {
-        AppLog.e('[CartService] Error placing order', e);
       }
-      return null;
-    } on Exception catch (e) {
-      AppLog.e('[CartService] Error placing order', e);
-      return null;
+      return result;
     } finally {
       checkoutTrace?.stop();
+    }
+  }
+
+  /// Phase E §17 — client-side pre-checkout gate.
+  ///
+  /// Reads the server-maintained restriction state from the user profile and
+  /// counts active orders; returns an early [OrderPlacementResult] when the
+  /// student is at their active-order limit, or null to proceed to the
+  /// authoritative callable. Never blocks when the check itself fails.
+  Future<OrderPlacementResult?> _checkActiveOrderLimit(String userId) async {
+    try {
+      final userDoc = await _firestore.collection('users').doc(userId).get();
+      final summaryRaw = userDoc.exists
+          ? (userDoc.data()?['pickupReliability'])
+          : null;
+      final summary = summaryRaw is Map
+          ? PickupReliabilitySummary.fromMap(
+              Map<String, dynamic>.from(summaryRaw),
+            )
+          : null;
+      final limit = summary?.activeOrderLimit;
+      if (limit == null) return null;
+
+      // Count aggregation: only the number matters for the limit check, and
+      // the callable re-verifies inside its transaction anyway — no need to
+      // download the active order documents themselves.
+      final activeCount = await _firestore
+          .collection('orders')
+          .where('studentId', isEqualTo: userId)
+          .where('status', whereIn: [
+            for (final status in OrderStatus.activeOrderStatuses)
+              status.toShortString(),
+          ])
+          .count()
+          .get();
+      if ((activeCount.count ?? 0) >= limit) {
+        return (
+          orderId: null,
+          failure: OrderPlacementFailure.activeOrderLimit,
+          activeOrderLimit: limit,
+        );
+      }
+      return null;
+    } on Exception {
+      // Offline / query failure — proceed to the callable (authoritative).
+      return null;
     }
   }
 

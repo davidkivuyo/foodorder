@@ -17,6 +17,7 @@ import 'package:campusbite/models/user_profile.dart';
 import 'package:campusbite/services/auth_service.dart';
 import 'package:campusbite/services/input_validator.dart';
 import 'package:campusbite/widgets/pickup_reliability_card.dart';
+import 'package:campusbite/widgets/restriction_notice.dart';
 import 'package:campusbite/widgets/user_initials_avatar.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
@@ -292,8 +293,7 @@ class MyProfileScreen extends StatelessWidget {
                               'My Profile',
                               style: TextStyle(
                                 fontSize: 26,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.black87,
+                                color: Colors.black,
                                 letterSpacing: -0.5,
                               ),
                             ),
@@ -362,12 +362,6 @@ class MyProfileScreen extends StatelessWidget {
                   ),
                   _buildDivider(),
                   _buildSettingTile(
-                    title: 'Phone number',
-                    subtitle: 'Add your phone number',
-                    onTap: () {},
-                  ),
-                  _buildDivider(),
-                  _buildSettingTile(
                     title: 'Email',
                     subtitle: displayEmail,
                     subtitleColor: brandGreen,
@@ -392,6 +386,19 @@ class MyProfileScreen extends StatelessWidget {
                     onTap: () =>
                         _showReliabilityDetailModal(context, userProfile),
                   ),
+
+                  // Phase E §16 — ordering-limit notice (derived from the
+                  // already-loaded server-maintained summary; no new query).
+                  if (userProfile.pickupReliability != null) ...[
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                      child: RestrictionNotice(
+                        level: userProfile.pickupReliability!.restrictionLevel,
+                        activeOrderLimit:
+                            userProfile.pickupReliability!.activeOrderLimit,
+                      ),
+                    ),
+                  ],
 
                   // Section Separator
                   _buildSectionGap(),

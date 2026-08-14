@@ -46,7 +46,6 @@ const functionsModule = require("../index.js");
 const db = admin.firestore();
 
 const { initializeTestEnvironment } = require("@firebase/rules-unit-testing");
-const { serverTimestamp } = require("firebase/firestore");
 
 const RULES_FILE = path.join(__dirname, "../../firestore.rules");
 const PICKUP_WINDOW_MINUTES = 20;
@@ -199,14 +198,59 @@ after(async () => {
 });
 
 describe("Firestore rules — authorization behaviour", () => {
-  it("lets a verified student create a valid pending order", async () => {
-    // The create rule requires createdAt to be the server-resolved write
-    // timestamp (FieldValue.serverTimestamp() == request.time).
-    await studentDb().collection("orders").doc("rule-ok-1").set(
-      validOrderPayload({ createdAt: serverTimestamp() }),
-    );
+  it("lets a verified student place an order through the placeOrder callable", async () => {
+    // Order creation is exclusively server-authoritative (Phase E): the
+    // client never writes /orders directly — it invokes the placeOrder
+    // callable, which creates the document with the Admin SDK.
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("food_items").doc("food_1").set({
+        id: "food_1",
+        title: "Rice & Beans",
+        price: 3000,
+        available: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+    });
+    await functionsModule.placeOrder.run({
+      auth: { uid: "student1", token: { email_verified: true } },
+      data: {
+        orderId: "rule-ok-1",
+        studentId: "student1",
+        userName: "Test Student",
+        items: [{
+          foodItemId: "food_1",
+          title: "Rice & Beans",
+          price: 3000,
+          quantity: 1,
+          image: "",
+          selectedCafe: "Cafe A",
+        }],
+        foodIds: ["food_1"],
+        price: 3000,
+        cafeId: "cafe1",
+        cafeLocation: null,
+        distanceMeters: 200,
+        distanceCalculated: false,
+        pickupWindowMinutes: 20,
+      },
+    });
     const snap = await db.collection("orders").doc("rule-ok-1").get();
     assert.equal(snap.data().status, "pending");
+  });
+
+  it("denies any direct student order create — no client create rule exists", async () => {
+    // With the client create rule revoked, even a valid payload is rejected
+    // outright, so no forged server-owned field can ever be written.
+    const sdb = studentDb();
+    await assert.rejects(
+      sdb.collection("orders").doc("rule-ok-1").set(
+        validOrderPayload(),
+      ),
+      /PERMISSION_DENIED/,
+    );
+    const after = await orderById("rule-ok-1");
+    assert.equal(after, null);
   });
 
   it("denies student order updates — status and timestamps cannot be forged", async () => {
@@ -237,28 +281,6 @@ describe("Firestore rules — authorization behaviour", () => {
     assert.equal(after.status, "ready");
     assert.equal(after.noShowProcessed, undefined);
     assert.equal(after.pickupDeadline, undefined);
-  });
-
-  it("denies forged server-owned fields on order create", async () => {
-    const sdb = studentDb();
-    // The base payload is otherwise valid (server-resolved createdAt, no
-    // deadline), so each denial is attributable to the forged field.
-    const base = { createdAt: serverTimestamp() };
-    for (const forged of [
-      { readyAt: new Date() },
-      { pickupDeadline: new Date() },
-      { collectedAt: new Date() },
-      { expiredAt: new Date() },
-      { noShowProcessed: true },
-    ]) {
-      await assert.rejects(
-        sdb.collection("orders").doc("rule-forge").set(
-          validOrderPayload({ ...base, ...forged }),
-        ),
-        /PERMISSION_DENIED/,
-        `forged field ${Object.keys(forged)[0]} must be rejected on create`,
-      );
-    }
   });
 
   it("lets an admin transition ready -> collected without touching protected fields", async () => {
