@@ -605,7 +605,7 @@ The student app uses `go_router` with authentication-aware redirects:
 - **One-Tap Reordering** — Reorder entire past orders with one tap from the order history. Automatically checks current availability/stock levels for each item before loading them into the active cart.
 - **Meal Planning** — Pre-plan customized meals for upcoming days, study breaks, or campus events. Save custom plans directly from the active cart or convert a past order into a plan, then load and purchase in one click when ready.
 - **Pickup Extension** — One-tap **"Extend pickup by 10 min"** action (once per order, before the deadline) available on the order card and in the order details sheet.
-- **Pickup Reliability** — Your pickup reliability score, status, and collection history shown in **My Profile** (Phase D). Informational only: new users and limited-history users are never shown a poor rating, and no restrictions are attached to any status.
+- **Pickup Reliability** — Your pickup reliability score, status, and collection history shown in **My Profile** (Phases D–F). Informational only: new users and limited-history users are never shown a poor rating. Status is informational; the Phase E graduated ordering limit is derived from the same server-maintained summary and relaxes automatically as you collect orders (Phase F).
 - **Notification Center** — In-app notification feed supporting real-time alerts for order status changes, pickup reminders, missed-pickup (no-show) alerts, and account suspension events.
 
 ### For Cafeteria Admins
@@ -772,7 +772,7 @@ The `onOrderStatusChanged` trigger feeds a server-side reliability engine that m
 - **Score:** `reliabilityScore = collectionRate × 0.70 + recentCollectionRate × 0.30` (rounded to 1 decimal).
 - **Status:** 0 eligible → `NEW`; 1–2 → `INSUFFICIENT_HISTORY`; 3+ → `EXCELLENT` (90+), `GOOD` (75+), `NEEDS_IMPROVEMENT` (50+), `POOR` (25+), `CRITICAL` (<25). New users are `NEW` with score 100 — never 0%.
 - **Security:** `pickupReliability` is server-authoritative. Firestore rules deny any student write to the nested map and any client write of `reliabilityProcessed` or the immutable `reliabilityOutcome` (`COLLECTED`/`NO_SHOW`, written atomically with the processed marker); students read only their own summary via the existing owner read rule.
-- **No restrictions:** this phase is measurement only — no suspension, bans, cooldowns, or checkout blocking are attached to any status.
+- **Restrictions (Phase E):** graduated ordering limits derive from this same server-maintained summary (see §3d below) — there are no suspensions, bans, cooldowns, or permanent penalties, and restrictions relax automatically as the summary improves (Phase F).
 
 ### 3c. Pickup Reliability Experience (Phase D)
 The student app surfaces the reliability summary in the **My Profile** screen (reached from Account → My Profile → Reliability Status):
@@ -782,6 +782,22 @@ The student app surfaces the reliability summary in the **My Profile** screen (r
 - **No-show orders** display a non-punitive **"No-show recorded"** notice in the order details sheet: "The pickup window and grace period ended before the order was collected." — no strike or penalty language.
 - **Grace period** is visually distinct in the countdown chip ("Grace period active · MM:SS" in orange), and once the grace window has passed the chip reads "Pickup window expired" (hard cutoff — the client never advertises collection after expiry).
 - **Privacy & cost:** the card reads the existing `users/{uid}` listener (≈0 additional reads, 0 writes); it never queries order history and never recalculates reliability client-side. Students see only their own reliability.
+
+### 3d. Graduated Ordering Restrictions (Phase E)
+The reliability summary also drives a graduated, reversible ordering limit — never a ban or suspension:
+- **Levels:** `NORMAL` (no limit), `LIMITED` (max 2 active orders), `HIGHLY_LIMITED` (max 1 active order). `NORMAL` is also used for students with fewer than 3 eligible outcomes (insufficient evidence).
+- **Thresholds (server-derived):** score ≥ 50 → `NORMAL`; 25–49 → `LIMITED`; < 25 → `HIGHLY_LIMITED`. Active orders are `pending`/`accepted`/`preparing`/`ready` — terminal states never count.
+- **Enforcement:** order creation runs exclusively through the server-authoritative `placeOrder` callable, which counts the student's active orders inside the same transaction that creates the order (plus a contention write to the shared user document) so the limit cannot be raced. `firestore.rules` exposes no client `create` on `/orders`.
+- **Read-only everywhere:** students and admins can read `restrictionLevel`/`restrictionReason` (nested inside `pickupReliability`) but only the backend engine writes them. The profile shows a non-punitive notice with the current limit.
+
+### 3e. Reliability Recovery (Phase F)
+Recovery is automatic — no admin approval, student request, or manual reset:
+- **Successful collections are the only recovery event:** each genuine `READY → COLLECTED` transition recomputes the existing Phase B summary (lifetime + recent weighted score) and re-derives the restriction level in the same atomic write. No artificial recovery points, bonus points, or second score exist — the Phase B formula is unchanged.
+- **Restrictions relax naturally:** `HIGHLY_LIMITED` → `LIMITED` when the score crosses 25, and `LIMITED` → `NORMAL` when it crosses 50. The level is derived on every event, so the change is immediate and never requires a refresh.
+- **Idempotent & race-free:** the same `reliabilityProcessed` marker and Firestore transaction that guard Phase B counting also guarantee each collection contributes exactly once, even when two orders are collected simultaneously.
+- **What does NOT recover a student:** `NO_SHOW` never improves reliability (it degrades it), cancelled/rejected/never-`READY` orders are ignored, and the Phase C grace period / automatic no-show processor is unchanged.
+- **UI:** the reliability card shows positive reinforcement ("Keep it up — your ordering limits are relaxing…") when a restricted student has a fully collected recent window, and the ordering-limit notice uses forward-looking recovery language — no punishment, strikes, bans, or penalties.
+- **Cost:** recovery adds zero new Firestore operations — it reuses the one event-driven reliability transaction and the existing `users/{uid}` listener (no order-history scans, no client polling, no per-minute recalculations).
 
 ### 4. Suspension Enforcement
 Account suspension is still honoured when ordering: if `accountStatus == "SUSPENDED"` (managed by the admin app), `CartService.isAccountSuspended()` blocks the student from placing new orders or adding items to the cart.
@@ -855,8 +871,9 @@ CampusBite dynamically computes a student's top favorite food items to provide a
 To ensure genuine feedback and maintain quality standards, CampusBite features a structured review and rating system:
 1. **Eligibility Check:** Only students who have successfully ordered and collected a meal can write a review for that food item, preventing review spam and fake ratings.
 2. **Review Integrity:** Students can only edit or delete their own reviews. They cannot modify review data or ratings written by others.
-3. **Firestore Enforcement:** Rules explicitly prevent writing rating values outside the 1–5 range, or writing reviews for items the user has not collected.
-4. **Cafeteria Quality Control:** The average rating of each item is dynamically visible to help cafeteria staff maintain standard dining options.
+3. **One Review Per Meal:** A student has at most one live review per food item. Once a meal is reviewed, the app always offers "Edit Review" (never "Write a Review") and `ReviewService.createReview` refuses to create a second live review for the same meal via a different order, so `reviewCount` and the rating distribution can never be inflated by duplicates.
+4. **Firestore Enforcement:** Rules explicitly prevent writing rating values outside the 1–5 range, or writing reviews for items the user has not collected.
+5. **Cafeteria Quality Control:** The average rating of each item is dynamically visible to help cafeteria staff maintain standard dining options.
 
 ---
 

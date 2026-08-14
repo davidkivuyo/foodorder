@@ -145,11 +145,11 @@ Do not remove existing comments unless they are directly related to what you are
 
 # Current Phase
 
-# PHASE E — GRADUATED ORDERING RESTRICTIONS
+# PHASE F — RELIABILITY RECOVERY
 
 ## OBJECTIVE
 
-Implement Phase E of the CampusBite Pickup Reliability System.
+Implement Phase F of the CampusBite Pickup Reliability System.
 
 Previous phases completed:
 
@@ -157,543 +157,347 @@ Previous phases completed:
 ✓ Phase B — Pickup Reliability calculation
 ✓ Phase B.1 — 2-minute order cancellation window
 ✓ Phase C — Grace period and automatic NO_SHOW
-✓ Phase D — Student reliability experience and warnings
+✓ Phase D — Student reliability experience
+✓ Phase E — Graduated ordering restrictions
 
-Phase E introduces proportional ordering restrictions for students whose pickup reliability remains persistently poor.
+Phase F introduces the reliability recovery system.
 
-The system must protect cafe operations and reduce repeated food waste WITHOUT recreating the previous strike/suspension system.
+The purpose is to allow students to naturally recover their pickup reliability through successful order collections.
+
+The system must:
+
+- reward consistent successful pickups through improved reliability
+- automatically relax ordering restrictions when reliability improves
+- avoid permanent punishment
+- avoid manual recovery requirements
+- preserve the existing reliability calculation
+- preserve the existing restriction model
+- minimize Firestore reads and writes
 
 IMPORTANT:
 
-There are NO strikes.
+Do NOT create a second reliability algorithm.
 
-There is NO automatic permanent ban.
+Do NOT create a second score.
 
-There is NO "2 no-shows = suspension" rule.
+Do NOT create recovery points.
 
-Restrictions must be gradual, reversible and based on the existing Pickup Reliability System.
+Do NOT create a new strike system.
 
----
+Do NOT create account bans.
 
-# 1. CORE PRINCIPLE
+Do NOT create permanent suspension.
 
-Reliability measures behavior.
-
-Restrictions protect cafe operations.
-
-The reliability engine remains the source of truth.
-
-The restriction system consumes:
-
-reliabilityScore
-
-reliabilityStatus
-
-eligibleOrders
-
-recent performance
-
-The restriction system must NOT recalculate reliability independently.
+Use the existing Phase B reliability calculation as the single source of truth.
 
 ---
 
-# 2. DO NOT CHANGE THE RELIABILITY ENGINE
+# 1. FIRST — AUDIT EXISTING IMPLEMENTATION
 
-Do not duplicate:
+Before modifying code, inspect:
 
-collectionRate
+- PickupReliability model
+- PickupReliability service
+- Reliability calculation
+- Recent pickup history
+- Lifetime counters
+- Reliability score
+- Reliability status
+- Phase E restriction level
+- Active-order limit
+- COLLECTED processing
+- NO_SHOW processing
+- Firestore user schema
+- Firestore order schema
+- Cloud Functions
+- Firestore security rules
+- AccountScreen reliability UI
 
-recentCollectionRate
+Do not assume names or locations.
 
-reliabilityScore
-
-reliabilityStatus
-
-calculations.
-
-Use the existing Phase B backend-maintained values.
-
-If the backend changes the reliability summary:
-
-the restriction state must be recalculated from that authoritative data.
-
-Do not calculate restrictions inside Flutter.
-
----
-
-# 3. RECOMMENDED RESTRICTION LEVELS
-
-Use the following policy.
-
-## LEVEL 0 — NORMAL
-
-Reliability:
-
-90–100
-
-Status:
-
-EXCELLENT
-
-or
-
-GOOD
-
-Behavior:
-
-Normal ordering.
-
-No restrictions.
+Reuse the actual implementation.
 
 ---
 
-## LEVEL 1 — WARNING
+# 2. CORE PRINCIPLE
 
-Reliability:
+Recovery must happen automatically through successful collections.
 
-50–89
-
-Status:
-
-GOOD
-
-or
-
-NEEDS_IMPROVEMENT
-
-Behavior:
-
-Normal ordering.
-
-Show helpful reminder.
-
-No order-limit restriction yet.
-
-This level is primarily informational.
-
----
-
-## LEVEL 2 — LIMITED
-
-Reliability:
-
-25–49
-
-Status:
-
-POOR
-
-Behavior:
-
-Maximum:
-
-2 active orders
-
-at the same time.
-
-The student may still:
-
-Browse
-
-Search
-
-Add to cart
-
-Place orders
-
-Collect orders
-
-View history
-
-Do not block ordering completely.
-
----
-
-## LEVEL 3 — HIGHLY LIMITED
-
-Reliability:
-
-0–24
-
-Status:
-
-CRITICAL
-
-Behavior:
-
-Maximum:
-
-1 active order
-
-at a time.
-
-Show a stronger pickup reminder before checkout.
-
-Do not suspend the account.
-
-Do not ban the account.
-
-Do not permanently block ordering.
-
----
-
-# 4. IMPORTANT — MINIMUM HISTORY
-
-Do NOT apply restrictions to users with insufficient history.
-
-If:
-
-eligibleOrders < 3
-
-restrictionLevel must remain:
-
-NORMAL
-
-regardless of reliability score.
-
-Reason:
-
-A student with one missed order should not receive meaningful restrictions based on insufficient evidence.
-
----
-
-# 5. NEW USERS
-
-If:
-
-eligibleOrders == 0
-
-restrictionLevel:
-
-NORMAL
-
-No restrictions.
-
-No warning.
-
----
-
-# 6. INSUFFICIENT HISTORY
-
-If:
-
-eligibleOrders = 1 or 2
-
-restrictionLevel:
-
-NORMAL
-
-The account remains unrestricted.
-
-The user can build a reliable pickup history naturally.
-
----
-
-# 7. RESTRICTED USER DATA
-
-Extend the existing user reliability summary.
-
-Do not create unnecessary collections.
-
-Prefer adding:
-
-pickupReliability.restrictionLevel
-
-and:
-
-pickupReliability.restrictionReason
-
-Example:
-
-pickupReliability: {
-    reliabilityScore: 42,
-    status: "POOR",
-    restrictionLevel: "LIMITED",
-    restrictionReason: "Low pickup reliability",
-    ...
-}
-
-Use actual project schema conventions.
-
-Do not duplicate reliability fields elsewhere.
-
----
-
-# 8. DERIVE RESTRICTIONS SERVER-SIDE
-
-The authoritative restriction level must be calculated server-side.
-
-Flutter must never be allowed to write:
-
-restrictionLevel = NORMAL
-
-or:
-
-restrictionLevel = LIMITED
-
-Students cannot manipulate their own restrictions.
-
----
-
-# 9. RESTRICTION STATES
-
-Use explicit constants/enums.
-
-Recommended:
-
-NORMAL
-
-LIMITED
-
-HIGHLY_LIMITED
-
-Do NOT use:
-
-BANNED
-
-SUSPENDED
-
-STRIKE
-
-PUNISHED
-
-unless these already have an unrelated legitimate use elsewhere in the product.
-
-The new system is intentionally not a strike system.
-
----
-
-# 10. ACTIVE ORDER DEFINITION
-
-Before implementing an order-limit restriction, define exactly what counts as active.
-
-Recommended active statuses:
-
-PENDING
-
-ACCEPTED
-
-PREPARING
-
-READY
-
-Do NOT count:
-
-CANCELLED
+The flow is:
 
 COLLECTED
 
-NO_SHOW
+↓
 
-REJECTED
+Reliability Engine processes successful pickup
 
-as active orders.
+↓
 
-Use the existing canonical OrderStatus values.
+Lifetime counters update
 
-Do not create a second definition elsewhere.
+↓
 
----
+Recent history updates
 
-# 11. ACTIVE ORDER LIMIT
+↓
 
-For:
+Recent collection rate updates
 
-NORMAL
+↓
 
-No artificial limit.
+Reliability score updates
 
-For:
+↓
 
-LIMITED
+Reliability status updates
 
-maximum:
+↓
 
-2 active orders.
+Restriction level is re-evaluated
 
-For:
+↓
 
-HIGHLY_LIMITED
+Restrictions may relax automatically
 
-maximum:
-
-1 active order.
+No separate recovery counter is needed.
 
 ---
 
-# 12. CHECK ORDER LIMIT SERVER-SIDE
+# 3. COLLECTION IS THE RECOVERY EVENT
 
-The Flutter client must not be the sole authority.
+Only a genuine:
 
-Do NOT rely only on:
+READY → COLLECTED
 
-if (activeOrders >= 2)
+transition can improve reliability.
 
-inside Flutter.
+Do not count:
 
-A malicious client could bypass this.
+- PENDING
+- ACCEPTED
+- PREPARING
+- READY
+- CANCELLED
+- NO_SHOW
+- REJECTED
 
-The backend order-creation workflow must validate:
+as recovery events.
 
-current restrictionLevel
-
-current active order count
-
-requested new order
-
-before creating the order.
-
----
-
-# 13. ORDER CREATION FLOW
-
-When the student attempts to place an order:
-
-1. Authenticate user.
-2. Read authoritative user reliability/restriction state.
-3. Determine active-order limit.
-4. Count the user's currently active orders using an efficient indexed query or transaction-compatible approach.
-5. If within limit:
-   allow order creation.
-6. If limit exceeded:
-   reject the order.
-7. Return a user-friendly business error.
-
-Do not create the order first and cancel it later.
+A successful collection is the only positive pickup outcome.
 
 ---
 
-# 14. PREVENT RACE CONDITIONS
+# 4. DO NOT ARTIFICIALLY ADD POINTS
 
-Two devices may attempt to place orders simultaneously.
+Do NOT implement something like:
+
+successfulCollection += 5 points
+
+or:
+
+reliabilityScore += 10
+
+The score must continue to be calculated from the existing Phase B metrics.
+
+The existing model is:
+
+lifetimeCollectionRate
+
++
+
+recentCollectionRate
+
+↓
+
+reliabilityScore
+
+Use the existing formula unchanged.
+
+---
+
+# 5. RECENT HISTORY IS THE PRIMARY RECOVERY MECHANISM
+
+The existing recent pickup history contains the latest eligible outcomes.
+
+For example:
+
+recentPickupHistory = [
+    COLLECTED,
+    COLLECTED,
+    NO_SHOW,
+    COLLECTED,
+    COLLECTED
+]
+
+When a new order is collected:
+
+1. Add COLLECTED.
+2. Keep only the latest configured number of eligible outcomes.
+3. Recalculate recentCollectedOrders.
+4. Recalculate recentNoShowOrders.
+5. Recalculate recentCollectionRate.
+6. Recalculate the existing reliabilityScore.
+7. Recalculate the existing reliabilityStatus.
+
+Do not create another history list.
+
+---
+
+# 6. LIFETIME HISTORY
+
+A successful collection must also increment the existing:
+
+eligibleOrders
+
+and:
+
+collectedOrders
+
+exactly once.
+
+The existing:
+
+noShowOrders
+
+must not change.
+
+Therefore:
+
+eligibleOrders += 1
+
+collectedOrders += 1
+
+noShowOrders unchanged
+
+---
+
+# 7. EVENT-DRIVEN RECOVERY
+
+Recovery must happen only when an eligible order becomes:
+
+COLLECTED.
+
+Do NOT recalculate reliability:
+
+- every app launch
+- every AccountScreen open
+- every minute
+- every countdown tick
+- every login
+- every notification
+- every app resume
+
+This is critical for Firestore cost control.
+
+---
+
+# 8. IDEMPOTENCY
+
+A collected order must only contribute to reliability once.
+
+If the same event is processed twice:
+
+eligibleOrders must increase once.
+
+collectedOrders must increase once.
+
+recent history must contain the order once.
+
+The reliability score must not be double-counted.
+
+Use the existing Phase B event-processing mechanism.
+
+If the current implementation uses:
+
+reliabilityProcessed
+
+or equivalent:
+
+reuse it.
+
+Do not create another duplicate idempotency field unless necessary.
+
+---
+
+# 9. CONCURRENT PROCESSING
+
+Safely handle:
+
+two different orders becoming COLLECTED nearly simultaneously.
 
 Example:
 
-restrictionLevel = HIGHLY_LIMITED
+Before:
 
-activeOrderLimit = 1
+eligible = 10
+collected = 7
+noShow = 3
 
-Current active orders:
+Order A → COLLECTED
 
-1
+Order B → COLLECTED
 
-Device A attempts order.
+Expected final state:
 
-Device B attempts order.
+eligible = 12
+collected = 9
+noShow = 3
 
-Both must not successfully bypass the limit.
+Not:
 
-Use a transaction or another server-authoritative mechanism that is compatible with the existing order architecture.
+eligible = 11
+collected = 8
 
-Do not rely on client-side counters.
+Do not allow lost updates.
 
----
-
-# 15. FIRESTORE COST OPTIMIZATION
-
-Do NOT query all historical orders.
-
-Only count active orders.
-
-Use indexed fields such as:
-
-studentId
-
-status
-
-The query should exclude terminal states.
-
-Do not download every active order to the client.
-
-Where possible, use Firestore aggregation/count queries rather than reading complete order documents.
-
-Use the smallest query necessary.
+Use Firestore transactions or the project's existing atomic backend mechanism.
 
 ---
 
-# 16. MY PROFILE SCREEN
+# 10. RESTRICTION RECOVERY
 
-Phase D already displays reliability.
+Phase E already defines:
 
-Extend the existing UI only where appropriate.
+NORMAL
+LIMITED
+HIGHLY_LIMITED
 
-If:
+Do not create new restriction states.
+
+After reliability is recalculated, automatically determine the appropriate restriction level using the existing Phase E thresholds.
+
+For example:
+
+90–100:
+NORMAL
+
+75–89:
+NORMAL
+
+50–74:
+NORMAL
+
+25–49:
+LIMITED
+
+0–24:
+HIGHLY_LIMITED
+
+If eligibleOrders < 3:
 
 NORMAL
 
-show:
-
-"Normal ordering"
-
-If:
-
-LIMITED
-
-show:
-
-"Your pickup record needs improvement."
-
-"Your account currently allows up to 2 active orders."
-
-If:
-
-HIGHLY_LIMITED
-
-show:
-
-"Your pickup record needs significant improvement."
-
-"Your account currently allows 1 active order at a time."
-
-Do not use threatening language.
+Do not change the thresholds in Phase F.
 
 ---
 
-# 17. CHECKOUT EXPERIENCE
+# 11. AUTOMATIC RESTRICTION RELAXATION
 
-If the user is approaching the active-order limit, provide a clear explanation before attempting checkout.
+When the calculated reliability crosses a restriction threshold:
 
-Example:
+automatically update:
 
-"You currently have 2 active orders. Collect one before placing another order."
-
-For HIGHLY_LIMITED:
-
-"You currently have an active order. Please collect it before placing another order."
-
-Do not reveal internal implementation details.
-
-Do not mention Firestore.
-
-Do not mention reliability algorithms.
-
----
-
-# 18. FAILURE HANDLING
-
-If the backend cannot determine the active order count:
-
-DO NOT assume:
-
-0 active orders.
-
-Fail safely.
-
-Display:
-
-"Unable to verify your active orders. Please try again."
-
-Do not allow a client-side fallback to bypass the restriction.
-
----
-
-# 19. RECOVERY
-
-Restrictions are NOT permanent.
-
-When reliability improves:
-
-restrictionLevel must automatically improve according to the current authoritative reliability summary.
+pickupReliability.restrictionLevel
 
 Example:
 
@@ -701,538 +505,466 @@ HIGHLY_LIMITED
     ↓
 successful collections
     ↓
-reliability improves
+score improves to 30
     ↓
 LIMITED
+
+Then:
+
+LIMITED
     ↓
-further improvement
+successful collections
+    ↓
+score improves to 52
     ↓
 NORMAL
 
-Do not require manual admin intervention for normal recovery.
+Do not require:
+
+- admin approval
+- student request
+- logout/login
+- app reinstall
+- manual refresh
 
 ---
 
-# 20. IMPORTANT — DO NOT REMOVE RESTRICTIONS TOO QUICKLY
+# 12. DO NOT RELY ON THE CLIENT
 
-Use the existing reliability score.
+Flutter must never decide:
 
-Do not immediately restore NORMAL after a single successful collection if the calculated reliability remains in a restricted range.
+"Restriction should be removed."
 
-The restriction follows the current reliability state.
+The backend remains authoritative.
 
-This prevents users from repeatedly oscillating between:
-
-NORMAL
-
-and:
-
-LIMITED
-
-after one successful order.
-
----
-
-# 21. NO-SHOW EFFECT
-
-A NO_SHOW does NOT directly set:
-
-restrictionLevel
-
-The correct flow is:
-
-NO_SHOW
-
-↓
-
-Reliability engine updates statistics
-
-↓
-
-Reliability score changes
-
-↓
-
-Restriction engine reevaluates restriction level
-
-This maintains a clean separation of responsibilities.
-
----
-
-# 22. COLLECTION EFFECT
-
-A COLLECTED order similarly does not directly set:
-
-restrictionLevel
-
-Instead:
-
-COLLECTED
-
-↓
-
-Reliability engine updates statistics
-
-↓
-
-Reliability score changes
-
-↓
-
-Restriction engine reevaluates restriction level
-
----
-
-# 23. CANCELLATION EFFECT
-
-A valid:
-
-CANCELLED
-
-order does NOT affect reliability.
-
-Therefore it does not directly affect restrictions.
-
-Do not count cancellation as a no-show.
-
-Do not lower reliability for a valid cancellation inside the 2-minute cancellation window.
-
----
-
-# 24. ADMIN PRIVILEGES
-
-Do not create admin manual restriction controls in this phase.
-
-The restriction level should be automatically derived.
-
-Admins may view the restriction state.
-
-Do NOT allow admins to arbitrarily change:
-
-restrictionLevel
-
-through direct Firestore writes.
-
-Admin override/pardon functionality will be implemented separately.
-
----
-
-# 25. ADMIN VISIBILITY
-
-The Admin App may display:
-
-Student reliability
-
-Restriction level
-
-Active-order limit
-
-But it must remain read-only in this phase.
-
-Example:
-
-Student:
-
-John Doe
-
-Reliability:
-
-38%
-
-Status:
-
-POOR
-
-Restriction:
-
-LIMITED
-
-Active order limit:
-
-2
-
----
-
-# 26. SECURITY RULES
-
-Students:
-
-Can read their own:
-
-pickupReliability
-
-restrictionLevel
-
-restrictionReason
-
-Students CANNOT modify them.
+The client only displays the current state.
 
 Do not allow:
 
-request.resource.data.pickupReliability != resource.data.pickupReliability
-
-from the client.
-
-The backend is authoritative.
+student → write restrictionLevel = NORMAL
 
 ---
 
-# 27. CLOUD FUNCTION / BACKEND SEPARATION
+# 13. MINIMIZE WRITES
 
-Use the existing reliability backend.
+When a COLLECTED event is processed, update the user only if the reliability summary actually changes.
 
-Do not create a new independent reliability calculation engine.
+At minimum, the event may update:
 
-Recommended flow:
+eligibleOrders
 
-Order terminal event
-        ↓
-Reliability Engine
-        ↓
-Update reliability summary
-        ↓
-Restriction Engine
-        ↓
-Update restriction level
+collectedOrders
 
-If existing server-side code can be extended, extend it.
+recent history
 
-Do not duplicate business logic.
+recentCollectionRate
+
+collectionRate
+
+reliabilityScore
+
+reliabilityStatus
+
+restrictionLevel
+
+updatedAt
+
+Use the existing structure.
+
+Do not rewrite unrelated user fields.
+
+If a computed field has not changed, do not write it separately.
+
+Prefer one atomic user-document update/transaction.
 
 ---
 
-# 28. IDEMPOTENCY
+# 14. NO ADDITIONAL FIRESTORE READS FROM STUDENT UI
 
-The restriction update must be safe if the same order event is processed more than once.
+The AccountScreen must continue using the existing user/reliability data.
+
+Do not query historical orders to determine whether recovery occurred.
+
+Do not add a new recovery listener.
+
+Do not add a new recovery collection.
+
+If an existing user snapshot listener already supplies:
+
+pickupReliability
+
+reuse it.
+
+---
+
+# 15. RECOVERY MESSAGE
+
+Phase D already provides the student reliability UI.
+
+Extend it only if necessary to reflect recovery naturally.
+
+Examples:
+
+After successful collections:
+
+"Your pickup record is improving."
+
+"Great job collecting your recent orders."
+
+"Keep it up — your ordering limits have been reduced."
+
+When restriction improves:
+
+"Your pickup reliability has improved. Your ordering limit is now 2 active orders."
+
+When NORMAL is restored:
+
+"Your pickup reliability is back to normal."
+
+Keep language positive.
+
+Do not mention:
+
+- punishment
+- strikes
+- bans
+- penalties
+
+---
+
+# 16. DO NOT OVERREWARD
+
+Recovery should be proportional.
+
+Do not give bonus points.
+
+Do not automatically raise reliability above what the existing calculation produces.
+
+Do not skip the lifetime component.
+
+Do not ignore previous no-shows.
+
+The system should reflect:
+
+recent improvement
+
+while still preserving:
+
+historical behavior
+
+This is exactly why Phase B uses lifetime + recent performance.
+
+---
+
+# 17. RECENT VS LIFETIME BEHAVIOR
+
+The existing weighted reliability model remains authoritative.
 
 Example:
 
-NO_SHOW
+Lifetime:
 
-processed twice.
+50 eligible
+45 collected
+5 no-show
+
+lifetimeRate = 90%
+
+Recent:
+
+4 collected
+1 no-show
+
+recentRate = 80%
+
+Existing weighted score:
+
+90 × 0.70 + 80 × 0.30
+
+Do not change the formula.
+
+If a student continues collecting successfully, recent performance improves naturally.
+
+---
+
+# 18. RECOVERY EXAMPLE
+
+Example:
+
+Initial state:
+
+reliabilityScore = 22
+restrictionLevel = HIGHLY_LIMITED
+activeOrderLimit = 1
+
+Student successfully collects orders.
+
+After several valid collections:
+
+reliabilityScore = 31
 
 Expected:
 
-Reliability updates once.
+restrictionLevel = LIMITED
+activeOrderLimit = 2
 
-Restriction state remains correct.
+More successful collections:
 
-No duplicate writes.
-
-Use the existing event-processing/idempotency mechanism.
-
----
-
-# 29. MINIMIZE FIRESTORE WRITES
-
-Do not write restriction data when it has not changed.
-
-Example:
-
-Current:
-
-LIMITED
-
-New calculation:
-
-LIMITED
-
-Do NOT write again.
-
-Only write if:
-
-restrictionLevel changed
-
-or:
-
-restrictionReason changed.
-
-This prevents unnecessary writes.
-
----
-
-# 30. MINIMIZE FIRESTORE READS
-
-Do not add a new reliability query to AccountScreen.
-
-The user profile already contains:
-
-reliability summary
-
-and:
-
-restriction level
-
-Reuse that.
-
-Order creation should perform only the minimum required backend reads/count queries.
-
-Do not query:
-
-reviews
-
-food_items
-
-notifications
-
-historical orders
-
-when enforcing active-order limits.
-
----
-
-# 31. PERFORMANCE
-
-The restriction system must:
-
-- perform no client polling
-- perform no periodic reliability calculations
-- perform no per-second writes
-- perform no full order-history scans
-- reuse existing user profile listeners
-- use indexed active-order queries
-
----
-
-# 32. OFFLINE BEHAVIOR
-
-If the user is offline:
-
-The app may display cached restriction information.
-
-However:
-
-placing a new order must require authoritative backend validation.
-
-Do not allow offline order creation to bypass the restriction.
-
----
-
-# 33. NOTIFICATIONS
-
-Do NOT create new restriction notifications in this phase.
-
-Do not automatically send:
-
-"Your account is restricted."
-
-unless the existing notification architecture already explicitly requires it.
-
-Notification behavior can be added later.
-
----
-
-# 34. USER-FRIENDLY LANGUAGE
-
-Avoid punitive wording.
-
-Use:
-
-"Pickup reliability"
-
-"Ordering limits"
-
-"Please collect your orders on time"
-
-"Collect an active order before placing another one"
-
-Avoid:
-
-"Bad user"
-
-"Penalty"
-
-"Strike"
-
-"Punishment"
-
-"Ban"
-
-"Suspension"
-
-
----
-
-# 35. ACCESSIBILITY
-
-Restriction messages must be accessible.
-
-Use semantic labels.
-
-Do not communicate restriction state using color alone.
-
-Ensure:
-
-- readable text
-- sufficient contrast
-- screen-reader compatibility
-- large text support
-
----
-
-# 36. TESTING
-
-Create tests for:
-
-## Test 1 — New user
-
-eligibleOrders = 0
+reliabilityScore = 52
 
 Expected:
 
 restrictionLevel = NORMAL
+No artificial active-order limit.
+
+This recovery must happen automatically.
 
 ---
 
-## Test 2 — Good reliability
+# 19. RESTRICTION CHANGES MUST BE ATOMIC
 
-score = 95
+When the reliability engine recalculates the score and restriction:
 
-Expected:
+update them together.
 
-NORMAL
+Avoid a temporary inconsistent state such as:
 
----
+reliabilityScore = 52
+restrictionLevel = HIGHLY_LIMITED
 
-## Test 3 — Needs improvement
+unless unavoidable during a transaction.
 
-score = 65
-
-Expected:
-
-NORMAL
-
-No restriction yet.
+Use an atomic backend operation where appropriate.
 
 ---
 
-## Test 4 — Poor reliability
+# 20. NO-SHOW PROCESSING MUST REMAIN UNCHANGED
 
-score = 40
+Do not alter Phase C's:
 
-eligibleOrders >= 3
+- grace period
+- hard cutoff
+- automatic NO_SHOW processor
+- server time validation
+- transaction logic
 
-Expected:
+Phase F only handles the recovery side.
 
-LIMITED
+NO_SHOW remains:
 
-active-order limit = 2
+eligibleOrders += 1
+
+noShowOrders += 1
+
+recent history += NO_SHOW
 
 ---
 
-## Test 5 — Critical reliability
+# 21. CANCELLATION MUST REMAIN EXCLUDED
 
-score = 20
+A valid cancellation during the 2-minute cancellation window must not:
 
-eligibleOrders >= 3
+improve reliability
+
+or:
+
+reduce reliability.
+
+It simply remains excluded.
+
+Do not change Phase B.1.
+
+---
+
+# 22. EXCUSED NO-SHOW COMPATIBILITY
+
+Phase F must be compatible with a future admin "Excuse No-show" feature.
+
+Do not permanently design reliability data so a historical no-show cannot later be corrected.
+
+If a future phase changes:
+
+NO_SHOW → EXCUSED
+
+the reliability engine must be capable of recalculating affected metrics.
+
+Do not implement admin excuse functionality in Phase F.
+
+---
+
+# 23. SECURITY
+
+Students can:
+
+READ their own reliability.
+
+Students cannot:
+
+WRITE reliability.
+
+Students cannot:
+
+WRITE restrictionLevel.
+
+Students cannot:
+
+WRITE collectedOrders.
+
+Students cannot:
+
+WRITE recentPickupHistory.
+
+Students cannot:
+
+WRITE reliabilityScore.
+
+Backend remains authoritative.
+
+---
+
+# 24. ADMIN ACCESS
+
+Admins may read reliability according to the existing Phase E authorization model.
+
+Do not introduce arbitrary admin write access.
+
+Do not add manual recovery controls.
+
+Manual admin intervention will be implemented separately.
+
+---
+
+# 25. PERFORMANCE
+
+The recovery system must:
+
+- run only on COLLECTED events
+- use existing reliability infrastructure
+- avoid historical order scans
+- avoid new listeners
+- avoid client polling
+- avoid per-minute updates
+- avoid per-second writes
+
+---
+
+# 26. TESTING
+
+Create/update automated tests.
+
+## Test 1 — Successful collection
+
+Order:
+
+READY → COLLECTED
 
 Expected:
 
-HIGHLY_LIMITED
+eligibleOrders + 1
 
-active-order limit = 1
+collectedOrders + 1
+
+noShowOrders unchanged
+
+---
+
+## Test 2 — Duplicate collection event
+
+Same order processed twice.
+
+Expected:
+
+counts increase once.
+
+---
+
+## Test 3 — Recent history
+
+New COLLECTED order enters recent history.
+
+Expected:
+
+latest event = COLLECTED
+
+oldest event removed if history exceeds configured limit.
+
+---
+
+## Test 4 — Reliability improvement
+
+Start:
+
+reliabilityScore = 24
+
+restrictionLevel = HIGHLY_LIMITED
+
+Process enough successful collections to cross the restriction threshold.
+
+Expected:
+
+restrictionLevel becomes LIMITED.
+
+---
+
+## Test 5 — Full recovery
+
+Continue successful collections until score crosses the NORMAL threshold.
+
+Expected:
+
+restrictionLevel = NORMAL.
 
 ---
 
 ## Test 6 — Insufficient history
 
-eligibleOrders = 1
-
-score low
+eligibleOrders < 3
 
 Expected:
-
-NORMAL
-
-No restriction.
-
----
-
-## Test 7 — Two active orders
-
-restrictionLevel = LIMITED
-
-activeOrders = 2
-
-Attempt third order.
-
-Expected:
-
-REJECTED.
-
----
-
-## Test 8 — One active order
-
-restrictionLevel = HIGHLY_LIMITED
-
-activeOrders = 1
-
-Attempt second order.
-
-Expected:
-
-REJECTED.
-
----
-
-## Test 9 — Active order becomes COLLECTED
-
-LIMITED student:
-
-activeOrders = 2
-
-One becomes COLLECTED.
-
-Expected:
-
-activeOrders = 1
-
-Student may place another order.
-
----
-
-## Test 10 — Active order becomes NO_SHOW
-
-Order becomes NO_SHOW.
-
-Expected:
-
-It no longer counts toward active-order limit.
-
-Reliability updates.
-
-Restriction reevaluates afterward.
-
----
-
-## Test 11 — CANCELLED order
-
-Order is CANCELLED.
-
-Expected:
-
-It does not count toward reliability.
-
-It does not count toward active-order limit.
-
----
-
-## Test 12 — Recovery
-
-Restricted student improves reliability.
-
-Expected:
-
-restriction level changes automatically when score crosses threshold.
-
----
-
-## Test 13 — Student manipulation
-
-Client attempts:
 
 restrictionLevel = NORMAL
+
+regardless of raw score.
+
+---
+
+## Test 7 — No-show unchanged
+
+Process NO_SHOW.
+
+Expected:
+
+Phase B no-show logic works normally.
+
+Phase F must not treat it as recovery.
+
+---
+
+## Test 8 — Cancellation unchanged
+
+Process CANCELLED.
+
+Expected:
+
+reliability unchanged.
+
+---
+
+## Test 9 — Concurrent collections
+
+Two orders become COLLECTED simultaneously.
+
+Expected:
+
+both are counted exactly once.
+
+No lost update.
+
+---
+
+## Test 10 — Student write attempt
+
+Student tries to modify reliability.
 
 Expected:
 
@@ -1240,94 +972,57 @@ PERMISSION_DENIED.
 
 ---
 
-## Test 14 — Concurrent order attempts
+## Test 11 — Restriction recovery consistency
 
-Restricted student at active-order limit.
-
-Two devices attempt order creation simultaneously.
+Reliability score improves across a threshold.
 
 Expected:
 
-The active-order limit cannot be bypassed.
+score and restrictionLevel update atomically.
 
 ---
 
-## Test 15 — Backend unavailable
+## Test 12 — App UI
 
-Attempt order creation while authoritative restriction check cannot complete.
+After backend recovery:
+
+AccountScreen receives updated data.
 
 Expected:
 
-Order is not created.
+reliability and restriction information update automatically using the existing user listener.
 
-User receives a retry message.
-
----
-
-# 37. SECURITY TESTING
-
-Verify:
-
-✓ Student cannot modify reliability.
-
-✓ Student cannot modify restriction level.
-
-✓ Student cannot modify active-order counts.
-
-✓ Student cannot create orders beyond the limit.
-
-✓ Student cannot use a second device to bypass restrictions.
-
-✓ Students cannot modify another user's data.
-
-✓ Admin cannot arbitrarily modify restriction fields.
-
-✓ Backend remains authoritative.
-
-## Client-side order creation is revoked
-
-Firestore Rules expose NO client create path on /orders: the
-validOrderCreateRequest() helper was removed and `allow create` was revoked.
-Orders are created exclusively by the placeOrder callable (Admin SDK), so the
-active-order limit cannot be bypassed by writing an order document directly,
-and server-owned fields (createdAt, cancellationDeadline, readyAt,
-pickupDeadline, collectedAt, expiredAt, noShowProcessed, ...) cannot be forged
-on create.
-
-Consequence: app builds older than Phase E (which placed orders with a direct
-client Firestore write) can no longer place orders and must update — the
-current app already routes every order through the callable.
+No manual refresh required.
 
 ---
 
-# 38. COST AUDIT
+# 27. FIRESTORE COST AUDIT
 
-Before declaring Phase E complete:
+Before completing Phase F:
 
-For every new Firestore operation document:
-
-- collection/path
-- operation
-- reason
-- expected frequency
+Inspect every added Firestore operation.
 
 Target:
 
-Reliability update:
-only on COLLECTED/NO_SHOW events.
+COLLECTED event
+    ↓
+one backend reliability transaction/update
 
-Restriction update:
-only when restriction state changes.
+Avoid:
 
-Order creation validation:
-one minimal active-order query/count per order attempt, or a transaction-compatible mechanism already used by the project.
+- querying all historical orders
+- querying all recent orders unnecessarily
+- new student-side listeners
+- repeated recalculation
+- repeated writes when state has not changed
 
-Account screen:
-no additional reliability reads if user profile data is already loaded.
+If the existing Phase B engine already performs the required operation:
+
+extend it instead of adding another operation.
 
 ---
 
-# 39. BACKWARD COMPATIBILITY
+# 28. BACKWARD COMPATIBILITY
 
 Do not break:
 
@@ -1340,117 +1035,117 @@ Do not break:
 - READY
 - COLLECTED
 - NO_SHOW
-- reliability engine
 - grace period
+- Phase B reliability
+- Phase C expiry
+- Phase D UI
+- Phase E restrictions
 - notifications
 - reviews
 - favourites
 - admin order management
-- in-app updates
 
-Do not reintroduce the old strike engine.
+Do not reintroduce the old strike system.
 
 ---
 
-# 40. DO NOT IMPLEMENT FUTURE PHASES
+# 29. DO NOT IMPLEMENT FUTURE PHASES
 
-STOP after Phase E.
+STOP after Phase F.
 
 Do NOT implement:
 
-❌ temporary ordering cooldowns
-❌ admin pardon/override
-❌ food rescue
-❌ food waste analytics
-❌ reliability rewards
-❌ reliability notifications
-❌ permanent account suspension
-❌ account banning
-❌ strike system
-❌ new punishment system
+❌ Admin excuse/pardon
 
-Those belong to future phases.
+❌ Food rescue
+
+❌ Food waste analytics
+
+❌ Reliability rewards
+
+❌ New reliability notifications
+
+❌ Permanent suspension
+
+❌ Account banning
+
+❌ Manual reliability editing
+
+❌ New punishment mechanisms
 
 ---
 
-# 41. FINAL ACCEPTANCE CRITERIA
+# 30. FINAL ACCEPTANCE CRITERIA
 
-Phase E is complete only when:
+Phase F is complete only when:
 
-✓ Restriction level derives from existing reliability.
+✓ Successful collections improve reliability naturally.
 
-✓ New users are unrestricted.
+✓ Lifetime metrics are updated exactly once.
 
-✓ Insufficient-history users are unrestricted.
+✓ Recent history is updated exactly once.
 
-✓ Good users are unrestricted.
+✓ Reliability score uses the existing Phase B formula.
 
-✓ Poor users can be limited to 2 active orders.
+✓ No artificial recovery points are introduced.
 
-✓ Critical users can be limited to 1 active order.
+✓ Restriction levels automatically relax when thresholds are crossed.
 
-✓ Active order count is enforced server-side.
+✓ HIGHLY_LIMITED can become LIMITED.
 
-✓ Client UI cannot bypass restrictions.
+✓ LIMITED can become NORMAL.
 
-✓ Concurrent order attempts cannot bypass limits.
+✓ New users remain unrestricted.
 
-✓ CANCELLED orders are excluded.
+✓ Insufficient-history users remain unrestricted.
 
-✓ COLLECTED orders are removed from active count.
+✓ No-show events do not improve reliability.
 
-✓ NO_SHOW orders are removed from active count.
+✓ Cancelled orders do not affect reliability.
 
-✓ Restrictions automatically recover when reliability improves.
+✓ Students cannot manipulate recovery data.
 
-✓ No restriction is applied from a single no-show alone.
+✓ Recovery is server-authoritative.
 
-✓ No strikes are created.
+✓ No additional historical order scans are introduced.
 
-✓ No accounts are banned.
-
-✓ No accounts are suspended.
-
-✓ No unnecessary Firestore reads are introduced.
+✓ No additional client listeners are introduced unnecessarily.
 
 ✓ No unnecessary Firestore writes are introduced.
 
-✓ Existing reliability system remains authoritative.
+✓ Existing Phase E restrictions remain intact.
 
-✓ Existing order lifecycle remains functional.
+✓ Existing order lifecycle remains intact.
 
-✓ Existing cancellation remains functional.
+✓ Existing Phase C expiry remains intact.
 
-✓ Existing grace period remains functional.
-
-✓ Existing notifications remain functional.
+✓ Existing Phase D UI remains compatible.
 
 ---
 
 # REQUIRED FINAL REPORT
 
-After completion, provide:
+After implementation, provide:
 
 1. Files inspected.
 2. Files modified.
 3. Files created.
-4. Restriction model.
-5. Restriction thresholds.
-6. Active-order definition.
-7. Server-side enforcement mechanism.
-8. Concurrency strategy.
-9. Reliability integration.
-10. Firestore security changes.
-11. Firestore reads introduced.
-12. Firestore writes introduced.
-13. Cost analysis.
-14. Tests performed.
-15. Security tests.
-16. Any unresolved risks.
+4. Existing Phase B reliability architecture reused.
+5. Recovery implementation.
+6. Recent-history behavior.
+7. Restriction relaxation behavior.
+8. Transaction/concurrency strategy.
+9. Firestore security changes.
+10. Firestore reads introduced.
+11. Firestore writes introduced.
+12. Cost optimization analysis.
+13. Tests performed.
+14. Security tests.
+15. Any unresolved risks.
 
-STOP AFTER PHASE E.
+STOP AFTER PHASE F.
 
-Do not begin Phase F.
+Do not begin Phase G.
 
 ---
 

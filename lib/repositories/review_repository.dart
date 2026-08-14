@@ -100,26 +100,6 @@ class ReviewRepository {
     return MapEntry(reviews, snapshot.docs.lastOrNull);
   }
 
-  /// Check if a review exists for a specific (foodId, orderId, userId) combination.
-  Future<Review?> findExistingReview({
-    required String foodId,
-    required String orderId,
-    required String userId,
-  }) async {
-    final snapshot = await _firestore
-        .collection(_collection)
-        .where('foodId', isEqualTo: foodId)
-        .where('orderId', isEqualTo: orderId)
-        .where('userId', isEqualTo: userId)
-        .where('deleted', isEqualTo: false)
-        .limit(1)
-        .get();
-
-    if (snapshot.docs.isEmpty) return null;
-    final data = snapshot.docs.first.data();
-    return Review.fromFirestore(snapshot.docs.first.id, data);
-  }
-
   /// Get all reviews (including soft-deleted) by a user for a specific food item.
   ///
   /// Includes soft-deleted reviews so the eligibility check in
