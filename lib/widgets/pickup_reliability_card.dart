@@ -105,8 +105,16 @@ class PickupReliabilityCard extends StatelessWidget {
         hasRecentHistory &&
         rel.recentEligibleOrders >= 3 &&
         rel.recentNoShowOrders == 0;
+    // Phase F §15 — when a restricted student is actively recovering (recent
+    // window fully collected), point at the automatic relaxation of the
+    // ordering limit instead of the generic praise.
+    final bool isRestricted =
+        rel.restrictionLevel != PickupRestrictionLevel.normal;
     final String? encouragement = recentSuccess
-        ? 'Great job — you\'ve collected your recent orders on time.'
+        ? (isRestricted
+            ? 'Keep it up — your ordering limits are relaxing as your '
+                  'pickup reliability improves.'
+            : 'Great job — you\'ve collected your recent orders on time.')
         : null;
 
     final semanticText = isNewOrInsufficient

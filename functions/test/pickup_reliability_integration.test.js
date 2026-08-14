@@ -780,6 +780,164 @@ describe("Pickup reliability — missing user doc (deferred, never dropped)", ()
   });
 });
 
+describe("Phase F — reliability recovery through successful collections", () => {
+  it("Test 6 — insufficient history stays NORMAL regardless of raw score",
+      async () => {
+    await fireTerminal("rel-f6-1", "no_show");
+    await fireTerminal("rel-f6-2", "no_show");
+    const s = await userReliability();
+    assert.equal(s.eligibleOrders, 2);
+    assert.equal(s.reliabilityScore, 0);
+    assert.equal(s.status, "INSUFFICIENT_HISTORY");
+    assert.equal(s.restrictionLevel, "NORMAL", "eligible < 3 → never restricted");
+    assert.equal(s.restrictionReason, null);
+  });
+
+  it("Tests 4 & 5 — HIGHLY_LIMITED relaxes to LIMITED, then NORMAL, "
+      + "through successful collections", async () => {
+    // 5 events: 1 collected + 4 no-shows → score 20 → CRITICAL →
+    // HIGHLY_LIMITED (activeOrderLimit 1).
+    const bad = ["collected", "no_show", "no_show", "no_show", "no_show"];
+    for (let i = 0; i < bad.length; i++) {
+      await fireTerminal(`rel-f45-${i}`, bad[i]);
+    }
+    let s = await userReliability();
+    assert.equal(s.eligibleOrders, 5);
+    assert.equal(s.collectedOrders, 1);
+    assert.equal(s.noShowOrders, 4);
+    assert.equal(s.reliabilityScore, 20);
+    assert.equal(s.status, "CRITICAL");
+    assert.equal(s.restrictionLevel, "HIGHLY_LIMITED");
+    assert.equal(s.restrictionReason, "Very low pickup reliability");
+
+    // +2 collections → 3 collected / 7 eligible → score 42.9 → POOR →
+    // LIMITED (activeOrderLimit 2).
+    await fireTerminal("rel-f45-5", "collected");
+    await fireTerminal("rel-f45-6", "collected");
+    s = await userReliability();
+    assert.equal(s.eligibleOrders, 7);
+    assert.equal(s.collectedOrders, 3);
+    assert.equal(s.noShowOrders, 4);
+    assert.equal(s.reliabilityScore, 42.9);
+    assert.equal(s.status, "POOR");
+    assert.equal(s.restrictionLevel, "LIMITED");
+    assert.equal(s.restrictionReason, "Low pickup reliability");
+
+    // +2 collections → 5 collected / 9 eligible → score 55.6 →
+    // NEEDS_IMPROVEMENT → NORMAL (no active-order limit).
+    await fireTerminal("rel-f45-7", "collected");
+    await fireTerminal("rel-f45-8", "collected");
+    s = await userReliability();
+    assert.equal(s.eligibleOrders, 9);
+    assert.equal(s.collectedOrders, 5);
+    assert.equal(s.noShowOrders, 4);
+    assert.equal(s.reliabilityScore, 55.6);
+    assert.equal(s.status, "NEEDS_IMPROVEMENT");
+    assert.equal(s.restrictionLevel, "NORMAL");
+    assert.equal(s.restrictionReason, null);
+  });
+
+  it("Test 11 — score and restrictionLevel are consistent after every "
+      + "event (post-event recovery consistency)", async () => {
+    // After EACH terminal event the stored restriction must equal the
+    // restriction for the freshly written score. The engine writes score
+    // and restrictionLevel together in ONE summary map inside a single
+    // transaction update, so a stale HIGHLY_LIMITED with a recovered score
+    // can never be observed after the handler completes — this test pins
+    // that post-event invariant across the whole recovery sequence.
+    const seq = [
+      "no_show", "no_show", "no_show", "no_show", "no_show", // 0-5 eligible, score 0
+      "collected", // 6 eligible, 1/6 → 16.7 → HIGHLY_LIMITED
+      "collected", // 7 eligible, 2/7 → 28.6 → LIMITED
+      "collected", // 8 eligible, 3/8 → 37.5 → LIMITED
+      "collected", // 9 eligible, 4/9 → 44.4 → LIMITED
+      "collected", // 10 eligible, 5/10 → 50 → NORMAL
+    ];
+    for (let i = 0; i < seq.length; i++) {
+      await fireTerminal(`rel-f11-${i}`, seq[i]);
+      const s = await userReliability();
+      const expected = s.reliabilityScore >= 50
+        ? "NORMAL"
+        : s.reliabilityScore >= 25 ? "LIMITED" : "HIGHLY_LIMITED";
+      if (s.eligibleOrders < 3) {
+        assert.equal(
+          s.restrictionLevel, "NORMAL",
+          `step ${i}: insufficient history must never be restricted`,
+        );
+      } else {
+        assert.equal(
+          s.restrictionLevel, expected,
+          `step ${i}: restriction must match score ${s.reliabilityScore}`,
+        );
+      }
+    }
+  });
+
+  it("NO_SHOW never improves reliability (Phase F §20)", async () => {
+    // Build NORMAL: 5 collected / 9 eligible → score 55.6.
+    for (let i = 0; i < 5; i++) await fireTerminal(`rel-fns-${i}`, "collected");
+    for (let i = 0; i < 4; i++) {
+      await fireTerminal(`rel-fns-${i + 5}`, "no_show");
+    }
+    let s = await userReliability();
+    assert.equal(s.reliabilityScore, 55.6);
+    assert.equal(s.restrictionLevel, "NORMAL");
+
+    // 5 collected / 10 eligible → score 50 → still NORMAL (no improvement).
+    await fireTerminal("rel-fns-9", "no_show");
+    s = await userReliability();
+    assert.equal(s.reliabilityScore, 50);
+    assert.equal(s.restrictionLevel, "NORMAL");
+
+    // 5 collected / 11 eligible → lifetime 45.45, recent window (last 10,
+    // first collection evicted) = 4/10 = 40 → 45.45*0.7 + 40*0.3 = 43.8
+    // → POOR → LIMITED.
+    await fireTerminal("rel-fns-10", "no_show");
+    s = await userReliability();
+    assert.equal(s.reliabilityScore, 43.8);
+    assert.equal(s.restrictionLevel, "LIMITED");
+  });
+
+  it("Test 9 — concurrent collections both count once and relax the "
+      + "restriction by the full amount", async () => {
+    // Build HIGHLY_LIMITED: 1 collected / 5 eligible → score 20.
+    const bad = ["collected", "no_show", "no_show", "no_show", "no_show"];
+    for (let i = 0; i < bad.length; i++) {
+      await fireTerminal(`rel-fc-${i}`, bad[i]);
+    }
+    let s = await userReliability();
+    assert.equal(s.restrictionLevel, "HIGHLY_LIMITED");
+
+    // Two simultaneous COLLECTED events → 3 collected / 7 eligible →
+    // score 42.9 → LIMITED (no lost update).
+    for (const id of ["rel-fc-5", "rel-fc-6"]) {
+      await seedOrder(id, validOrderPayload({ status: "collected" }));
+    }
+    await Promise.all([
+      functionsModule.onOrderStatusChanged.run(await makeStatusChangeEvent(
+        "rel-fc-5",
+        validOrderPayload({ status: "ready" }),
+        validOrderPayload({ status: "collected" }),
+      )),
+      functionsModule.onOrderStatusChanged.run(await makeStatusChangeEvent(
+        "rel-fc-6",
+        validOrderPayload({ status: "ready" }),
+        validOrderPayload({ status: "collected" }),
+      )),
+    ]);
+    s = await userReliability();
+    assert.equal(s.eligibleOrders, 7, "both collections counted exactly once");
+    assert.equal(s.collectedOrders, 3);
+    assert.equal(s.noShowOrders, 4);
+    assert.equal(s.reliabilityScore, 42.9);
+    assert.equal(s.restrictionLevel, "LIMITED", "relaxed by the full amount");
+    for (const id of ["rel-fc-5", "rel-fc-6"]) {
+      const order = await db.collection("orders").doc(id).get();
+      assert.equal(order.data().reliabilityProcessed, true, id);
+    }
+  });
+});
+
 describe("Order foodIds backfill — transactional, never clobbers", () => {
   it("backfills foodIds on a legacy order that lacks the field", async () => {
     await seedOrder("bf-legacy", validOrderPayload({ status: "collected" }));

@@ -32,24 +32,32 @@ class RestrictionNotice extends StatelessWidget {
     this.activeOrderLimit,
   });
 
-  /// User-facing headline for a restriction level (§16).
+  /// User-facing headline for a restriction level (§16, Phase F §15).
+  ///
+  /// Phase F recovery framing: restrictions relax automatically as the
+  /// student collects orders, so the wording stays positive and points at
+  /// the recovery path — never at strikes, bans or penalties.
   static String? headlineFor(PickupRestrictionLevel level) {
     return switch (level) {
       PickupRestrictionLevel.normal => null,
-      PickupRestrictionLevel.limited => 'Your pickup record needs improvement.',
+      PickupRestrictionLevel.limited => 'Your pickup reliability is improving.',
       PickupRestrictionLevel.highlyLimited =>
-        'Your pickup record needs significant improvement.',
+        'Your pickup reliability is improving.',
     };
   }
 
-  /// User-facing ordering-limit line for a restriction level (§16).
+  /// User-facing ordering-limit line for a restriction level (§16,
+  /// Phase F §15). Reflects the current limit and the automatic recovery
+  /// path.
   static String? detailFor(PickupRestrictionLevel level, int? limit) {
     return switch (level) {
       PickupRestrictionLevel.normal => null,
       PickupRestrictionLevel.limited =>
-        'Your account currently allows up to ${limit ?? 2} active orders.',
+        'Keep collecting your orders on time — you can now have up to '
+        '${limit ?? 2} active orders at a time.',
       PickupRestrictionLevel.highlyLimited =>
-        'Your account currently allows 1 active order at a time.',
+        'Keep collecting your orders on time — your ordering limit will '
+        'relax as your pickup reliability improves.',
     };
   }
 

@@ -222,23 +222,34 @@ void main() {
       expect(service, contains('OrderPlacementFailure.unavailableFood'));
     });
 
-    test('My Profile shows the §16 non-punitive restriction messaging', () {
+    test('My Profile shows the §16 non-punitive restriction messaging ',
+        () {
       final notice = readRepoFile('lib/widgets/restriction_notice.dart');
+      // Phase F §15 — recovery framing: positive, forward-looking, never
+      // punitive.
       expect(
         notice,
-        contains('Your pickup record needs improvement.'),
+        contains('Your pickup reliability is improving.'),
       );
       expect(
         notice,
-        contains('Your account currently allows up to'),
+        contains('you can now have up to'),
+      );
+      // The detail string is split across two adjacent Dart literals, so
+      // assert the raw fragments rather than the compiled concatenation.
+      expect(
+        notice,
+        contains('your ordering limit will '),
       );
       expect(
         notice,
-        contains('Your account currently allows 1 active order at a time.'),
+        contains('relax as your pickup reliability improves.'),
       );
       expect(notice, isNot(contains('Strike')));
       expect(notice, isNot(contains('Ban')));
       expect(notice, isNot(contains('Suspend')));
+      expect(notice, isNot(contains('needs improvement')));
+      expect(notice, isNot(contains('punish')));
     });
 
     test('the Phase E emulator integration suite is runnable', () {
