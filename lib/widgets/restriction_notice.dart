@@ -56,8 +56,9 @@ class RestrictionNotice extends StatelessWidget {
         'Keep collecting your orders on time — you can now have up to '
         '${limit ?? 2} active orders at a time.',
       PickupRestrictionLevel.highlyLimited =>
-        'Keep collecting your orders on time — your ordering limit will '
-        'relax as your pickup reliability improves.',
+        'You can currently have ${limit ?? 1} active order at a time. '
+        'Keep collecting your orders on time — your limit will relax as '
+        'your pickup reliability improves.',
     };
   }
 

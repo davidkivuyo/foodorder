@@ -871,8 +871,9 @@ CampusBite dynamically computes a student's top favorite food items to provide a
 To ensure genuine feedback and maintain quality standards, CampusBite features a structured review and rating system:
 1. **Eligibility Check:** Only students who have successfully ordered and collected a meal can write a review for that food item, preventing review spam and fake ratings.
 2. **Review Integrity:** Students can only edit or delete their own reviews. They cannot modify review data or ratings written by others.
-3. **Firestore Enforcement:** Rules explicitly prevent writing rating values outside the 1–5 range, or writing reviews for items the user has not collected.
-4. **Cafeteria Quality Control:** The average rating of each item is dynamically visible to help cafeteria staff maintain standard dining options.
+3. **One Review Per Meal:** A student has at most one live review per food item. Once a meal is reviewed, the app always offers "Edit Review" (never "Write a Review") and `ReviewService.createReview` refuses to create a second live review for the same meal via a different order, so `reviewCount` and the rating distribution can never be inflated by duplicates.
+4. **Firestore Enforcement:** Rules explicitly prevent writing rating values outside the 1–5 range, or writing reviews for items the user has not collected.
+5. **Cafeteria Quality Control:** The average rating of each item is dynamically visible to help cafeteria staff maintain standard dining options.
 
 ---
 

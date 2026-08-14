@@ -27,10 +27,7 @@ import 'firebase_test_helper.dart';
 ///   [collectedOrders] map, so queries for different meals or users can
 ///   never return unrelated order IDs.
 class _FakeReviewRepository extends ReviewRepository {
-  _FakeReviewRepository({
-    required this.reviews,
-    required this.collectedOrders,
-  });
+  _FakeReviewRepository({required this.reviews, required this.collectedOrders});
 
   final List<Review> reviews;
 
@@ -61,10 +58,8 @@ class _FakeReviewRepository extends ReviewRepository {
 /// [ReviewService] with a fixed authenticated user ID so eligibility can be
 /// tested without a real FirebaseAuth session.
 class _TestReviewService extends ReviewService {
-  _TestReviewService({
-    required ReviewRepository repository,
-    required this.uid,
-  }) : super(repository: repository);
+  _TestReviewService({required ReviewRepository repository, required this.uid})
+    : super(repository: repository);
 
   final String? uid;
 
@@ -97,7 +92,9 @@ void main() {
       final service = _TestReviewService(
         repository: _FakeReviewRepository(
           reviews: const [],
-          collectedOrders: const {('user_1', 'food_a'): ['order_1']},
+          collectedOrders: const {
+            ('user_1', 'food_a'): ['order_1'],
+          },
         ),
         uid: null,
       );
@@ -108,12 +105,31 @@ void main() {
       expect(result.hasExistingReview, isFalse);
     });
 
-    test('returns not eligible with no review and no collected order',
-        () async {
+    test(
+      'returns not eligible with no review and no collected order',
+      () async {
+        final service = _TestReviewService(
+          repository: _FakeReviewRepository(
+            reviews: const [],
+            collectedOrders: const {},
+          ),
+          uid: 'user_1',
+        );
+
+        final result = await service.checkEligibility('food_a');
+
+        expect(result.eligible, isFalse);
+        expect(result.hasExistingReview, isFalse);
+      },
+    );
+
+    test('orders belonging to another user do not grant eligibility', () async {
       final service = _TestReviewService(
         repository: _FakeReviewRepository(
           reviews: const [],
-          collectedOrders: const {},
+          collectedOrders: const {
+            ('user_9', 'food_a'): ['order_x'],
+          },
         ),
         uid: 'user_1',
       );
@@ -124,45 +140,35 @@ void main() {
       expect(result.hasExistingReview, isFalse);
     });
 
-    test('orders belonging to another user do not grant eligibility',
-        () async {
-      final service = _TestReviewService(
-        repository: _FakeReviewRepository(
-          reviews: const [],
-          collectedOrders: const {('user_9', 'food_a'): ['order_x']},
-        ),
-        uid: 'user_1',
-      );
+    test(
+      'first-time review with a collected order offers Write mode',
+      () async {
+        final service = _TestReviewService(
+          repository: _FakeReviewRepository(
+            reviews: const [],
+            collectedOrders: const {
+              ('user_1', 'food_a'): ['order_1'],
+            },
+          ),
+          uid: 'user_1',
+        );
 
-      final result = await service.checkEligibility('food_a');
+        final result = await service.checkEligibility('food_a');
 
-      expect(result.eligible, isFalse);
-      expect(result.hasExistingReview, isFalse);
-    });
-
-    test('first-time review with a collected order offers Write mode',
-        () async {
-      final service = _TestReviewService(
-        repository: _FakeReviewRepository(
-          reviews: const [],
-          collectedOrders: const {('user_1', 'food_a'): ['order_1']},
-        ),
-        uid: 'user_1',
-      );
-
-      final result = await service.checkEligibility('food_a');
-
-      expect(result.eligible, isTrue);
-      expect(result.hasExistingReview, isFalse);
-      expect(result.existingReview, isNull);
-      expect(result.matchingOrderId, 'order_1');
-    });
+        expect(result.eligible, isTrue);
+        expect(result.hasExistingReview, isFalse);
+        expect(result.existingReview, isNull);
+        expect(result.matchingOrderId, 'order_1');
+      },
+    );
 
     test('a live review always offers Edit mode', () async {
       final service = _TestReviewService(
         repository: _FakeReviewRepository(
           reviews: [_review(id: 'r1', orderId: 'order_1')],
-          collectedOrders: const {('user_1', 'food_a'): ['order_1']},
+          collectedOrders: const {
+            ('user_1', 'food_a'): ['order_1'],
+          },
         ),
         uid: 'user_1',
       );
@@ -230,7 +236,9 @@ void main() {
       final service = _TestReviewService(
         repository: _FakeReviewRepository(
           reviews: [_review(id: 'r1', orderId: 'order_1', deleted: true)],
-          collectedOrders: const {('user_1', 'food_a'): ['order_1']},
+          collectedOrders: const {
+            ('user_1', 'food_a'): ['order_1'],
+          },
         ),
         uid: 'user_1',
       );
@@ -244,14 +252,44 @@ void main() {
       expect(result.matchingOrderId, 'order_1');
     });
 
-    test('multiple live reviews for the same meal still offer Edit mode',
-        () async {
+    test(
+      'multiple live reviews for the same meal still offer Edit mode',
+      () async {
+        final service = _TestReviewService(
+          repository: _FakeReviewRepository(
+            reviews: [
+              _review(id: 'r1', orderId: 'order_1'),
+              _review(id: 'r2', orderId: 'order_2'),
+            ],
+            collectedOrders: const {
+              ('user_1', 'food_a'): ['order_1', 'order_2'],
+            },
+          ),
+          uid: 'user_1',
+        );
+
+        final result = await service.checkEligibility('food_a');
+
+        expect(result.eligible, isTrue);
+        expect(result.hasExistingReview, isTrue);
+        expect(result.existingReview, isNotNull);
+        expect(result.matchingOrderId, isNotNull);
+      },
+    );
+
+    test('canonical review selection is deterministic — most recently '
+        'updated wins', () async {
+      final newer = _review(
+        id: 'r_new',
+        orderId: 'order_2',
+      ).copyWith(updatedAt: DateTime(2026, 1, 2));
+      final older = _review(
+        id: 'r_old',
+        orderId: 'order_1',
+      ).copyWith(updatedAt: DateTime(2026, 1, 1));
       final service = _TestReviewService(
         repository: _FakeReviewRepository(
-          reviews: [
-            _review(id: 'r1', orderId: 'order_1'),
-            _review(id: 'r2', orderId: 'order_2'),
-          ],
+          reviews: [older, newer],
           collectedOrders: const {
             ('user_1', 'food_a'): ['order_1', 'order_2'],
           },
@@ -263,8 +301,33 @@ void main() {
 
       expect(result.eligible, isTrue);
       expect(result.hasExistingReview, isTrue);
-      expect(result.existingReview, isNotNull);
-      expect(result.matchingOrderId, isNotNull);
+      expect(result.existingReview?.id, 'r_new');
+      expect(result.matchingOrderId, 'order_2');
     });
+
+    test(
+      'canonical review selection breaks timestamp ties by document ID',
+      () async {
+        final service = _TestReviewService(
+          repository: _FakeReviewRepository(
+            reviews: [
+              _review(id: 'r_b', orderId: 'order_2'),
+              _review(id: 'r_a', orderId: 'order_1'),
+            ],
+            collectedOrders: const {
+              ('user_1', 'food_a'): ['order_1', 'order_2'],
+            },
+          ),
+          uid: 'user_1',
+        );
+
+        final result = await service.checkEligibility('food_a');
+
+        expect(result.eligible, isTrue);
+        expect(result.hasExistingReview, isTrue);
+        expect(result.existingReview?.id, 'r_a');
+        expect(result.matchingOrderId, 'order_1');
+      },
+    );
   });
 }

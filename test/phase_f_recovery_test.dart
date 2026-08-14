@@ -163,8 +163,13 @@ void main() {
           find.textContaining('Your pickup reliability is improving.'),
           findsOneWidget,
         );
+        // The enforced limit must be stated explicitly, not implied.
         expect(
-          find.textContaining('your ordering limit will relax'),
+          find.textContaining('1 active order at a time'),
+          findsOneWidget,
+        );
+        expect(
+          find.textContaining('your limit will relax'),
           findsOneWidget,
         );
         // No punitive language anywhere in the recovery messaging.

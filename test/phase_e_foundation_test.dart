@@ -235,15 +235,15 @@ void main() {
         notice,
         contains('you can now have up to'),
       );
-      // The detail string is split across two adjacent Dart literals, so
+      // The detail string is split across adjacent Dart literals, so
       // assert the raw fragments rather than the compiled concatenation.
       expect(
         notice,
-        contains('your ordering limit will '),
+        contains('active order at a time'),
       );
       expect(
         notice,
-        contains('relax as your pickup reliability improves.'),
+        contains('your limit will relax'),
       );
       expect(notice, isNot(contains('Strike')));
       expect(notice, isNot(contains('Ban')));
