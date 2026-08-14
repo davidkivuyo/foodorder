@@ -43,7 +43,6 @@ const functionsModule = require("../index.js");
 const db = admin.firestore();
 
 const { initializeTestEnvironment } = require("@firebase/rules-unit-testing");
-const { serverTimestamp } = require("firebase/firestore");
 
 const RULES_FILE = path.join(__dirname, "../../firestore.rules");
 const CANCELLATION_WINDOW_MINUTES = 2;
@@ -52,10 +51,9 @@ let testEnv;
 
 // ── Fixtures ────────────────────────────────────────────────────────────────
 
-// Base order payload. Rules-based creates override createdAt with
-// serverTimestamp() (the create rule requires it to equal request.time);
-// seeded (rules-disabled) writes keep the literal Date default, which the
-// Admin SDK persists as a real Timestamp.
+// Base order payload. Order creation is exclusively server-authoritative
+// (Phase E placeOrder callable), so fixtures are seeded with the Admin SDK
+// via seedOrder(); the literal Date default persists as a real Timestamp.
 function validOrderPayload(overrides = {}) {
   return {
     studentId: "student1",
@@ -178,16 +176,50 @@ after(async () => {
 });
 
 describe("Firestore rules — cancellation authorization behaviour", () => {
-  it("lets a verified student create a pending order with server-authoritative "
-      + "timestamps (Test 1)", async () => {
-    await studentDb()
-      .collection("orders")
-      .doc("cancel-rule-ok-1")
-      .set(validOrderPayload({ createdAt: serverTimestamp() }));
+  it("lets a verified student place an order via the placeOrder callable "
+      + "(Test 1)", async () => {
+    // The client never writes /orders directly (no create rule exists):
+    // creation goes through the placeOrder callable, which writes the
+    // authoritative document with the Admin SDK. The onNewOrder trigger
+    // (not wired in this direct-invocation harness) writes the
+    // cancellationDeadline later.
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("food_items").doc("food_1").set({
+        id: "food_1",
+        title: "Rice & Beans",
+        price: 3000,
+        available: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+    });
+    await functionsModule.placeOrder.run({
+      auth: { uid: "student1", token: { email_verified: true } },
+      data: {
+        orderId: "cancel-rule-ok-1",
+        studentId: "student1",
+        userName: "Test Student",
+        items: [{
+          foodItemId: "food_1",
+          title: "Rice & Beans",
+          price: 3000,
+          quantity: 1,
+          image: "",
+          selectedCafe: "Cafe A",
+        }],
+        foodIds: ["food_1"],
+        price: 3000,
+        cafeId: "cafe1",
+        cafeLocation: null,
+        distanceMeters: 200,
+        distanceCalculated: false,
+        pickupWindowMinutes: 20,
+      },
+    });
     const snap = await db.collection("orders").doc("cancel-rule-ok-1").get();
     assert.equal(snap.data().status, "pending");
-    // The client may not supply a cancellationDeadline on create — the
-    // onNewOrder trigger writes the authoritative createdAt + 2 min later.
+    // The client may not supply a cancellationDeadline — the onNewOrder
+    // trigger writes the authoritative createdAt + 2 min later.
     assert.equal(snap.data().cancellationDeadline, undefined);
   });
 
@@ -260,81 +292,38 @@ describe("Firestore rules — cancellation authorization behaviour", () => {
     assert.equal(after.cancelledAt, undefined);
   });
 
-  it("denies student order create with forged cancelledAt/cancelledBy",
-      async () => {
-    // The base payload is otherwise valid (server-resolved createdAt, no
-    // deadline), so the denial is attributable to the forged field.
-    await assert.rejects(
-      studentDb().collection("orders").doc("cancel-rule-forge-1").set(
-        validOrderPayload({
-          createdAt: serverTimestamp(),
-          cancelledAt: new Date(),
-        }),
-      ),
-      /PERMISSION_DENIED/,
-    );
-    await assert.rejects(
-      studentDb().collection("orders").doc("cancel-rule-forge-2").set(
-        validOrderPayload({
-          createdAt: serverTimestamp(),
-          cancelledBy: "student1",
-        }),
-      ),
-      /PERMISSION_DENIED/,
-    );
-  });
-
-  it("denies student order create with a client-literal createdAt — only "
-      + "the server-resolved sentinel passes (protects the age gate)", async () => {
-    // createdAt must equal request.time, which only FieldValue.serverTimestamp()
-    // produces. Any literal client timestamp — backdated or forward-dated —
-    // is rejected, so the missing-deadline age gate in
-    // cancellationWindowPassed() cannot be bypassed by choosing createdAt.
-    for (const forgedCreatedAt of [
-      new Date(Date.now() - 10 * 60000), // backdated
-      new Date(Date.now() + 60 * 60000), // forward-dated
-    ]) {
+  it("denies every direct student order create — forged fields and literal "
+      + "timestamps alike (no client create rule exists)", async () => {
+    // Since the client create rule was revoked (Phase E — creation is
+    // exclusively the placeOrder callable), ANY direct write to /orders is
+    // rejected outright: forged cancelledAt/cancelledBy, client-literal
+    // createdAt, and client-supplied cancellationDeadline can never reach the
+    // document, so the 2-minute cancellation window cannot be forged.
+    const forgedPayloads = [
+      { cancelledAt: new Date() },
+      { cancelledBy: "student1" },
+      { createdAt: new Date(Date.now() - 10 * 60000) }, // backdated
+      { createdAt: new Date(Date.now() + 60 * 60000) }, // forward-dated
+      { cancellationDeadline: new Date(Date.now() - 60 * 1000) }, // early
+      { cancellationDeadline: new Date(Date.now() + 10 * 60000) }, // delayed
+    ];
+    let i = 0;
+    for (const forged of forgedPayloads) {
       await assert.rejects(
-        studentDb().collection("orders").doc("cancel-rule-forge-3").set(
-          validOrderPayload({ createdAt: forgedCreatedAt }),
-        ),
+        studentDb().collection("orders")
+          .doc(`cancel-rule-forge-${i++}`)
+          .set(validOrderPayload(forged)),
         (err) => err.code === "permission-denied",
-        "literal createdAt must be denied on create",
+        `forged ${Object.keys(forged)[0]} must be denied on create`,
       );
     }
-  });
-
-  it("denies student order create with an EARLY client-supplied "
-      + "cancellationDeadline", async () => {
-    // The authoritative deadline (createdAt + 2 min) is written only by the
-    // onNewOrder trigger. A client that sends any deadline — here one well
-    // before the intended window — must be rejected on create.
-    await assert.rejects(
-      studentDb().collection("orders").doc("cancel-rule-forge-early").set(
-        validOrderPayload({
-          createdAt: serverTimestamp(),
-          cancellationDeadline: new Date(Date.now() - 60 * 1000),
-        }),
-      ),
-      (err) => err.code === "permission-denied",
-      "early client deadline must be denied on create",
-    );
-  });
-
-  it("denies student order create with a DELAYED client-supplied "
-      + "cancellationDeadline", async () => {
-    // A client deadline far beyond the intended 2-minute window must also be
-    // rejected — the field is backend-written exclusively.
-    await assert.rejects(
-      studentDb().collection("orders").doc("cancel-rule-forge-delayed").set(
-        validOrderPayload({
-          createdAt: serverTimestamp(),
-          cancellationDeadline: new Date(Date.now() + 10 * 60000),
-        }),
-      ),
-      (err) => err.code === "permission-denied",
-      "delayed client deadline must be denied on create",
-    );
+    // None of the forged documents may exist.
+    for (let j = 0; j < forgedPayloads.length; j++) {
+      const snap = await db.collection("orders")
+        .doc(`cancel-rule-forge-${j}`)
+        .get();
+      assert.equal(snap.exists, false);
+    }
   });
 
   it("denies admin acceptance before the cancellation window passes "

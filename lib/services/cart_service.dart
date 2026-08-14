@@ -616,16 +616,12 @@ class CartService extends ChangeNotifier {
     final precheck = await _checkActiveOrderLimit(userId);
     if (precheck != null) return precheck;
 
-    // Phase E — availability pre-check (UX hint only; the callable re-checks
-    // authoritatively inside its transaction and is the enforcement point).
-    final unavailable = await _findUnavailableItems(itemsSnapshot);
-    if (unavailable.isNotEmpty) {
-      return (
-        orderId: null,
-        failure: OrderPlacementFailure.unavailableFood,
-        activeOrderLimit: null,
-      );
-    }
+    // Availability is intentionally NOT pre-checked here: the placeOrder
+    // callable re-checks every item authoritatively inside its transaction
+    // and returns unavailableFood, which the cart sheet already surfaces
+    // with a user-friendly message. A client-side pre-check would duplicate
+    // those reads on every checkout attempt (§13 — rely on callable error
+    // codes for user messaging).
 
     final payload = <String, dynamic>{
       'orderId': newOrderId,
@@ -695,15 +691,19 @@ class CartService extends ChangeNotifier {
       final limit = summary?.activeOrderLimit;
       if (limit == null) return null;
 
-      final active = await _firestore
+      // Count aggregation: only the number matters for the limit check, and
+      // the callable re-verifies inside its transaction anyway — no need to
+      // download the active order documents themselves.
+      final activeCount = await _firestore
           .collection('orders')
           .where('studentId', isEqualTo: userId)
           .where('status', whereIn: [
             for (final status in OrderStatus.activeOrderStatuses)
               status.toShortString(),
           ])
+          .count()
           .get();
-      if (active.size >= limit) {
+      if ((activeCount.count ?? 0) >= limit) {
         return (
           orderId: null,
           failure: OrderPlacementFailure.activeOrderLimit,
@@ -715,31 +715,6 @@ class CartService extends ChangeNotifier {
       // Offline / query failure — proceed to the callable (authoritative).
       return null;
     }
-  }
-
-  /// Phase E — availability pre-check (UX hint).
-  ///
-  /// Returns the titles of cart items that are missing or marked unavailable.
-  /// The `placeOrder` callable re-checks availability authoritatively inside
-  /// its transaction, so a stale hint can never create an invalid order.
-  Future<List<String>> _findUnavailableItems(List<CartItem> items) async {
-    final unavailable = <String>[];
-    try {
-      for (final item in items) {
-        final snapshot = await _firestore
-            .collection('food_items')
-            .doc(item.foodItem.id)
-            .get();
-        final exists = snapshot.exists;
-        final available = (snapshot.data()?['available'] as bool?) ?? true;
-        if (!exists || !available) {
-          unavailable.add(item.foodItem.title);
-        }
-      }
-    } on Exception catch (e) {
-      AppLog.e('[CartService] Availability pre-check failed', e);
-    }
-    return unavailable;
   }
 
   @override

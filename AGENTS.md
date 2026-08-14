@@ -1284,6 +1284,20 @@ Verify:
 
 ✓ Backend remains authoritative.
 
+## Client-side order creation is revoked
+
+Firestore Rules expose NO client create path on /orders: the
+validOrderCreateRequest() helper was removed and `allow create` was revoked.
+Orders are created exclusively by the placeOrder callable (Admin SDK), so the
+active-order limit cannot be bypassed by writing an order document directly,
+and server-owned fields (createdAt, cancellationDeadline, readyAt,
+pickupDeadline, collectedAt, expiredAt, noShowProcessed, ...) cannot be forged
+on create.
+
+Consequence: app builds older than Phase E (which placed orders with a direct
+client Firestore write) can no longer place orders and must update — the
+current app already routes every order through the callable.
+
 ---
 
 # 38. COST AUDIT

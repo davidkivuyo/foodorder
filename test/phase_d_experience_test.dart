@@ -237,5 +237,26 @@ void main() {
       expect(find.text('Extend pickup by 10 min'), findsNothing);
       expect(find.text('Pickup extended by 10 min'), findsNothing);
     });
+
+    testWidgets('runs no timer when there is no pickupDeadline to watch', (
+      tester,
+    ) async {
+      // No deadline means nothing can expire, so the widget must not start a
+      // 1-second periodic timer that could never self-cancel.
+      await tester.pumpWidget(
+        wrap(
+          ExtendPickupAction(
+            canExtend: true,
+            extended: false,
+            isExtending: false,
+            pickupDeadline: null,
+            onExtend: () {},
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(tester.binding.transientCallbackCount, 0);
+    });
   });
 }

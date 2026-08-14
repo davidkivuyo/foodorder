@@ -87,7 +87,10 @@ class _ExtendPickupActionState extends State<ExtendPickupAction> {
   }
 
   void _startTimer() {
-    if (_deadlinePassed) return;
+    // Without a deadline there is nothing to watch — skip the timer entirely
+    // instead of running a 1-second periodic tick that can never self-cancel.
+    // didUpdateWidget starts the timer when a deadline first arrives.
+    if (_deadlinePassed || widget.pickupDeadline == null) return;
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (_isDisposed) return;
       _checkDeadline();

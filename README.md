@@ -12,7 +12,7 @@ This Project code changes must be reviewed by:
 
 ## Scan the QR code to visit the web app
 
-![Qr code](designs/assets/qrcode.png "The Web app")
+![Qr code](designs/assets/qrcode.svg "The Web app")
 ---
 
 ## Table of Contents
@@ -554,6 +554,8 @@ Each map in the `items` array contains:
 ## Firestore Security Rules
 
 Read and write your own firestore rules. follow best practices in the official documentations.
+
+**Order creation is server-exclusive:** `firestore.rules` exposes **no** client `create` on `/orders` (the old `validOrderCreateRequest()` helper was removed). Orders are created only by the `placeOrder` Cloud Function callable — the client invokes it via `OrderPlacementService` (wired through `CartService.placeOrder`) — so the Phase E active-order limit cannot be bypassed by writing an order document directly, and server-owned fields (`createdAt`, `cancellationDeadline`, `readyAt`, `pickupDeadline`, `collectedAt`, `expiredAt`, `noShowProcessed`, ...) cannot be forged on create. App builds older than Phase E that placed orders with a direct client write must be updated before the new rules are deployed.
 
 ---
 
