@@ -64,6 +64,7 @@ void updateBackgroundDispatcher() {
 /// WorkManager task on platforms that can never install an APK is wasted work
 /// and may produce startup noise where WorkManager is unsupported.
 Future<void> registerPeriodicUpdateCheck() async {
+  if (!UpdateService.buildEnabled) return;
   if (!updatePlatform.supported) return;
   try {
     await Workmanager().initialize(updateBackgroundDispatcher);

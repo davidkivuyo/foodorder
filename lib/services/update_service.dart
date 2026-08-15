@@ -114,12 +114,22 @@ class UpdateService extends ChangeNotifier {
     'x86_64',
   ];
 
-  /// Test seam: when true, bypasses the `updatePlatform.supported` gate so
-  /// the check flow can be exercised on hosts that are not Android (e.g.
-  /// the VM test runner, where `Platform.isAndroid` is false). Production
-  /// behavior is untouched — this is never set outside tests.
+  /// Test seam: when true, forces the update system on in non-release builds
+  /// (which otherwise never run updates) and bypasses the
+  /// `updatePlatform.supported` gate, so the check flow can be exercised on
+  /// hosts that are not Android (e.g. the VM test runner, where
+  /// `Platform.isAndroid` is false). Production behavior is untouched — this
+  /// is never set outside tests.
   @visibleForTesting
   static bool debugForceCheckEnabled = false;
+
+  /// Whether the in-app update system runs in this build.
+  ///
+  /// Updates are disabled outside release builds so the update UI and the
+  /// periodic background task never interrupt development and testing. They
+  /// run only in production release builds, or when [debugForceCheckEnabled]
+  /// is set (test seam).
+  static bool get buildEnabled => kReleaseMode || debugForceCheckEnabled;
 
   /// Test seam: when set, [checkForUpdate] uses this fetcher instead of
   /// hitting `https://dl.larason.space/latest`. Lets tests feed a scripted
@@ -224,6 +234,7 @@ class UpdateService extends ChangeNotifier {
   /// cached decision, or falls back to a stale-but-present cache, or stays on
   /// the current version when there is no cache at all.
   Future<void> checkForUpdate() async {
+    if (!buildEnabled) return;
     if (_busy) return;
     if (!updatePlatform.supported && !debugForceCheckEnabled) return;
 

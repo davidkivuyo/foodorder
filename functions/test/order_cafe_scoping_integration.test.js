@@ -26,8 +26,8 @@
 //   3  Admin updates an order from their own cafe (status transition)
 //   4  Admin is denied updating an order from another cafe
 //   5  Admin is denied deleting an order from another cafe
-//   6  Legacy orders (no `cafes`) are served by any admin (cafeless fallback)
-//      until the backfill tags them; once tagged, scoping applies
+//   6  Legacy orders (no `cafes`) are unreadable by every admin until the
+//      backfill tags them; once tagged, scoping applies
 //   7  An admin without a cafeName cannot read scoped orders (but can read
 //      cafeless/UNASSIGNED ones)
 //   8  Students cannot forge the `cafes` array (no create rule; protected on update)
@@ -177,12 +177,16 @@ describe("per-cafe admin order access (adminServesOrder)", () => {
       adminDb("adminA").collection("orders").doc("scope-other-1").get(),
       (err) => err.code === "permission-denied",
     );
-    // And the scoped query the admin app runs only returns own-cafe orders.
+    // And the scoped query the admin app runs returns only own-cafe orders:
+    // the Cafe A order is returned, while the Cafe B order stays excluded.
+    await seedOrder("scope-own-q-1", validOrderPayload({ cafes: ["Cafe A"] }));
     const own = await adminDb("adminA")
         .collection("orders")
         .where("cafes", "array-contains", "Cafe A")
         .get();
-    assert.equal(own.size, 0);
+    assert.equal(own.size, 1, "scoped query returns exactly the Cafe A order");
+    assert.equal(own.docs[0].id, "scope-own-q-1");
+    assert.equal(own.docs[0].data().cafes[0], "Cafe A");
   });
 
   it("Test 3 — an admin updates an order from their own cafe", async () => {
@@ -228,24 +232,22 @@ describe("per-cafe admin order access (adminServesOrder)", () => {
     assert.equal(after.exists, true);
   });
 
-  it("Test 6 — legacy orders (no `cafes`) are served by any active admin "
-      + "until the backfill tags them (cafeless fallback)", async () => {
+  it("Test 6 — legacy orders (no `cafes`) are unreadable until the backfill "
+      + "tags them (no cafeless fallback)", async () => {
     const legacy = validOrderPayload();
     delete legacy.cafes;
     await seedOrder("scope-legacy-1", legacy);
-    // A cafeless order is served by every active admin through the client
-    // rules (mirrors the "notify every admin" fallback), so an admin who was
-    // notified can always open and process it.
-    const adminASnap = await adminDb("adminA")
-        .collection("orders")
-        .doc("scope-legacy-1")
-        .get();
-    assert.equal(adminASnap.exists, true);
-    const adminBSnap = await adminDb("adminB")
-        .collection("orders")
-        .doc("scope-legacy-1")
-        .get();
-    assert.equal(adminBSnap.exists, true);
+    // No valid cafe scope → NO admin can read the unscoped legacy order
+    // (adminA included) until the privileged backfill derives one — there
+    // is no universal access to unscoped Cafe A data.
+    await assert.rejects(
+      adminDb("adminA").collection("orders").doc("scope-legacy-1").get(),
+      (err) => err.code === "permission-denied",
+    );
+    await assert.rejects(
+      adminDb("adminB").collection("orders").doc("scope-legacy-1").get(),
+      (err) => err.code === "permission-denied",
+    );
     // Privileged backfill (Admin SDK) tags the order with its derived cafe;
     // scoping then applies normally: adminA can operate and adminB is denied.
     await db.collection("orders").doc("scope-legacy-1").update({
@@ -790,5 +792,172 @@ describe("createAdminAccount callable (no self-registration)", () => {
     } finally {
       admin.auth().createUser = realCreateUser;
     }
+  });
+});
+
+describe("reactivateStudent callable (backend-only audit)", () => {
+  function invoke(uid, data) {
+    return functionsModule.reactivateStudent.run({ auth: { uid }, data });
+  }
+
+  async function seedSuspendedStudent(uid) {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("users").doc(uid).set({
+        fullName: "Suspended Student",
+        email: `${uid}@test.com`,
+        role: "student",
+        accountStatus: "SUSPENDED",
+        createdAt: new Date(),
+      });
+    });
+  }
+
+  it("rejects a non-admin caller", async () => {
+    await seedSuspendedStudent("studentSuspended1");
+    await assert.rejects(
+      invoke("student1", { studentId: "studentSuspended1" }),
+      (err) => err.code === "permission-denied",
+    );
+  });
+
+  it("rejects a suspended admin caller", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("users").doc("adminSuspended").set({
+        fullName: "Suspended Admin",
+        email: "suspended@test.com",
+        role: "admin",
+        accountStatus: "SUSPENDED",
+        cafeName: "Cafe A",
+        createdAt: new Date(),
+      });
+    });
+    await seedSuspendedStudent("studentSuspended2");
+    await assert.rejects(
+      invoke("adminSuspended", { studentId: "studentSuspended2" }),
+      (err) => err.code === "permission-denied",
+    );
+  });
+
+  it("an active admin reactivates a suspended student (flip + audit + notification)",
+      async () => {
+        await seedSuspendedStudent("studentSuspended3");
+        const result = await invoke("adminA", {
+          studentId: "studentSuspended3",
+          reason: "Reviewed and approved",
+        });
+        assert.equal(result.success, true);
+
+        const profile = await db.collection("users").doc("studentSuspended3").get();
+        assert.equal(profile.data().accountStatus, "ACTIVE");
+
+        // Server-derived identity + timestamp on the immutable audit record.
+        const audit = await db
+            .collection("audit_logs")
+            .where("action", "==", "REACTIVATE")
+            .where("studentId", "==", "studentSuspended3")
+            .get();
+        assert.equal(audit.size, 1, "a REACTIVATE audit record must be written");
+        assert.equal(audit.docs[0].data().adminId, "adminA");
+        assert.equal(audit.docs[0].data().reason, "Reviewed and approved");
+        assert.ok(audit.docs[0].data().timestamp, "server-derived timestamp");
+
+        // Exactly one deduped student notification.
+        const notifications = await db
+            .collection("notifications")
+            .where("eventId", "==", "ACCOUNT_REACTIVATED_studentSuspended3")
+            .get();
+        assert.equal(notifications.size, 1);
+        assert.equal(notifications.docs[0].data().type, "ACCOUNT_REACTIVATED");
+        assert.equal(
+          notifications.docs[0].data().recipientId, "studentSuspended3");
+      });
+
+  it("rejects a target that is not suspended", async () => {
+    // student1 is seeded ACTIVE.
+    await assert.rejects(
+      invoke("adminA", { studentId: "student1" }),
+      (err) => err.code === "failed-precondition",
+    );
+  });
+
+  it("rejects a missing target", async () => {
+    await assert.rejects(
+      invoke("adminA", { studentId: "ghost-student" }),
+      (err) => err.code === "not-found",
+    );
+  });
+
+  it("validates the payload", async () => {
+    await assert.rejects(
+      invoke("adminA", { studentId: "" }),
+      (err) => err.code === "invalid-argument",
+    );
+    await assert.rejects(
+      invoke("adminA", {}),
+      (err) => err.code === "invalid-argument",
+    );
+  });
+});
+
+describe("audit_logs read scoping (per cafe)", () => {
+  async function seedAudit(docId, data) {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("audit_logs").doc(docId).set(data);
+    });
+  }
+
+  it("an admin reads an audit record for their own cafe", async () => {
+    await seedAudit("scope-audit-1", {
+      action: "NO_SHOW_EXCUSED",
+      cafeId: "Cafe A",
+      adminId: "adminA",
+      studentId: "student1",
+      note: "private note",
+      timestamp: new Date(),
+    });
+    const snap = await adminDb("adminA")
+        .collection("audit_logs").doc("scope-audit-1").get();
+    assert.equal(snap.exists, true);
+  });
+
+  it("an admin is denied reading a cross-cafe audit record", async () => {
+    await seedAudit("scope-audit-2", {
+      action: "NO_SHOW_EXCUSED",
+      cafeId: "Cafe A",
+      adminId: "adminA",
+      studentId: "student1",
+      note: "private note",
+      timestamp: new Date(),
+    });
+    await assert.rejects(
+      adminDb("adminB").collection("audit_logs").doc("scope-audit-2").get(),
+      (err) => err.code === "permission-denied",
+    );
+  });
+
+  it("a cafeless audit record (global action) is readable by any admin", async () => {
+    await seedAudit("scope-audit-3", {
+      action: "CREATE_ADMIN",
+      adminId: "adminA",
+      timestamp: new Date(),
+    });
+    const snapA = await adminDb("adminA")
+        .collection("audit_logs").doc("scope-audit-3").get();
+    const snapB = await adminDb("adminB")
+        .collection("audit_logs").doc("scope-audit-3").get();
+    assert.equal(snapA.exists, true);
+    assert.equal(snapB.exists, true);
+  });
+
+  it("a student cannot read audit records", async () => {
+    await seedAudit("scope-audit-4", {
+      action: "REACTIVATE",
+      timestamp: new Date(),
+    });
+    await assert.rejects(
+      testEnv.authenticatedContext("student1").firestore()
+          .collection("audit_logs").doc("scope-audit-4").get(),
+      (err) => err.code === "permission-denied",
+    );
   });
 });

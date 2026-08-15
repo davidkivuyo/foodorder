@@ -252,7 +252,11 @@ describe("Phase G — excuseNoShow eligibility & authorization (Tests 1, 4-8)", 
   it("Test 4 — a READY order cannot be excused", async () => {
     await seedOrder("g-ready-1", validOrderPayload({ status: "ready" }));
     await assert.rejects(
-      excuseNoShow("admin1", { orderId: "g-ready-1", reason: "Other" }),
+      excuseNoShow("admin1", {
+        orderId: "g-ready-1",
+        reason: "Other",
+        note: "test note",
+      }),
       (err) => {
         assert.equal(err.code, "failed-precondition");
         assert.match(err.message, /Only no-show orders/);
@@ -269,6 +273,7 @@ describe("Phase G — excuseNoShow eligibility & authorization (Tests 1, 4-8)", 
       excuseNoShow("admin1", {
         orderId: "g-collected-1",
         reason: "Other",
+        note: "test note",
       }),
       (err) => err.code === "failed-precondition",
     );
@@ -280,6 +285,7 @@ describe("Phase G — excuseNoShow eligibility & authorization (Tests 1, 4-8)", 
       excuseNoShow("admin1", {
         orderId: "g-cancelled-1",
         reason: "Other",
+        note: "test note",
       }),
       (err) => err.code === "failed-precondition",
     );
@@ -288,7 +294,11 @@ describe("Phase G — excuseNoShow eligibility & authorization (Tests 1, 4-8)", 
   it("Test 7 — a Cafe B admin cannot excuse a Cafe A order", async () => {
     await fireNoShow("g-xcafe-1");
     await assert.rejects(
-      excuseNoShow("admin2", { orderId: "g-xcafe-1", reason: "Other" }),
+      excuseNoShow("admin2", {
+        orderId: "g-xcafe-1",
+        reason: "Other",
+        note: "test note",
+      }),
       (err) => {
         assert.equal(err.code, "permission-denied");
         assert.match(err.message, /not authorized to manage orders/i);
@@ -302,7 +312,11 @@ describe("Phase G — excuseNoShow eligibility & authorization (Tests 1, 4-8)", 
   it("Test 8 — a student cannot excuse a no-show", async () => {
     await fireNoShow("g-student-1");
     await assert.rejects(
-      excuseNoShow("student1", { orderId: "g-student-1", reason: "Other" }),
+      excuseNoShow("student1", {
+        orderId: "g-student-1",
+        reason: "Other",
+        note: "test note",
+      }),
       (err) => err.code === "permission-denied",
     );
   });
@@ -310,7 +324,11 @@ describe("Phase G — excuseNoShow eligibility & authorization (Tests 1, 4-8)", 
   it("a suspended admin cannot excuse a no-show", async () => {
     await fireNoShow("g-susp-1");
     await assert.rejects(
-      excuseNoShow("suspendedAdmin", { orderId: "g-susp-1", reason: "Other" }),
+      excuseNoShow("suspendedAdmin", {
+        orderId: "g-susp-1",
+        reason: "Other",
+        note: "test note",
+      }),
       (err) => err.code === "permission-denied",
     );
   });
@@ -555,6 +573,7 @@ describe("Phase G — idempotency, audit & notification (Tests 3, 12-14)", () =>
       excuseNoShow("admin1", {
         orderId: "g-notify-1",
         reason: "Other",
+        note: "test note",
       }),
       (err) => err.code === "failed-precondition",
     );
@@ -585,7 +604,10 @@ describe("Phase G — idempotency, audit & notification (Tests 3, 12-14)", () =>
     assert.equal(audit.adminId, "admin1");
     assert.equal(audit.orderId, "g-audit-1");
     assert.equal(audit.studentId, "student1");
-    assert.equal(audit.cafeId, "cafe1");
+    // The audit record stores the caller admin's cafe name (the per-cafe
+    // identity used throughout the scoping rework), not the legacy order
+    // cafeId field.
+    assert.equal(audit.cafeId, "Cafe A");
     assert.equal(audit.reason, "Admin-approved exception");
     assert.equal(audit.note, "Documented exceptional circumstance");
     assert.ok(audit.timestamp, "timestamp recorded");
@@ -607,8 +629,16 @@ describe("Phase G — idempotency, audit & notification (Tests 3, 12-14)", () =>
   it("Test 14 — concurrent excuses: only one succeeds", async () => {
     await fireNoShow("g-race-1");
     const results = await Promise.allSettled([
-      excuseNoShow("admin1", { orderId: "g-race-1", reason: "Other" }),
-      excuseNoShow("admin1", { orderId: "g-race-1", reason: "Other" }),
+      excuseNoShow("admin1", {
+        orderId: "g-race-1",
+        reason: "Other",
+        note: "test note",
+      }),
+      excuseNoShow("admin1", {
+        orderId: "g-race-1",
+        reason: "Other",
+        note: "test note",
+      }),
     ]);
 
     const fulfilled = results.filter((r) => r.status === "fulfilled");
@@ -674,9 +704,40 @@ describe("Phase G — request validation & rules protection", () => {
       excuseNoShow("admin1", {
         orderId: "g-missing-1",
         reason: "Other",
+        note: "test note",
       }),
       (err) => err.code === "not-found",
     );
+  });
+
+  it("rejects reason Other without a non-empty note", async () => {
+    await fireNoShow("g-other-note-1");
+    // No note at all.
+    await assert.rejects(
+      excuseNoShow("admin1", {
+        orderId: "g-other-note-1",
+        reason: "Other",
+      }),
+      (err) => {
+        assert.equal(err.code, "invalid-argument");
+        assert.match(err.message, /note is required/i);
+        return true;
+      },
+    );
+    const untouched = await orderById("g-other-note-1");
+    assert.equal(untouched.noShowExcused, undefined, "nothing was written");
+
+    // Whitespace-only note is still empty after trimming.
+    await assert.rejects(
+      excuseNoShow("admin1", {
+        orderId: "g-other-note-1",
+        reason: "Other",
+        note: "   ",
+      }),
+      (err) => err.code === "invalid-argument",
+    );
+    const stillUntouched = await orderById("g-other-note-1");
+    assert.equal(stillUntouched.noShowExcused, undefined);
   });
 
   it("students cannot forge noShowExcused on their own order (rules)", async () => {

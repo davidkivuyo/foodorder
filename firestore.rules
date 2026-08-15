@@ -27,23 +27,37 @@ service cloud.firestore {
     }
 
     // Per-cafe admin scoping (Phase 18): an admin may read/update/delete an
-    // order only when their own `cafeName` is in the order's
+    // order only when the order carries a valid, non-empty
     // server-authoritative `cafes` list (written by placeOrder / the
-    // backfill helpers, protected from all client writes).
+    // backfill helpers, protected from all client writes) and their own
+    // `cafeName` appears in it.
     //
-    // A cafeless order — one the backend tagged with the UNASSIGNED sentinel,
-    // or a legacy order whose `cafes` is absent/empty and not yet backfilled —
-    // is served by any active admin. This mirrors the NEW_ORDER notification
-    // fallback that delivers cafeless orders to every admin, so an admin is
-    // never notified about an order they cannot open or process. The backend
-    // (backfillOrderCafes, migrateLegacyOrderCafes) normalizes such orders to
-    // an explicit `cafes` value as soon as they are written or visited.
+    // An order tagged with the UNASSIGNED sentinel (a genuinely cafeless
+    // order — no derivable cafe) is served by any active admin, mirroring
+    // the NEW_ORDER notification fallback that delivers cafeless orders to
+    // every admin. A legacy order whose `cafes` is absent/empty/malformed
+    // and not yet backfilled is NOT served by any admin: no client can read
+    // unscoped data until the backend normalizes it.
+    // (backfillOrderCafes, migrateLegacyOrderCafes) writes an explicit
+    // `cafes` value as soon as such orders are visited.
     function adminServesOrder() {
       return isAdmin()
-        && (!('cafes' in resource.data)
-            || resource.data.cafes.size() == 0
-            || resource.data.cafes.hasAny([callerDoc().data.cafeName])
-            || resource.data.cafes.hasAny(['UNASSIGNED']));
+        && ('cafes' in resource.data)
+        && (resource.data.cafes.hasAny(['UNASSIGNED'])
+            || ('cafeName' in callerDoc().data
+                && callerDoc().data.cafeName is string
+                && resource.data.cafes.hasAny([callerDoc().data.cafeName])));
+    }
+    function adminCanReadAudit() {
+      // Per-cafe scoping for audit reads (mirrors adminServesOrder()): an
+      // audit record that carries a `cafeId` (e.g. NO_SHOW_EXCUSED — the
+      // excusing admin's cafe name) is readable only by an admin of that
+      // cafe; cafeless records (global actions such as CREATE_ADMIN /
+      // REACTIVATE) remain readable by any admin. No higher-level role
+      // exists yet — add an explicit branch for one when it is introduced.
+      return !('cafeId' in resource.data)
+        || resource.data.cafeId.size() == 0
+        || resource.data.cafeId == callerDoc().data.cafeName;
     }
     function callerDoc() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid));
@@ -673,26 +687,6 @@ service cloud.firestore {
         && (!('type' in changed) || request.resource.data.type in allowedTypes);
     }
 
-    function validAuditLogCreate() {
-      let allowed = ['studentId', 'adminId', 'action', 'previousStrike', 'newStrike',
-        'reason', 'timestamp', 'note',
-        'orderId', 'previousStrikeCount', 'newStrikeCount', 'performedBy',
-        'cafeId'];      let allowedActions = ['ISSUE_STRIKE', 'PARDON', 'RESET', 'SUSPEND', 'REACTIVATE',
-        'automatic_no_show', 'CREATE_ADMIN', 'NO_SHOW_EXCUSED'];
-      return request.resource.data.keys().hasOnly(allowed)
-        && request.resource.data.action in allowedActions
-        && request.resource.data.reason is string
-        && request.resource.data.reason.size() < 500
-        // Phase 15 — an admin may only log actions as themself. Attributing a
-        // log entry to another admin or to the automation engine ("system") is
-        // forbidden; server-side automation writes via Admin SDK and is
-        // exempt from these rules.
-        && (!('adminId' in request.resource.data)
-          || request.resource.data.adminId == request.auth.uid)
-        && (!('performedBy' in request.resource.data)
-          || request.resource.data.performedBy == request.auth.uid);
-    }
-
     // ── Rules ───────────────────────────────────────────────────────────
 
     // Food menu
@@ -725,15 +719,16 @@ service cloud.firestore {
       allow read: if isOwner(
         ('studentId' in resource.data
           ? resource.data.studentId
-          : resource.data.userId))
+          : ('userId' in resource.data ? resource.data.userId : '')))
         || adminServesOrder();
       // No client-side create: orders are created exclusively by the
       // placeOrder callable (Phase E), so Firestore Rules cannot be used to
       // bypass the active-order limit or forge server-owned fields.
       // Per-cafe scoping: only an admin whose cafeName is in the order's
-      // server-authoritative `cafes` list may update or delete it. A
-      // cafeless order (absent/empty `cafes`, or tagged with the UNASSIGNED
-      // sentinel) is manageable by any active admin.
+      // server-authoritative `cafes` list may update or delete it. Only an
+      // order tagged with the UNASSIGNED sentinel (genuinely cafeless) is
+      // manageable by any active admin; absent/empty `cafes` is unreadable
+      // until the backend backfill normalizes it.
       allow update: if adminServesOrder()
         && adminNotModifyingProtectedOrderFields()
         && validOrderStatusTransition();
@@ -813,13 +808,14 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    // Audit logs — Phase 15: only role-verified admins may append logs.
-    // The custom-claims backdoor (request.auth.token.admin) is removed:
-    // the users/{uid}.role field is the single source of truth for
-    // authorization, mirroring every other privileged collection.
+    // Audit logs — Phase 18: backend-only creation. Audit records are
+    // written exclusively by trusted Cloud Functions (Admin SDK), which
+    // derive the actor identity and timestamp server-side; direct client
+    // creates/updates/deletes are denied so no client can forge, skip, or
+    // tamper with the append-only trail. Reads are cafe-scoped (see
+    // adminCanReadAudit()).
     match /audit_logs/{docId} {
-      allow read: if isAdmin();
-      allow create: if isAdmin() && validAuditLogCreate();
+      allow read: if isAdmin() && adminCanReadAudit();
       allow update: if false;
       allow delete: if false;
     }

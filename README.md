@@ -424,7 +424,17 @@ Admin-only callable that excuses a specific NO_SHOW order. Enforced server-side:
 - The order must be `NO_SHOW` with a recorded `noShowAt`, not already excused.
 - The reason must be one of the predefined reasons; the note is optional, ≤ 200 chars, no URLs/HTML.
 - Atomically marks the order `noShowExcused`, corrects the student's reliability summary (event excluded from failure counts, restriction recomputed), and writes an immutable `audit_logs/NO_SHOW_EXCUSED_{orderId}` record.
-- Creates exactly one `NO_SHOW_EXCUSED` student notification after commit (eventId-deduped).
+- Commits the order state, reliability correction, audit record, and the `NO_SHOW_EXCUSED_{orderId}` notification outbox event in one transaction; FCM push is delivered by the post-commit `onNewNotification` trigger (eventId-deduped).
+
+### 6. `reactivateStudent` (Callable — admin account action)
+
+Admin-only callable that reactivates a genuinely SUSPENDED student account:
+- The caller must be an authenticated, **ACTIVE** admin.
+- The target must exist and be exactly `accountStatus: "SUSPENDED"` (checked inside the transaction, atomic with the ACTIVE flip).
+- The account-status flip and the immutable `audit_logs` REACTIVATE record commit in **one Firestore transaction**; actor identity (`adminId`) and `timestamp` are derived server-side from the authenticated caller.
+- Creates exactly one `ACCOUNT_REACTIVATED` student notification after commit (eventId-deduped).
+
+`firestore.rules` grants **no** client create/update/delete on `audit_logs` — audit records are backend-only (AGENTS.md §23).
 
 ### Deploying Functions
 
@@ -446,12 +456,12 @@ Get the api keys on your cloudinary account or any other storage providers.
 
 - **`categories`** — `{ name, order }`
 - **`food_items`** — `{ title, subtitle, description, image, price, rating, category, availableCafes, section, time, available, featured, quantity, dietaryTags, keywords, searchPrefixes, createdAt, updatedAt }`
-- **`orders`** — `{ orderId, userId, userName, items, totalPrice, status, cafe, cafeId, cafes, cafeLocation, distanceMeters, distanceCalculated, pickupWindowMinutes, readyAt, pickupDeadline, deadlineStatus, noShowProcessed, expiredAt, deadlineExtended, extensionAt, createdAt, updatedAt }`
+- **`orders`** — `{ orderId, userId, userName, items, totalPrice, status, cafe, cafeId, cafes, cafeLocation, distanceMeters, distanceCalculated, pickupWindowMinutes, readyAt, pickupDeadline, deadlineStatus, noShowProcessed, noShowAt, noShowExcused, excusedAt, excusedBy, excuseReason, excuseNote, expiredAt, deadlineExtended, extensionAt, createdAt, updatedAt }`
 - **`users`** — `{ fullName, email, role, strikeCount, accountStatus, lastPardonAt, createdAt, updatedAt, pickupReliability }`
 - **`users/{userId}/cart`** — `{ foodItemId, quantity, cafe }`
 - **`users/{userId}/plans`** — `{ title, note, totalAmount, plannedDate, createdAt, items }`
 - **`notifications`** — `{ recipientId, recipientRole, type, title, message, orderId, eventId, deepLink, metadata, read, readAt, deleted, deletedAt, createdAt, createdBy }`
-- **`audit_logs`** -- `{action, studentId, orderId, adminId, previousStrikeCount, newStrikeCount, previousStrike, newStrike, reason, timestamp}`
+- **`audit_logs`** -- `{action, studentId, orderId, adminId, cafeId, previousStrikeCount, newStrikeCount, previousStrike, newStrike, reason, note, timestamp}`
 - **`cafes`** — `{ name, location, geopoint }`
 - **`section`** — `{ name }`
 - **`reviews`** — `{ userId, text, rating, ... }`
@@ -464,9 +474,9 @@ Read and write your own firestore rules. follow best practices in the official d
 
 **Order creation is server-exclusive:** `firestore.rules` exposes **no** client `create` on `/orders` (the old `validOrderCreateRequest()` helper was removed). Orders are created only by the `placeOrder` Cloud Function callable — the client invokes it via `OrderPlacementService` (wired through `CartService.placeOrder`) — so the Phase E active-order limit cannot be bypassed by writing an order document directly, and server-owned fields (`createdAt`, `cancellationDeadline`, `readyAt`, `pickupDeadline`, `collectedAt`, `expiredAt`, `noShowProcessed`, ...) cannot be forged on create. App builds older than Phase E that placed orders with a direct client write must be updated before the new rules are deployed.
 
-**Per-cafe admin scoping:** admins can read/update/delete only orders belonging to their own cafe. Each order carries a server-authoritative `cafes` array (cafe names derived from the validated line items' `selectedCafe`); the `adminServesOrder()` helper requires the admin's `users/{uid}.cafeName` to appear in that array, and `cafes` is in `adminNotModifyingProtectedOrderFields()` so no client (admin included) can forge it. The admin app queries orders with `where('cafes', 'array-contains', cafeName)` — the matching Firestore composite index (`cafes` ASC + `createdAt` DESC) is declared in `firestore.indexes.json`.
+**Per-cafe admin scoping:** admins can read/update/delete only orders belonging to their own cafe. Each order carries a server-authoritative `cafes` array (cafe names derived from the validated line items' `selectedCafe`); the `adminServesOrder()` helper requires the admin's `users/{uid}.cafeName` to appear in that array, and `cafes` is in `adminNotModifyingProtectedOrderFields()` so no client (admin included) can forge it. The admin app queries orders with `where('cafes', 'array-contains', cafeName)` — the matching Firestore composite index (`cafes` CONTAINS + `createdAt` DESC) is declared in `firestore.indexes.json`.
 
-**Cafeless orders (UNASSIGNED):** a genuinely cafeless order — one whose line items have no resolvable `selectedCafe` (e.g. off-campus listings) — is tagged by `placeOrder`/`backfillOrderCafes` with the sentinel `cafes: ['UNASSIGNED']` instead of omitting the field. `adminServesOrder()` grants every active admin read/update/delete on such orders (and on legacy orders whose `cafes` is still absent/empty until the backfill normalizes them), so an admin who receives a NEW_ORDER notification can always open and process the order — mirroring the notification fallback that delivers cafeless orders to every admin. `backfillOrderCafes` (used by `onNewOrder`/`onOrderStatusChanged` and the scheduled `migrateLegacyOrderCafes`) repairs absent/empty/malformed `cafes` values to the derived cafe list, or to `UNASSIGNED` when nothing is derivable; valid non-empty lists are never clobbered.
+**Cafeless orders (UNASSIGNED):** a genuinely cafeless order — one whose line items have no resolvable `selectedCafe` (e.g. off-campus listings) — is tagged by `placeOrder`/`backfillOrderCafes` with the sentinel `cafes: ['UNASSIGNED']` instead of omitting the field. `adminServesOrder()` grants every active admin read/update/delete on such orders, so an admin who receives a NEW_ORDER notification can always open and process the order — mirroring the notification fallback that delivers cafeless orders to every admin. A legacy order whose `cafes` is still absent/empty/malformed is **unreadable by every admin** until the backfill normalizes it — no client can access unscoped data. `backfillOrderCafes` (used by `onNewOrder`/`onOrderStatusChanged` and the scheduled `migrateLegacyOrderCafes`) repairs absent/empty/malformed `cafes` values to the derived cafe list, or to `UNASSIGNED` when nothing is derivable; valid non-empty lists are never clobbered.
 
 ---
 
@@ -523,7 +533,7 @@ The student app uses `go_router` with authentication-aware redirects:
 - **New Order Alerts** — Automatic notification of incoming student orders in real time.
 - **Order Flow Manager** — Control order stages from pending, accepted, preparing, to ready for collection.
 - **No-Show Tracking** — Missed pickups are automatically marked `no_show` and logged to `audit_logs`; no strikes are issued by the customer backend.
-- **Strike & Suspension Management** — The admin app retains the strike engine: pardon strikes, reset counts, reactivate suspended accounts, fully logged via audit trails.
+- **Account Management** — Reactivate a genuinely suspended student account via the backend `reactivateStudent` callable: the ACTIVE flip and the immutable `audit_logs` REACTIVATE record are written server-side (audit_logs are backend-only — no client create/update/delete).
 
 ---
 
@@ -713,11 +723,11 @@ Recovery is automatic — no admin approval, student request, or manual reset:
 ### 3f. Admin Intervention — Excuse No-Show (Phase G)
 Authorized cafe admins can correct a legitimate exceptional NO_SHOW without recreating the old strike/pardon system. The reliability engine stays authoritative — the only intervention is **Excuse No-Show**, a correction to a specific event:
 - **Eligibility:** only orders with `status == NO_SHOW` and a recorded `noShowAt` that have **not** already been excused. PENDING/ACCEPTED/PREPARING/READY/COLLECTED/CANCELLED orders are rejected (`failed-precondition`).
-- **Backend (`excuseNoShow` callable):** enforces authentication, the `admin` role, an `ACTIVE` account, and **per-cafe authorization** — the caller's `users/{uid}.cafeName` must appear in the order's server-authoritative `cafes` list (cross-cafe excuses are `permission-denied`). The student ID is derived from the order, never accepted from the client. Predefined reasons only ("Student reported emergency", "Cafe unable to fulfill order", "System/application issue", "Pickup information was incorrect", "Admin-approved exception", "Other"), optional note ≤ 200 chars with URLs/HTML rejected.
+- **Backend (`excuseNoShow` callable):** enforces authentication, the `admin` role, an `ACTIVE` account, and **per-cafe authorization** — the caller's `users/{uid}.cafeName` must appear in the order's server-authoritative `cafes` list (cross-cafe excuses are `permission-denied`). The student ID is derived from the order, never accepted from the client. Predefined reasons only ("Student reported emergency", "Cafe unable to fulfill order", "System/application issue", "Pickup information was incorrect", "Admin-approved exception", "Other"), optional note ≤ 200 chars with URLs/HTML rejected — except that a **non-empty note is required when the reason is "Other"** (the catch-all needs an explanation for the audit trail); the admin UI enforces this before submitting.
 - **Data model:** the order **stays NO_SHOW** with the original `noShowAt` intact; the excuse is additive — `noShowExcused: true`, `excusedAt`, `excusedBy`, `excuseReason`, `excuseNote`. No field is rewritten, and `NO_SHOW → COLLECTED` is never produced.
 - **Reliability correction:** the excused event is removed from `recentPickupHistory` (omission — it counts as neither success nor failure), `eligibleOrders`/`noShowOrders` are decremented by one, and the Phase B formulas recompute `reliabilityScore`, `status`, and the Phase E `restrictionLevel` — so a LIMITED student can recover to NORMAL automatically. The correction runs only when the no-show was actually counted (`reliabilityProcessed === true` && `reliabilityOutcome === "NO_SHOW"`); an uncounted event never corrupts the summary.
-- **Atomicity & idempotency:** the eligibility check, excuse fields, summary correction, and the immutable `audit_logs/NO_SHOW_EXCUSED_{orderId}` record commit in **one Firestore transaction**; a concurrent or duplicate excuse is rejected (`failed-precondition` — already excused) with no duplicate audit record or notification.
-- **Student notification:** one `NO_SHOW_EXCUSED` notification ("An administrator reviewed Order #CB-1234 and excused the missed pickup…") is created **after** the transaction commits with the `eventId`-based dedup, so a failed intervention never notifies and retries never duplicate.
+- **Atomicity & idempotency:** the eligibility check, excuse fields, summary correction, the immutable `audit_logs/NO_SHOW_EXCUSED_{orderId}` record, and the deterministic `notifications/NO_SHOW_EXCUSED_{orderId}` outbox event commit in **one Firestore transaction** — a transaction failure commits none of them. A concurrent or duplicate excuse is rejected (`failed-precondition` — already excused) with no duplicate audit record or outbox event.
+- **Student notification:** one `NO_SHOW_EXCUSED` notification ("An administrator reviewed Order #CB-1234 and excused the missed pickup…") is written **inside the same transaction** as the intervention; FCM push is delivered exclusively by the post-commit `onNewNotification` trigger, so a failed intervention never notifies and retries never duplicate.
 - **Student visibility:** the order card/sheet show "No-show recorded · Excused" / a green "No-show excused" notice — the order was not collected, but it is excluded from reliability. Admin UID and private notes are never exposed.
 - **Security rules:** `noShowExcused`/`excusedAt`/`excusedBy`/`excuseReason`/`excuseNote` are added to `adminNotModifyingProtectedOrderFields()` (server-written only), `NO_SHOW_EXCUSED` joins the notification allowed types, and audit logs remain append-only.
 - **Admin UI:** on the admin order screen, eligible NO_SHOW orders show an **Excuse No-Show** action → reason selection sheet → confirmation dialog ("Excuse this no-show? … The original order history will remain unchanged."). Already-excused orders render an "Excused" badge with the reason and no action.

@@ -3803,10 +3803,21 @@ exports.excuseNoShow = onCall(
       excuseNote = trimmed;
     }
 
+    // The catch-all reason requires an explanation (AGENTS.md §7): the note
+    // must be present and non-empty after trimming so the audit trail always
+    // records why "Other" was used. Absent, empty, or whitespace-only notes
+    // are rejected here, before anything is written.
+    if (excuseReason === "Other" && !excuseNote) {
+      throw new HttpsError(
+        "invalid-argument",
+        "A note is required when the reason is Other."
+      );
+    }
+
     const orderRef = db.collection("orders").doc(orderId);
 
     try {
-      const excused = await db.runTransaction(async (transaction) => {
+      await db.runTransaction(async (transaction) => {
         const orderSnapshot = await transaction.get(orderRef);
         if (!orderSnapshot.exists) {
           throw new HttpsError("not-found", "Order not found.");
@@ -3815,15 +3826,16 @@ exports.excuseNoShow = onCall(
 
         // ── Cafe authorization (§34): derived from the order's
         //    server-authoritative cafes list — never a client role claim.
-        //    A cafeless order (absent/empty, or tagged with the UNASSIGNED
-        //    sentinel) is served by any active admin, mirroring the
-        //    adminServesOrder() rules gate and the NEW_ORDER notification
-        //    fallback.
+        //    Only an order EXPLICITLY tagged with the UNASSIGNED sentinel
+        //    (genuinely cafeless) is served by any active admin, mirroring
+        //    the adminServesOrder() rules gate. An absent/empty `cafes`
+        //    value is unscoped legacy data — not cafeless — and is denied
+        //    until the backfill normalizes it.
         const orderCafes = Array.isArray(orderData.cafes)
           ? orderData.cafes.filter((c) => typeof c === "string")
           : [];
         const isCafelessOrder =
-          orderCafes.length === 0 ||
+          orderCafes.length > 0 &&
           orderCafes.every((c) => c === UNASSIGNED_CAFE);
         if (
           !isCafelessOrder &&
@@ -3913,33 +3925,47 @@ exports.excuseNoShow = onCall(
           },
         );
 
-        return { studentId: studentId || null };
-      });
-
-      // ── Student notification (§25-§26): created ONLY after the
-      //    transaction committed — a failed intervention never notifies,
-      //    and the eventId dedup prevents duplicate notifications on retry.
-      if (excused.studentId) {
-        try {
-          await createNotification({
-            recipientId: excused.studentId,
-            recipientRole: "student",
-            type: "NO_SHOW_EXCUSED",
-            title: "Missed pickup excused",
-            message: `An administrator reviewed Order #${orderId} and excused ` +
-              `the missed pickup. It will not affect your pickup reliability.`,
-            orderId,
-            eventId: notificationEventId("NO_SHOW_EXCUSED", orderId),
-            createdBy: "system",
-          });
-        } catch (notifErr) {
-          // Notification failure must never fail the intervention.
-          console.error(
-            `[excuseNoShow] Notification failed for order ${orderId}:`, notifErr
+        // ── Notification outbox event (§16, §26): the deterministic
+        //    document keyed `NO_SHOW_EXCUSED_{orderId}` commits IN THE SAME
+        //    transaction as the order state, reliability correction, and
+        //    audit record. FCM push delivery is never performed here — it is
+        //    handled exclusively by the onNewNotification trigger (an
+        //    idempotent post-commit worker), which fires only after this
+        //    document commits. If the transaction aborts, none of the six
+        //    records are committed, so a failed intervention never leaves a
+        //    stale outbox event or a student notification behind. The
+        //    ALREADY_EXCUSED read above runs in this same transaction, so a
+        //    concurrent duplicate aborts before writing a second outbox
+        //    event.
+        if (typeof studentId === "string" && studentId.length > 0) {
+          const notifEventId = notificationEventId("NO_SHOW_EXCUSED", orderRef.id);
+          transaction.set(
+            db.collection("notifications").doc(notifEventId),
+            {
+              recipientId: studentId,
+              recipientRole: "student",
+              type: "NO_SHOW_EXCUSED",
+              title: "Missed pickup excused",
+              message: `An administrator reviewed Order #${orderRef.id} and excused ` +
+                `the missed pickup. It will not affect your pickup reliability.`,
+              orderId: orderRef.id,
+              eventId: notifEventId,
+              deepLink: null,
+              metadata: null,
+              read: false,
+              readAt: null,
+              deleted: false,
+              deletedAt: null,
+              createdAt: admin.firestore.FieldValue.serverTimestamp(),
+              createdBy: "system",
+            },
           );
         }
-      }
 
+      });
+
+      // FCM delivery is handled by the onNewNotification trigger after this
+      // transaction commits (post-commit worker). Nothing further is needed.
       console.log(
         `[OrderLifecycle] Order ${orderId} no-show excused (reason: ${excuseReason})`
       );
@@ -3950,6 +3976,152 @@ exports.excuseNoShow = onCall(
       throw new HttpsError(
         "internal",
         "Could not excuse the no-show. Please try again."
+      );
+    }
+  },
+);
+
+// ════════════════════════════════════════════════════════════════════════════
+// FUNCTION: reactivateStudent  (Callable — admin only)
+// ════════════════════════════════════════════════════════════════════════════
+//
+// Reactivates a genuinely SUSPENDED student account. The account-status flip
+// and the immutable audit record commit in ONE Firestore transaction; the
+// student notification is created after commit (eventId-deduped). Actor
+// identity (adminId) and timestamp are derived SERVER-SIDE from the
+// authenticated caller — never accepted from the client — because
+// audit_logs are backend-only (AGENTS.md §23): Firestore rules deny all
+// direct client creates on the collection.
+
+exports.reactivateStudent = onCall(
+  {
+    authPolicy: "required",
+    enforceAppCheck: true,
+    region: "us-central1",
+  },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError(
+        "unauthenticated",
+        "You must be signed in to reactivate a student."
+      );
+    }
+
+    // ── Admin authorization (mirrors createAdminAccount / excuseNoShow) ─
+    const callerUid = request.auth.uid;
+    const callerDoc = await admin
+      .firestore().collection("users").doc(callerUid).get();
+    const callerData = callerDoc.data();
+    if (!callerDoc.exists || !callerData) {
+      throw new HttpsError(
+        "permission-denied",
+        "Account not found. Please contact support."
+      );
+    }
+    if (callerData.role !== "admin") {
+      throw new HttpsError(
+        "permission-denied",
+        "Only authorized cafe administrators can reactivate students."
+      );
+    }
+    if (callerData.accountStatus !== "ACTIVE") {
+      throw new HttpsError(
+        "permission-denied",
+        "Your account is suspended and cannot reactivate students."
+      );
+    }
+
+    // ── Request validation ─────────────────────────────────────────────
+    const data = request.data;
+    if (data === null || typeof data !== "object" || Array.isArray(data)) {
+      throw new HttpsError("invalid-argument", "Invalid request payload.");
+    }
+    const studentId = data.studentId;
+    const reason = typeof data.reason === "string" ? data.reason.trim() : "";
+    if (
+      typeof studentId !== "string" ||
+      studentId.length === 0 ||
+      studentId.length > 128
+    ) {
+      throw new HttpsError("invalid-argument", "studentId is invalid.");
+    }
+    if (reason.length > 500) {
+      throw new HttpsError(
+        "invalid-argument",
+        "reason must be 500 characters or fewer."
+      );
+    }
+
+    const studentRef = db.collection("users").doc(studentId);
+
+    try {
+      await db.runTransaction(async (transaction) => {
+        // Read the target through the transaction so the SUSPENDED check is
+        // atomic with the ACTIVE write — no TOCTOU gap, and a concurrent
+        // duplicate reactivation re-reads ACTIVE and aborts.
+        const studentSnapshot = await transaction.get(studentRef);
+        if (!studentSnapshot.exists) {
+          throw new HttpsError(
+            "not-found",
+            "Student account not found."
+          );
+        }
+        if (studentSnapshot.data().accountStatus !== "SUSPENDED") {
+          throw new HttpsError(
+            "failed-precondition",
+            "Only genuinely suspended accounts can be reactivated."
+          );
+        }
+
+        transaction.update(studentRef, {
+          accountStatus: "ACTIVE",
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        // Immutable audit record (§22-§23) — server-derived identity and
+        // timestamp. Auto-ID: a student can be re-suspended and reactivated
+        // again later, so each reactivation is its own record (the
+        // SUSPENDED re-check above prevents duplicate concurrent records).
+        transaction.set(db.collection("audit_logs").doc(), {
+          action: "REACTIVATE",
+          studentId,
+          adminId: callerUid,
+          reason: reason || "Account reactivated by admin",
+          timestamp: admin.firestore.Timestamp.now(),
+        });
+      });
+
+      // ── Student notification: created ONLY after the transaction
+      //    committed — a failed reactivation never notifies, and the
+      //    eventId dedup prevents duplicate notifications on retry.
+      try {
+        await createNotification({
+          recipientId: studentId,
+          recipientRole: "student",
+          type: "ACCOUNT_REACTIVATED",
+          title: "Account Reactivated",
+          message: "Your account has been reactivated by an admin. " +
+            "You can now place orders again.",
+          eventId: notificationEventId("ACCOUNT_REACTIVATED", studentId),
+          createdBy: "system",
+        });
+      } catch (notifErr) {
+        // Notification failure must never fail the reactivation.
+        console.error(
+          `[reactivateStudent] Notification failed for ${studentId}:`, notifErr
+        );
+      }
+
+      console.log(
+        `[OrderLifecycle] Student ${studentId} reactivated by ${callerUid}`
+      );
+      return { success: true };
+    } catch (err) {
+      if (err instanceof HttpsError) throw err;
+      console.error("[reactivateStudent] Error:", err);
+      throw new HttpsError(
+        "internal",
+        "Could not reactivate the account. Please try again."
       );
     }
   },

@@ -355,21 +355,7 @@ Recommended initial choices:
 
 Do not allow arbitrary uncontrolled categories.
 
-If:
-
-Other
-
-is selected:
-
-allow an optional note.
-
-Maximum note length:
-
-200 characters.
-
-Trim whitespace.
-
-Reject excessively long input.
+If `Other` is selected, a non-empty explanatory note is required (see §8).
 
 ---
 
@@ -601,8 +587,15 @@ The following must not become partially updated:
 3. Recent history
 4. Restriction level
 5. Audit log
+6. Notification outbox event — deterministic document keyed `NO_SHOW_EXCUSED_{orderId}`
 
-Use a Firestore transaction or appropriate backend atomic mechanism.
+Use a Firestore transaction or appropriate backend atomic mechanism. All six
+records must commit in ONE transaction. FCM push delivery is NEVER performed
+inside the transaction or inline in the callable: it happens exclusively
+through the `onNewNotification` Firestore trigger, which fires only after the
+notification document commits (an idempotent post-commit worker). The outbox
+event document ID is derived deterministically from the eventId, so a retried
+or redelivered call maps to the same document and can never append a duplicate.
 
 If the operation fails:
 
@@ -625,6 +618,10 @@ ALREADY_EXCUSED
 or an equivalent safe business result.
 
 Do not create another audit record.
+
+Do not create another notification outbox event (the deterministic
+`NO_SHOW_EXCUSED_{orderId}` document ID plus the in-transaction read of
+`noShowExcused` prevents any duplicate).
 
 Do not recalculate reliability unnecessarily.
 
@@ -649,6 +646,11 @@ noShowExcused == true
 and stop.
 
 Do not create duplicate corrections.
+
+Because the order update, reliability correction, audit record, and
+notification outbox event commit in ONE transaction, the losing request
+aborts before writing ANY of them — no duplicate correction, audit record, or
+outbox event can be committed by the loser.
 
 ---
 
@@ -740,11 +742,17 @@ Do not store unnecessary personal information.
 
 # 23. AUDIT LOG IMMUTABILITY
 
+Audit logs are append-only.
+
+Create audit records only through trusted backend operations (Cloud Functions via Admin SDK): the actor identity and timestamp are derived server-side, never accepted from the client.
+
+Firestore rules deny all direct client creates, updates, and deletes on audit_logs.
+
+Admin reads are cafe-scoped: an audit record carrying a `cafeId` is readable only by an admin of that cafe; cafeless records (global actions such as CREATE_ADMIN / REACTIVATE) remain readable by any admin. Add an explicit branch for a higher-level role when one is introduced.
+
 Admins must NOT be able to edit or delete excuse audit logs.
 
 Students must NOT be able to read private administrative notes unless a future policy explicitly allows it.
-
-Audit logs are append-only.
 
 ---
 
@@ -858,8 +866,15 @@ The backend must:
 8. Recalculate reliability.
 9. Recalculate restriction.
 10. Create audit log.
-11. Create notification.
-12. Commit atomically where feasible.
+11. Create the deterministic notification outbox record (keyed `NO_SHOW_EXCUSED_{orderId}`).
+12. Commit atomically — mandatory, not optional.
+
+Steps 7-11 MUST commit in ONE Firestore transaction: the order state,
+reliability data, recent history, restriction level, audit record, and
+notification outbox record are all-or-nothing. A transaction failure commits
+none of them. FCM push delivery is strictly post-commit — it happens only
+through the `onNewNotification` trigger after the outbox record commits, never
+inline in the callable.
 
 Reuse existing backend service abstractions.
 
