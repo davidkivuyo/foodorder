@@ -209,51 +209,6 @@ Create these collections manually in the Firestore Console (or through the admin
 | `cafes` | `{ name: "Main Cafeteria", location: "Building A" }` |
 | `section` | `{ name: "campus_favourite" }` |
 
-#### f) Create the First Admin User
-
-Admin self-registration is disabled for security (Firestore rules reject any
-client-side `role: admin` profile creation, and the client SDK cannot create
-another user's credentials). The **first** admin must be bootstrapped with
-the Admin SDK (rules-bypassing); subsequent admins are created by a
-signed-in admin through the admin app's **Admin** action (top bar), which
-invokes the server-authoritative `createAdminAccount` callable.
-
-Bootstrap the first admin with a Node script using a service account:
-
-```bash
-cd functions
-npm install firebase-admin
-node -e '
-const admin = require("firebase-admin");
-const serviceAccount = require("/path/to/serviceAccountKey.json");
-admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
-const email = "admin@example.com";
-const password = "<choose-a-strong-password>";
-admin.auth().createUser({ email, password, emailVerified: true })
-  .then(async (u) => {
-    await admin.firestore().collection("users").doc(u.uid).set({
-      fullName: "Cafe Administrator",
-      cafeName: "Main Cafeteria",
-      email,
-      phoneNumber: "",
-      role: "admin",
-      accountStatus: "ACTIVE",
-      strikePercentage: 0,
-      strikeCount: 0,
-      lastStrikeAt: null,
-      lastPardonAt: null,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
-    console.log("First admin created:", u.uid);
-  })
-  .catch((e) => console.error(e));
-'
-```
-
-`cafeName` must match the cafe name the admin manages — it drives the
-per-cafe order scoping (`adminServesOrder()`).
-
 ### 3. Install Dependencies
 
 ```bash

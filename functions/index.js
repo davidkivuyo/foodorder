@@ -29,7 +29,7 @@
 
 // ── Imports ────────────────────────────────────────────────────────────────
 
-const crypto = require("crypto");
+const crypto = require("node:crypto");
 const functions = require("firebase-functions");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { onDocumentUpdated, onDocumentCreated, onDocumentWritten } = require("firebase-functions/v2/firestore");
@@ -469,6 +469,367 @@ async function recordDelivery(eventId, deviceDocId) {
 }
 
 /**
+ * Build the FCM multicast message for a set of tokens.
+ *
+ * @param {Object} params — notification payload fields
+ * @param {string} params.title
+ * @param {string} params.body
+ * @param {string} [params.deepLink]
+ * @param {string} [params.notificationId]
+ * @param {string} [params.type]
+ * @param {string} [params.orderId]
+ * @param {string} [params.eventId]
+ * @param {Array<{token: string}>} tokenList
+ * @return {Object} admin.messaging multicast message
+ */
+function buildMessage({ title, body, deepLink, notificationId, type, orderId, eventId }, tokenList) {
+  return {
+    tokens: tokenList.map((t) => t.token),
+    notification: {
+      title: title,
+      body: body,
+    },
+    data: {
+      notificationId: notificationId || "",
+      type: type || "",
+      orderId: orderId || "",
+      deepLink: deepLink || "",
+      eventId: eventId || "",
+    },
+    android: {
+      priority: "high",
+      notification: {
+        priority: "high",
+        defaultSound: true,
+        defaultVibrateTimings: true,
+      },
+    },
+    apns: {
+      payload: {
+        aps: {
+          sound: "default",
+          badge: 1,
+          contentAvailable: true,
+        },
+      },
+      headers: {
+        "apns-priority": "10",
+      },
+    },
+    webpush: {
+      notification: {
+        title: title,
+        body: body,
+        icon: "/favicon.png",
+      },
+      fcmOptions: {
+        link: deepLink || "/",
+      },
+    },
+  };
+}
+
+/**
+ * Query the recipient's active device tokens.
+ *
+ * @param {string} recipientId
+ * @param {string} recipientRole
+ * @return {Promise<Array<{token: string, docId: string}>|null>} null when no
+ *   active tokens exist (caller short-circuits), otherwise the token list.
+ */
+async function fetchActiveTokens(recipientId, recipientRole) {
+  const tokensSnapshot = await db
+      .collection("device_tokens")
+      .where("userId", "==", recipientId)
+      .where("active", "==", true)
+      .get();
+
+  if (tokensSnapshot.empty) {
+    console.log(
+      `[sendPush] No active tokens for ${recipientRole} — skipping push`
+    );
+    return null;
+  }
+  return tokensSnapshot.docs.map((doc) => ({
+    token: doc.data().token,
+    docId: doc.id,
+  }));
+}
+
+/**
+ * Lease-claim each remaining token for the current retry attempt.
+ *
+ * With an eventId each token is claimed transactionally via recordDelivery()
+ * so that idempotent delivery holds across retries. Without an eventId every
+ * remaining token is claimable (no dedup possible).
+ *
+ * @param {string} [eventId]
+ * @param {Array<{token: string, docId: string}>} remainingTokens
+ * @return {Promise<{claimedTokens: Array, claimErrors: Array, skippedCount: number}>}
+ */
+async function claimTokensForAttempt(eventId, remainingTokens) {
+  const claimedTokens = [];
+  const claimErrors = [];
+  if (!eventId) {
+    claimedTokens.push(...remainingTokens);
+    return { claimedTokens, claimErrors, skippedCount: 0 };
+  }
+
+  const claimPromises = [];
+  for (const t of remainingTokens) {
+    // recordDelivery:
+    //   returns true  → first claim (send this round)
+    //   returns false → already claimed (skip)
+    //   throws        → unexpected error (retry next iteration)
+    const p = recordDelivery(eventId, t.docId)
+      .then((result) => {
+        // result: {claimed: true, claimId} or {claimed: false}
+        if (result.claimed) {
+          // Attach the claimId to the token entry so
+          // finalizeDelivery and releaseDeliveryClaim can
+          // verify ownership.
+          claimedTokens.push({
+            token: t.token,
+            docId: t.docId,
+            claimId: result.claimId,
+          });
+        }
+      })
+      .catch((err) => {
+        claimErrors.push(t);
+        console.warn(
+          `[sendPush] Claim failed: ` +
+          `${err.message} — will retry`
+        );
+      });
+    claimPromises.push(p);
+  }
+  await Promise.allSettled(claimPromises);
+
+  const skippedCount =
+    claimPromises.length - claimedTokens.length - claimErrors.length;
+  return { claimedTokens, claimErrors, skippedCount };
+}
+
+/**
+ * Send the multicast with bounded retry for send-level transient errors.
+ *
+ * @param {Object} message
+ * @return {Promise<Object>} admin.messaging multicast response
+ */
+async function sendMulticast(message) {
+  return withRetry(
+    async () => {
+      return await admin.messaging().sendEachForMulticast(message);
+    },
+    {
+      maxRetries: 1,
+      baseDelayMs: 400,
+      maxDelayMs: 2000,
+      isPermanent: isSendLevelPermanentError,
+    },
+  );
+}
+
+/**
+ * Classify every per-token FCM response into delivered, permanently failed,
+ * or transiently failed buckets, building the finalization/deactivation work.
+ *
+ * @param {Object} ctx
+ * @param {Object} ctx.response — admin.messaging multicast response
+ * @param {Array} ctx.claimedTokens — token entries sent in this attempt
+ * @param {string} [ctx.eventId]
+ * @param {number} ctx.retryAttempt
+ * @param {number} ctx.maxFcmRetries
+ * @param {Array} ctx.failures — shared failures accumulator (mutated)
+ * @return {Object} bucketed results for the caller
+ */
+/**
+ * Classify a single per-token FCM response into the relevant buckets.
+ *
+ * @param {Object} resp — one element of the multicast response array
+ * @param {Object} tokenEntry — the claimed token this response belongs to
+ * @param {Object} ctx
+ * @param {string} [ctx.eventId]
+ * @param {number} ctx.retryAttempt
+ * @param {number} ctx.maxFcmRetries
+ * @param {Array} ctx.failures — shared failures accumulator (mutated)
+ * @param {Array} ctx.finalizePromises — finalization work (mutated)
+ * @param {Array} ctx.tokensToDeactivate — deactivation work (mutated)
+ * @param {Array} ctx.tokensToRelease — release work (mutated)
+ * @return {number} 1 when the token was delivered this round, 0 otherwise
+ */
+function classifyResponse(resp, tokenEntry, ctx) {
+  if (resp.success) {
+    if (ctx.eventId) {
+      ctx.finalizePromises.push(
+        finalizeDelivery(ctx.eventId, tokenEntry.docId, "delivered", null, tokenEntry.claimId)
+      );
+    }
+    return 1;
+  }
+
+  if (isFcmPermanentError(resp)) {
+    const reason =
+      (resp.error && (resp.error.code || resp.error.message)) || "permanent_failure";
+    if (ctx.eventId) {
+      ctx.finalizePromises.push(
+        finalizeDelivery(ctx.eventId, tokenEntry.docId, "failed", reason, tokenEntry.claimId)
+      );
+    }
+    ctx.tokensToDeactivate.push({ docId: tokenEntry.docId, reason });
+    ctx.failures.push({
+      tokenDocId: tokenEntry.docId,
+      error: reason,
+      transient: false,
+    });
+    return 0;
+  }
+
+  const errorMsg =
+    (resp.error && (resp.error.code || resp.error.message)) || "transient_failure";
+  if (ctx.retryAttempt < ctx.maxFcmRetries) {
+    ctx.tokensToRelease.push({ tokenEntry, errorMsg });
+  } else {
+    if (ctx.eventId) {
+      ctx.finalizePromises.push(
+        finalizeDelivery(ctx.eventId, tokenEntry.docId, "failed", errorMsg, tokenEntry.claimId)
+      );
+    }
+    ctx.failures.push({
+      tokenDocId: tokenEntry.docId,
+      error: errorMsg,
+      transient: true,
+    });
+  }
+  return 0;
+}
+
+function processFcmResponses({ response, claimedTokens, eventId, retryAttempt, maxFcmRetries, failures }) {
+  const tokensToRetry = [];
+  const tokensToDeactivate = [];
+  const tokensToRelease = [];
+  const finalizePromises = [];
+  const ctx = { eventId, retryAttempt, maxFcmRetries, failures, finalizePromises, tokensToDeactivate, tokensToRelease };
+  let newlySent = 0;
+
+  for (let i = 0; i < response.responses.length; i++) {
+    newlySent += classifyResponse(response.responses[i], claimedTokens[i], ctx);
+  }
+
+  return { newlySent, tokensToRetry, tokensToDeactivate, tokensToRelease, finalizePromises };
+}
+
+/**
+ * Release pending claims for transient FCM failures so the next retry can
+ * reclaim the token, or (without eventId) queue them directly for retry.
+ *
+ * @param {Object} ctx
+ * @param {Array} ctx.tokensToRelease
+ * @param {string} [ctx.eventId]
+ * @param {number} ctx.retryAttempt
+ * @param {number} ctx.maxFcmRetries
+ * @param {Array} ctx.failures — shared failures accumulator (mutated)
+ * @return {Promise<Array>} token entries to retry on the next attempt
+ */
+async function releasePendingClaims({ tokensToRelease, eventId, retryAttempt, maxFcmRetries, failures }) {
+  const tokensToRetry = [];
+  if (tokensToRelease.length === 0) return tokensToRetry;
+
+  if (eventId) {
+    const releaseResults = await Promise.allSettled(
+      tokensToRelease.map(async ({ tokenEntry, errorMsg }) => {
+        const released = await releaseDeliveryClaim(eventId, tokenEntry.docId, tokenEntry.claimId);
+        return { tokenEntry, errorMsg, released };
+      }),
+    );
+
+    for (const result of releaseResults) {
+      applyReleaseResult(result, { retryAttempt, maxFcmRetries, failures }, tokensToRetry);
+    }
+  } else {
+    for (const { tokenEntry, errorMsg } of tokensToRelease) {
+      tokensToRetry.push(tokenEntry);
+      console.warn(
+        `[sendPush] Transient failure, ` +
+        `will retry (attempt ${retryAttempt + 1}/${maxFcmRetries}): ${errorMsg}`
+      );
+    }
+  }
+  return tokensToRetry;
+}
+
+/**
+ * Apply a single releaseDeliveryClaim outcome to the retry queue or failures.
+ *
+ * @param {PromiseRejectedResult|PromiseFulfilledResult} result
+ * @param {Object} ctx
+ * @param {number} ctx.retryAttempt
+ * @param {number} ctx.maxFcmRetries
+ * @param {Array} ctx.failures — shared failures accumulator (mutated)
+ * @param {Array} tokensToRetry — retry queue for the next attempt (mutated)
+ */
+function applyReleaseResult(result, { retryAttempt, maxFcmRetries, failures }, tokensToRetry) {
+  if (result.status === "rejected") {
+    console.warn(
+      `[sendPush] releaseDeliveryClaim rejected: ${result.reason?.message || "unknown error"}`
+    );
+    return;
+  }
+
+  const { tokenEntry, errorMsg, released } = result.value;
+  if (released) {
+    tokensToRetry.push(tokenEntry);
+    console.warn(
+      `[sendPush] Transient failure, ` +
+      `will retry (attempt ${retryAttempt + 1}/${maxFcmRetries}): ${errorMsg}`
+    );
+  } else {
+    // Claim could not be released (persistent Firestore error or
+    // all retries exhausted).  Do NOT terminalize the token:
+    // the pending claim with its lease remains in Firestore.
+    // The lease will expire after CLAIM_LEASE_SECONDS (120s),
+    // and the next function invocation will reclaim it via
+    // recordDelivery().
+    failures.push({
+      tokenDocId: tokenEntry.docId,
+      error: errorMsg,
+      transient: true,
+    });
+    console.warn(
+      `[sendPush] Could not release claim — ` +
+      `pending claim preserved for lease-based recovery: ${errorMsg}`
+    );
+  }
+}
+
+/**
+ * Deactivate permanently invalid tokens (best-effort).
+ *
+ * @param {Array<{docId: string, reason: string}>} tokensToDeactivate
+ * @return {Promise<void>}
+ */
+async function deactivateInvalidTokens(tokensToDeactivate) {
+  if (tokensToDeactivate.length === 0) return;
+
+  console.log(`[sendPush] Deactivating ${tokensToDeactivate.length} permanently invalid token(s)`);
+  const deactivateResults = await Promise.allSettled(
+    tokensToDeactivate.map(({ docId, reason }) =>
+      deactivateTokenDoc(docId, reason).catch((err) => {
+        console.error(`[sendPush] Failed to deactivate a permanently invalid token after retries: ${err.message}`);
+        return false;
+      })
+    ),
+  );
+  for (let i = 0; i < deactivateResults.length; i++) {
+    if (deactivateResults[i].status === "rejected" || deactivateResults[i].value === false) {
+      console.warn(`[sendPush] Could not deactivate a permanently invalid token — will be cleaned up by weekly scheduler`);
+    }
+  }
+}
+
+
+/**
  * Send an FCM push notification to all active devices belonging to a recipient.
  *
  * Queries the device_tokens collection for the recipient's active tokens
@@ -496,6 +857,122 @@ async function recordDelivery(eventId, deviceDocId) {
  * @param {string} [params.eventId] — optional event ID for dedup
  * @return {Promise<Object>} delivery results
  */
+
+/**
+ * Send one claimed batch: build the message, multicast with retry, classify
+ * responses, release transient claims and deactivate invalid tokens.
+ *
+ * @param {Object} ctx
+ * @param {string} ctx.title
+ * @param {string} ctx.body
+ * @param {string} [ctx.deepLink]
+ * @param {string} [ctx.notificationId]
+ * @param {string} [ctx.type]
+ * @param {string} [ctx.orderId]
+ * @param {string} [ctx.eventId]
+ * @param {Array} ctx.claimedTokens
+ * @param {number} ctx.retryAttempt
+ * @param {number} ctx.maxFcmRetries
+ * @param {Array} ctx.failures — shared failures accumulator (mutated)
+ * @return {Promise<{newlySent: number, tokensToRetry: Array}|null>} null when
+ *   the multicast failed after all send-level retries (caller aborts).
+ */
+async function sendClaimedBatch({
+  title,
+  body,
+  deepLink,
+  notificationId,
+  type,
+  orderId,
+  eventId,
+  claimedTokens,
+  retryAttempt,
+  maxFcmRetries,
+  failures,
+}) {
+  const message = buildMessage(
+    { title, body, deepLink, notificationId, type, orderId, eventId },
+    claimedTokens,
+  );
+
+  let response;
+  try {
+    response = await sendMulticast(message);
+  } catch (sendErr) {
+    console.error(
+      `[sendPush] Multicast send failed after retries: ${sendErr.message}`
+    );
+    const finalizePromises = claimedTokens.map((t) =>
+      eventId
+        ? finalizeDelivery(eventId, t.docId, "failed", sendErr.message, t.claimId)
+        : Promise.resolve()
+    );
+    await Promise.allSettled(finalizePromises);
+    for (const t of claimedTokens) {
+      failures.push({
+        tokenDocId: t.docId,
+        error: sendErr.message,
+        transient: true,
+      });
+    }
+    return null;
+  }
+
+  const {
+    newlySent,
+    tokensToRetry,
+    tokensToDeactivate,
+    tokensToRelease,
+    finalizePromises,
+  } = processFcmResponses({
+    response,
+    claimedTokens,
+    eventId,
+    retryAttempt,
+    maxFcmRetries,
+    failures,
+  });
+
+  const releasedTokens = await releasePendingClaims({
+    tokensToRelease,
+    eventId,
+    retryAttempt,
+    maxFcmRetries,
+    failures,
+  });
+  tokensToRetry.push(...releasedTokens);
+
+  if (finalizePromises.length > 0) {
+    await Promise.allSettled(finalizePromises);
+  }
+
+  await deactivateInvalidTokens(tokensToDeactivate);
+
+  return { newlySent, tokensToRetry };
+}
+
+/**
+ * Sleep with exponential backoff + jitter before the next retry, unless the
+ * queue is empty or no retries remain.
+ *
+ * @param {number} remainingCount
+ * @param {number} retryAttempt
+ * @param {number} maxFcmRetries
+ * @return {Promise<void>}
+ */
+async function backoffBeforeRetry(remainingCount, retryAttempt, maxFcmRetries) {
+  if (remainingCount === 0 || retryAttempt >= maxFcmRetries) {
+    return;
+  }
+  const delay = Math.min(200 * Math.pow(2, retryAttempt), 4000);
+  const jitter = Math.random() * delay;
+  console.log(
+    `[sendPush] Retrying ${remainingCount} token(s) ` +
+    `in ${Math.round(delay + jitter)}ms (attempt ${retryAttempt + 2}/${maxFcmRetries + 1})`
+  );
+  await new Promise((resolve) => setTimeout(resolve, delay + jitter));
+}
+
 async function sendPushNotification({
   recipientId,
   recipientRole,
@@ -513,24 +990,10 @@ async function sendPushNotification({
   const failures = [];
 
   try {
-    // Step 1: Query active tokens for the recipient
-    const tokensSnapshot = await db
-        .collection("device_tokens")
-        .where("userId", "==", recipientId)
-        .where("active", "==", true)
-        .get();
-
-    if (tokensSnapshot.empty) {
-      console.log(
-        `[sendPush] No active tokens for ${recipientRole} — skipping push`
-      );
+    const activeTokens = await fetchActiveTokens(recipientId, recipientRole);
+    if (activeTokens === null) {
       return { sent: 0, total: 0, failures: [] };
     }
-
-    let activeTokens = tokensSnapshot.docs.map((doc) => ({
-      token: doc.data().token,
-      docId: doc.id,
-    }));
 
     totalAttempted = activeTokens.length;
 
@@ -538,336 +1001,29 @@ async function sendPushNotification({
       `[sendPush] Sending push to ${activeTokens.length} device(s) for ${recipientRole}`
     );
 
-    // Step 2: Build the base FCM message (tokens are added per attempt)
-    function buildMessage(tokenList) {
-      return {
-        tokens: tokenList.map((t) => t.token),
-        notification: {
-          title: title,
-          body: body,
-        },
-        data: {
-          notificationId: notificationId || "",
-          type: type || "",
-          orderId: orderId || "",
-          deepLink: deepLink || "",
-          eventId: eventId || "",
-        },
-        android: {
-          priority: "high",
-          notification: {
-            priority: "high",
-            defaultSound: true,
-            defaultVibrateTimings: true,
-          },
-        },
-        apns: {
-          payload: {
-            aps: {
-              sound: "default",
-              badge: 1,
-              contentAvailable: true,
-            },
-          },
-          headers: {
-            "apns-priority": "10",
-          },
-        },
-        webpush: {
-          notification: {
-            title: title,
-            body: body,
-            icon: "/favicon.png",
-          },
-          fcmOptions: {
-            link: deepLink || "/",
-          },
-        },
-      };
-    }
-
-    // Step 3: Send the multicast with retry for transient failures
-    //
-    // Idempotent delivery uses a lease-based claim-then-finalize pattern:
-    //   1. BEFORE each attempt, transactionally claim each remaining token
-    //      via recordDelivery().  If the record doesn't exist, a new
-    //      'pending' claim is created.  If it exists but the lease has
-    //      expired (120s), the claim is reclaimed.  Terminal records
-    //      ('delivered'/'failed') are skipped.
-    //   2. Send only to tokens whose claims were CREATED or RECLAIMED
-    //      this round.  Tokens with active leases (from a prior attempt
-    //      that hasn't expired) are skipped — they are still in flight.
-    //   3. AFTER the multicast, finalize each claimed record as
-    //      'delivered' or 'failed' based on the FCM response.
-    //      Terminal records never have a lease (claimedAt is cleared).
-    //
-    // This lease mechanism provides crash recovery: if the function
-    // crashes after claiming but before finalizing, the lease expires
-    // and a subsequent retry reclaims the token and delivers again.
-    // At most one push per device is delivered per active lease period.
-    //
     let remainingTokens = activeTokens;
     let retryAttempt = 0;
     const maxFcmRetries = 3;
 
     while (remainingTokens.length > 0 && retryAttempt <= maxFcmRetries) {
-      // ── Step 3a: Claim tokens for this attempt ──────────────────
-      // Atomically create a 'pending' record for each token.  Only tokens
-      // whose claim succeeds (first-time claim) get sent.  Tokens with
-      // existing claims (ALREADY_EXISTS) are already handled.
-      const claimedTokens = [];
-      const claimPromises = [];
-      // claimErrors is hoisted to the while-loop level so errors from one
-      // iteration are not discarded when remainingTokens is reassigned below.
-      let claimErrors = [];
-
-      if (eventId) {
-        for (const t of remainingTokens) {
-          // recordDelivery:
-          //   returns true  → first claim (send this round)
-          //   returns false → already claimed (skip)
-          //   throws        → unexpected error (retry next iteration)
-          const p = recordDelivery(eventId, t.docId)
-            .then((result) => {
-              // result: {claimed: true, claimId} or {claimed: false}
-              if (result.claimed) {
-                // Attach the claimId to the token entry so
-                // finalizeDelivery and releaseDeliveryClaim can
-                // verify ownership.
-                claimedTokens.push({
-                  token: t.token,
-                  docId: t.docId,
-                  claimId: result.claimId,
-                });
-              }
-            })
-            .catch((err) => {
-              claimErrors.push(t);
-              console.warn(
-                `[sendPush] Claim failed: ` +
-                `${err.message} — will retry`
-              );
-            });
-          claimPromises.push(p);
-        }
-        await Promise.allSettled(claimPromises);
-
-        const skippedCount = claimPromises.length -
-          claimedTokens.length - claimErrors.length;
-        if (skippedCount > 0) {
-          console.log(
-            `[sendPush] Skipped ${skippedCount} already-claimed device(s)`
-          );
-        }
-      } else {
-        // No eventId — no idempotency possible; send to all remaining.
-        claimedTokens.push(...remainingTokens);
-      }
-
-      // Early exit: nothing to send and nothing to retry.
-      if (claimedTokens.length === 0 && claimErrors.length === 0) {
+      const step = await runRetryIteration({
+        title,
+        body,
+        deepLink,
+        notificationId,
+        type,
+        orderId,
+        eventId,
+        remainingTokens,
+        retryAttempt,
+        maxFcmRetries,
+        failures,
+      });
+      sentCount += step.sentCount;
+      remainingTokens = step.remainingTokens;
+      if (step.abort) {
         break;
       }
-
-      if (claimedTokens.length === 0) {
-        // No claims, but claimErrors exist with retries left.
-        // Skip the send+process block and go directly to iteration setup.
-      } else {
-        // ── Some claims succeeded — send the multicast ─────────────
-        const message = buildMessage(claimedTokens);
-
-        let response;
-        try {
-          response = await withRetry(
-            async () => {
-              return await admin.messaging().sendEachForMulticast(message);
-            },
-            {
-              maxRetries: 1,
-              baseDelayMs: 400,
-              maxDelayMs: 2000,
-              isPermanent: isSendLevelPermanentError,
-            },
-          );
-        } catch (sendErr) {
-          console.error(
-            `[sendPush] Multicast send failed after retries: ${sendErr.message}`
-          );
-          const finalizePromises = claimedTokens.map((t) =>
-            eventId
-              ? finalizeDelivery(eventId, t.docId, "failed", sendErr.message, t.claimId)
-              : Promise.resolve()
-          );
-          await Promise.allSettled(finalizePromises);
-          for (const t of claimedTokens) {
-            failures.push({
-              tokenDocId: t.docId,
-              error: sendErr.message,
-              transient: true,
-            });
-          }
-          break;
-        }
-
-        // ── Step 3b: Process FCM responses ────────────────────────
-        const tokensToRetry = [];
-        const tokensToDeactivate = [];
-        const tokensToRelease = [];
-        let newlySent = 0;
-        const finalizePromises = [];
-
-        for (let i = 0; i < response.responses.length; i++) {
-          const resp = response.responses[i];
-          const tokenEntry = claimedTokens[i];
-
-          if (resp.success) {
-            newlySent++;
-            if (eventId) {
-              finalizePromises.push(
-                finalizeDelivery(eventId, tokenEntry.docId, "delivered", null, tokenEntry.claimId)
-              );
-            }
-            continue;
-          }
-
-          if (isFcmPermanentError(resp)) {
-            if (eventId) {
-              finalizePromises.push(
-                finalizeDelivery(
-                  eventId,
-                  tokenEntry.docId,
-                  "failed",
-                  (resp.error && (resp.error.code || resp.error.message)) || "permanent_failure",
-                  tokenEntry.claimId,
-                )
-              );
-            }
-            tokensToDeactivate.push({
-              docId: tokenEntry.docId,
-              reason: (resp.error && (resp.error.code || resp.error.message)) || "permanent_failure",
-            });
-            failures.push({
-              tokenDocId: tokenEntry.docId,
-              error: (resp.error && (resp.error.code || resp.error.message)) || "permanent_failure",
-              transient: false,
-            });
-          } else {
-            const errorMsg = (resp.error && (resp.error.code || resp.error.message)) || "transient_failure";
-            if (retryAttempt < maxFcmRetries) {
-              tokensToRelease.push({ tokenEntry, errorMsg });
-            } else {
-              if (eventId) {
-                finalizePromises.push(
-                  finalizeDelivery(eventId, tokenEntry.docId, "failed", errorMsg, tokenEntry.claimId)
-                );
-              }
-              failures.push({
-                tokenDocId: tokenEntry.docId,
-                error: errorMsg,
-                transient: true,
-              });
-            }
-          }
-        }
-
-        sentCount += newlySent;
-
-        // ── Release pending claims for transient failures ──────────
-        if (tokensToRelease.length > 0 && eventId) {
-          const releaseResults = await Promise.allSettled(
-            tokensToRelease.map(async ({ tokenEntry, errorMsg }) => {
-              const released = await releaseDeliveryClaim(eventId, tokenEntry.docId, tokenEntry.claimId);
-              return { tokenEntry, errorMsg, released };
-            }),
-          );
-
-          for (const result of releaseResults) {
-            if (result.status === "rejected") {
-              console.warn(
-                `[sendPush] releaseDeliveryClaim rejected: ${result.reason?.message || "unknown error"}`
-              );
-              continue;
-            }
-
-            const { tokenEntry, errorMsg, released } = result.value;
-            if (released) {
-              tokensToRetry.push(tokenEntry);
-              console.warn(
-                `[sendPush] Transient failure, ` +
-                `will retry (attempt ${retryAttempt + 1}/${maxFcmRetries}): ${errorMsg}`
-              );
-            } else {
-              // Claim could not be released (persistent Firestore error or
-              // all retries exhausted).  Do NOT terminalize the token:
-              // the pending claim with its lease remains in Firestore.
-              // The lease will expire after CLAIM_LEASE_SECONDS (120s),
-              // and the next function invocation will reclaim it via
-              // recordDelivery().
-              failures.push({
-                tokenDocId: tokenEntry.docId,
-                error: errorMsg,
-                transient: true,
-              });
-              console.warn(
-                `[sendPush] Could not release claim — ` +
-                `pending claim preserved for lease-based recovery: ${errorMsg}`
-              );
-            }
-          }
-        } else if (tokensToRelease.length > 0) {
-          for (const { tokenEntry, errorMsg } of tokensToRelease) {
-            tokensToRetry.push(tokenEntry);
-            console.warn(
-              `[sendPush] Transient failure, ` +
-              `will retry (attempt ${retryAttempt + 1}/${maxFcmRetries}): ${errorMsg}`
-            );
-          }
-        }
-
-        if (finalizePromises.length > 0) {
-          await Promise.allSettled(finalizePromises);
-        }
-
-        if (tokensToDeactivate.length > 0) {
-          console.log(`[sendPush] Deactivating ${tokensToDeactivate.length} permanently invalid token(s)`);
-          const deactivateResults = await Promise.allSettled(
-            tokensToDeactivate.map(({ docId, reason }) =>
-              deactivateTokenDoc(docId, reason).catch((err) => {
-                console.error(`[sendPush] Failed to deactivate a permanently invalid token after retries: ${err.message}`);
-                return false;
-              })
-            ),
-          );
-          for (let i = 0; i < deactivateResults.length; i++) {
-            if (deactivateResults[i].status === "rejected" || deactivateResults[i].value === false) {
-              console.warn(`[sendPush] Could not deactivate a permanently invalid token — will be cleaned up by weekly scheduler`);
-            }
-          }
-        }
-
-        // Merge FCM retry tokens into the next iteration.
-        remainingTokens = tokensToRetry;
-      }
-
-      // ── Merge claim errors into the next iteration ──────────────
-      // claimErrors are tokens whose recordDelivery call threw (unexpected
-      // Firestore error).  They were not sent this round and must be retried.
-      // Merge them into remainingTokens so the next while-loop iteration
-      // attempts them again.
-      if (claimErrors.length > 0) {
-        remainingTokens.push(...claimErrors);
-      }
-
-      if (remainingTokens.length > 0 && retryAttempt < maxFcmRetries) {
-        const delay = Math.min(200 * Math.pow(2, retryAttempt), 4000);
-        const jitter = Math.random() * delay;
-        console.log(
-          `[sendPush] Retrying ${remainingTokens.length} token(s) ` +
-          `in ${Math.round(delay + jitter)}ms (attempt ${retryAttempt + 2}/${maxFcmRetries + 1})`
-        );
-        await new Promise((resolve) => setTimeout(resolve, delay + jitter));
-      }
-
       retryAttempt++;
     }
 
@@ -880,11 +1036,7 @@ async function sendPushNotification({
     console.error("[sendPush] Error sending push:", err);
 
     // The no-valid-tokens case at the send level is permanent
-    if (
-      err.message &&
-      (err.message.includes("no valid tokens") ||
-       err.message.includes("no tokens"))
-    ) {
+    if (isNoValidTokensError(err)) {
       return { sent: 0, total: 0, failures: [] };
     }
 
@@ -894,6 +1046,102 @@ async function sendPushNotification({
       failures: [{ error: err.message, transient: true }],
     };
   }
+}
+
+/**
+ * Execute one retry iteration: claim tokens, send the batch, merge failures
+ * and claim errors into the next round.
+ *
+ * @param {Object} ctx
+ * @param {string} ctx.title
+ * @param {string} ctx.body
+ * @param {string} [ctx.deepLink]
+ * @param {string} [ctx.notificationId]
+ * @param {string} [ctx.type]
+ * @param {string} [ctx.orderId]
+ * @param {string} [ctx.eventId]
+ * @param {Array} ctx.remainingTokens
+ * @param {number} ctx.retryAttempt
+ * @param {number} ctx.maxFcmRetries
+ * @param {Array} ctx.failures — shared failures accumulator (mutated)
+ * @return {Promise<{sentCount: number, remainingTokens: Array, abort: boolean}>}
+ */
+async function runRetryIteration({
+  title,
+  body,
+  deepLink,
+  notificationId,
+  type,
+  orderId,
+  eventId,
+  remainingTokens,
+  retryAttempt,
+  maxFcmRetries,
+  failures,
+}) {
+  const { claimedTokens, claimErrors, skippedCount } =
+    await claimTokensForAttempt(eventId, remainingTokens);
+
+  if (skippedCount > 0) {
+    console.log(
+      `[sendPush] Skipped ${skippedCount} already-claimed device(s)`
+    );
+  }
+
+  // Early exit: nothing to send and nothing to retry.
+  if (claimedTokens.length === 0 && claimErrors.length === 0) {
+    return { sentCount: 0, remainingTokens: [], abort: true };
+  }
+
+  const nextRemaining = [];
+  let sentCount = 0;
+  if (claimedTokens.length > 0) {
+    const batch = await sendClaimedBatch({
+      title,
+      body,
+      deepLink,
+      notificationId,
+      type,
+      orderId,
+      eventId,
+      claimedTokens,
+      retryAttempt,
+      maxFcmRetries,
+      failures,
+    });
+    if (batch === null) {
+      return { sentCount: 0, remainingTokens: [], abort: true };
+    }
+    sentCount = batch.newlySent;
+    nextRemaining.push(...batch.tokensToRetry);
+  }
+
+  // ── Merge claim errors into the next iteration ──────────────
+  // claimErrors are tokens whose recordDelivery call threw (unexpected
+  // Firestore error).  They were not sent this round and must be retried.
+  // Merge them into remainingTokens so the next while-loop iteration
+  // attempts them again.
+  if (claimErrors.length > 0) {
+    nextRemaining.push(...claimErrors);
+  }
+
+  await backoffBeforeRetry(nextRemaining.length, retryAttempt, maxFcmRetries);
+
+  return { sentCount, remainingTokens: nextRemaining, abort: false };
+}
+
+/**
+ * Detect the permanent send-level "no valid tokens" error.
+ *
+ * @param {Error} err
+ * @return {boolean}
+ */
+function isNoValidTokensError(err) {
+  return Boolean(
+    err.message &&
+    (err.message.includes("no valid tokens") ||
+     err.message.includes("no tokens"))
+  );
 }
 
 /**
@@ -1098,6 +1346,17 @@ async function processExpiredOrder(transaction, orderSnapshot) {
  *
  * @return {Promise<{counted: number, stillPending: number, errors: number}>}
  */
+/**
+ * Map an order's terminal status to its reliability outcome label.
+ * @param {string} status
+ * @return {string|null} "COLLECTED", "NO_SHOW", or null when not terminal.
+ */
+function reliabilityOutcomeFromStatus(status) {
+  if (status === "collected") return "COLLECTED";
+  if (status === "no_show") return "NO_SHOW";
+  return null;
+}
+
 async function reconcilePendingReliabilityOrders() {
   let counted = 0;
   let stillPending = 0;
@@ -1128,11 +1387,7 @@ async function reconcilePendingReliabilityOrders() {
       const orderData = orderSnapshot.data();
       // The outcome is derivable from the order's terminal status; anything
       // else is a stale marker and is cleared.
-      const outcome = orderData.status === "collected"
-        ? "COLLECTED"
-        : orderData.status === "no_show"
-          ? "NO_SHOW"
-          : null;
+      const outcome = reliabilityOutcomeFromStatus(orderData.status);
 
       if (outcome == null) {
         await orderSnapshot.ref.update({
@@ -1539,6 +1794,77 @@ exports.extendPickupDeadline = onCall(
  * All checks run inside a transaction so a concurrent admin accept and a
  * student cancel can never both succeed — only one transition wins.
  */
+
+/**
+ * Validate the cancelOrder request envelope and payload.
+ *
+ * Enforces the allowed-key set (orderId + optional reason), the orderId
+ * format/length and the bounded preset reason list.
+ *
+ * @param {Object} data — raw request.data payload
+ * @return {{orderId: string, cancellationReason: string|null}}
+ */
+function validateCancelRequest(data) {
+  if (
+    data === null ||
+    typeof data !== "object" ||
+    Array.isArray(data) ||
+    JSON.stringify(data).length > 4096
+  ) {
+    throw new HttpsError("invalid-argument", "Invalid request payload.");
+  }
+
+  const envelopeKeys = Object.keys(data);
+  const validKeys = envelopeKeys.filter((k) => k === "orderId" || k === "reason");
+  if (validKeys.length !== envelopeKeys.length || envelopeKeys.length === 0) {
+    throw new HttpsError(
+      "invalid-argument",
+      "Request payload must contain only orderId and an optional reason."
+    );
+  }
+
+  const { orderId, reason } = data;
+  if (
+    !orderId ||
+    typeof orderId !== "string" ||
+    orderId.length === 0 ||
+    orderId.length > 128 ||
+    !/^[A-Za-z0-9_-]+$/.test(orderId)
+  ) {
+    throw new HttpsError("invalid-argument", "orderId is invalid.");
+  }
+
+  // Optional cancellation reason: preset strings only, bounded length.
+  let cancellationReason = null;
+  if (reason !== undefined && reason !== null) {
+    if (typeof reason !== "string" || reason.length === 0) {
+      throw new HttpsError("invalid-argument", "reason is invalid.");
+    }
+    if (reason.length > 200) {
+      throw new HttpsError(
+        "invalid-argument",
+        "reason must be 200 characters or fewer."
+      );
+    }
+    const allowedReasons = [
+      "Changed my mind",
+      "Ordered by mistake",
+      "Need to change my order",
+      "Ordered the wrong item",
+      "Other",
+    ];
+    if (!allowedReasons.includes(reason)) {
+      throw new HttpsError(
+        "invalid-argument",
+        "reason is not an allowed cancellation reason."
+      );
+    }
+    cancellationReason = reason;
+  }
+
+  return { orderId, cancellationReason };
+}
+
 exports.cancelOrder = onCall(
   {
     authPolicy: "required",
@@ -1554,70 +1880,12 @@ exports.cancelOrder = onCall(
     }
 
     const uid = request.auth.uid;
-
-    // ── Request envelope validation ───────────────────────────────
-    const data = request.data;
-    if (
-      data === null ||
-      typeof data !== "object" ||
-      Array.isArray(data) ||
-      JSON.stringify(data).length > 4096
-    ) {
-      throw new HttpsError("invalid-argument", "Invalid request payload.");
-    }
-
-    const envelopeKeys = Object.keys(data);
-    const validKeys = envelopeKeys.filter((k) => k === "orderId" || k === "reason");
-    if (validKeys.length !== envelopeKeys.length || envelopeKeys.length === 0) {
-      throw new HttpsError(
-        "invalid-argument",
-        "Request payload must contain only orderId and an optional reason."
-      );
-    }
-
-    const { orderId, reason } = data;
-    if (
-      !orderId ||
-      typeof orderId !== "string" ||
-      orderId.length === 0 ||
-      orderId.length > 128 ||
-      !/^[A-Za-z0-9_-]+$/.test(orderId)
-    ) {
-      throw new HttpsError("invalid-argument", "orderId is invalid.");
-    }
-
-    // Optional cancellation reason: preset strings only, bounded length.
-    let cancellationReason = null;
-    if (reason !== undefined && reason !== null) {
-      if (typeof reason !== "string" || reason.length === 0) {
-        throw new HttpsError("invalid-argument", "reason is invalid.");
-      }
-      if (reason.length > 200) {
-        throw new HttpsError(
-          "invalid-argument",
-          "reason must be 200 characters or fewer."
-        );
-      }
-      const allowedReasons = [
-        "Changed my mind",
-        "Ordered by mistake",
-        "Need to change my order",
-        "Ordered the wrong item",
-        "Other",
-      ];
-      if (!allowedReasons.includes(reason)) {
-        throw new HttpsError(
-          "invalid-argument",
-          "reason is not an allowed cancellation reason."
-        );
-      }
-      cancellationReason = reason;
-    }
+    const { orderId, cancellationReason } = validateCancelRequest(request.data);
 
     const orderRef = db.collection("orders").doc(orderId);
 
     try {
-      const cancelled = await db.runTransaction(async (transaction) => {
+      await db.runTransaction(async (transaction) => {
         const orderSnapshot = await transaction.get(orderRef);
         if (!orderSnapshot.exists) {
           throw new HttpsError("not-found", "Order not found.");
@@ -1740,6 +2008,301 @@ exports.cancelOrder = onCall(
 //  - if the limit/verification cannot be determined the order is NOT created
 //    (fail-safe; a client-side fallback is never allowed to bypass it).
 
+// ── placeOrder helpers ────────────────────────────────────────────────────────
+//
+// The placeOrder callable is split into small single-purpose helpers so the
+// onCall wrapper and the transaction callback both stay within the cognitive
+// complexity budget while preserving every server-side validation.
+
+function validatePlaceOrderEnvelope(data) {
+  if (
+    data === null ||
+    typeof data !== "object" ||
+    Array.isArray(data) ||
+    JSON.stringify(data).length > 65536
+  ) {
+    throw new HttpsError("invalid-argument", "Invalid request payload.");
+  }
+
+  const allowedKeys = new Set([
+    "orderId", "studentId", "userName", "items", "foodIds", "price",
+    "cafeId", "cafeLocation", "distanceMeters", "distanceCalculated",
+    "pickupWindowMinutes",
+  ]);
+  if (!Object.keys(data).every((k) => allowedKeys.has(k))) {
+    throw new HttpsError(
+      "invalid-argument",
+      "Request payload contains unsupported fields."
+    );
+  }
+}
+
+function validateOrderIdentity(orderId, studentId, uid) {
+  if (
+    typeof orderId !== "string" ||
+    orderId.length === 0 ||
+    orderId.length > 64 ||
+    !/^[A-Za-z0-9_-]+$/.test(orderId)
+  ) {
+    throw new HttpsError("invalid-argument", "orderId is invalid.");
+  }
+  if (studentId !== uid) {
+    throw new HttpsError(
+      "permission-denied",
+      "You can only place orders for your own account."
+    );
+  }
+}
+
+function validateUserAndOrderMeta(userName, items, price, pickupWindowMinutes) {
+  if (typeof userName !== "string" || userName.length === 0 || userName.length > 100) {
+    throw new HttpsError("invalid-argument", "userName is invalid.");
+  }
+  if (!Array.isArray(items) || items.length === 0 || items.length > 50) {
+    throw new HttpsError("invalid-argument", "items is invalid.");
+  }
+  if (!Number.isFinite(price) || price < 0) {
+    throw new HttpsError("invalid-argument", "price is invalid.");
+  }
+  if (
+    !Number.isInteger(pickupWindowMinutes) ||
+    pickupWindowMinutes < 10 ||
+    pickupWindowMinutes > 25
+  ) {
+    throw new HttpsError("invalid-argument", "pickupWindowMinutes is invalid.");
+  }
+}
+
+function validateOptionalFields(distanceCalculated, distanceMeters, cafeId) {
+  if (typeof distanceCalculated !== "boolean") {
+    throw new HttpsError("invalid-argument", "distanceCalculated is invalid.");
+  }
+  if (
+    distanceMeters !== undefined &&
+    distanceMeters !== null &&
+    (!Number.isFinite(distanceMeters) || distanceMeters < 0)
+  ) {
+    throw new HttpsError("invalid-argument", "distanceMeters is invalid.");
+  }
+  if (cafeId !== undefined && cafeId !== null && typeof cafeId !== "string") {
+    throw new HttpsError("invalid-argument", "cafeId is invalid.");
+  }
+}
+
+function validateFoodIds(foodIds) {
+  if (foodIds === undefined || foodIds === null) return;
+  if (!Array.isArray(foodIds) || foodIds.length > 50) {
+    throw new HttpsError("invalid-argument", "foodIds is invalid.");
+  }
+}
+
+function validateCafeLocation(cafeLocation) {
+  let cafeGeoPoint = null;
+  if (cafeLocation !== undefined && cafeLocation !== null) {
+    if (
+      typeof cafeLocation !== "object" ||
+      !Number.isFinite(cafeLocation.latitude) ||
+      !Number.isFinite(cafeLocation.longitude)
+    ) {
+      throw new HttpsError("invalid-argument", "cafeLocation is invalid.");
+    }
+    cafeGeoPoint = new admin.firestore.GeoPoint(
+      cafeLocation.latitude,
+      cafeLocation.longitude
+    );
+  }
+  return cafeGeoPoint;
+}
+
+function assertValidLineItem(item) {
+  if (item === null || typeof item !== "object" || Array.isArray(item)) {
+    throw new HttpsError("invalid-argument", "items is invalid.");
+  }
+  const foodItemId = item.foodItemId;
+  if (typeof foodItemId !== "string" || foodItemId.length === 0 || foodItemId.length > 128) {
+    throw new HttpsError("invalid-argument", "items is invalid.");
+  }
+  const quantity = item.quantity;
+  if (!Number.isInteger(quantity) || quantity <= 0 || quantity >= 100) {
+    throw new HttpsError("invalid-argument", "items is invalid.");
+  }
+  const itemPrice = item.price;
+  if (!Number.isFinite(itemPrice) || itemPrice < 0) {
+    throw new HttpsError("invalid-argument", "items is invalid.");
+  }
+}
+
+function normalizeLineItems(items) {
+  return items.map((item) => {
+    assertValidLineItem(item);
+    return {
+      foodItemId: item.foodItemId,
+      title: typeof item.title === "string" ? item.title.slice(0, 200) : "",
+      price: item.price,
+      quantity: item.quantity,
+      image: typeof item.image === "string" ? item.image.slice(0, 2000) : "",
+      selectedCafe: typeof item.selectedCafe === "string"
+        ? item.selectedCafe.slice(0, 100)
+        : null,
+    };
+  });
+}
+
+function assertSingleCafe(lineItems) {
+  const distinctCafes = new Set();
+  let hasCafelessItem = false;
+  for (const item of lineItems) {
+    const cafe = typeof item.selectedCafe === "string" &&
+        item.selectedCafe.trim().length > 0
+      ? item.selectedCafe.trim()
+      : null;
+    if (cafe === null) hasCafelessItem = true;
+    else distinctCafes.add(cafe);
+  }
+  if (distinctCafes.size > 1 || (distinctCafes.size === 1 && hasCafelessItem)) {
+    throw new HttpsError(
+      "invalid-argument",
+      "You can only order from one cafe per order. Please place separate orders for items from different cafes."
+    );
+  }
+}
+
+function parsePlaceOrderRequest(data, uid) {
+  validatePlaceOrderEnvelope(data);
+  const {
+    orderId, studentId, userName, items, foodIds, price, cafeId,
+    cafeLocation, distanceMeters, distanceCalculated, pickupWindowMinutes,
+  } = data;
+  validateOrderIdentity(orderId, studentId, uid);
+  validateUserAndOrderMeta(userName, items, price, pickupWindowMinutes);
+  validateOptionalFields(distanceCalculated, distanceMeters, cafeId);
+  validateFoodIds(foodIds);
+  const cafeGeoPoint = validateCafeLocation(cafeLocation);
+  const lineItems = normalizeLineItems(items);
+  assertSingleCafe(lineItems);
+  return {
+    orderId,
+    userName,
+    lineItems,
+    foodIds,
+    price,
+    cafeId,
+    cafeGeoPoint,
+    distanceMeters,
+    distanceCalculated,
+    pickupWindowMinutes,
+  };
+}
+
+async function assertActiveOrderLimit(transaction, uid, limit) {
+  const activeSnapshot = await transaction.get(
+    db.collection("orders")
+      .where("studentId", "==", uid)
+      .where("status", "in", ACTIVE_ORDER_STATUSES)
+  );
+  if (activeSnapshot.size >= limit) {
+    throw new HttpsError(
+      "failed-precondition",
+      limit === 1
+        ? "You currently have an active order. Please collect it before placing another order."
+        : "You currently have " + limit +
+          " active orders. Collect one before placing another order.",
+      { code: "ACTIVE_ORDER_LIMIT", activeOrderLimit: limit }
+    );
+  }
+}
+
+async function assertFoodsAvailable(transaction, lineItems) {
+  for (const item of lineItems) {
+    const foodSnapshot = await transaction.get(
+      db.collection("food_items").doc(item.foodItemId)
+    );
+    const available = foodSnapshot.exists
+      ? foodSnapshot.data().available !== false
+      : false;
+    if (!available) {
+      throw new HttpsError(
+        "failed-precondition",
+        "Some items are no longer available.",
+        { code: "ITEMS_UNAVAILABLE" }
+      );
+    }
+  }
+}
+
+function buildOrderData(ctx) {
+  const derivedCafes = deriveOrderCafes(ctx.lineItems);
+  return {
+    orderId: ctx.orderId,
+    studentId: ctx.uid,
+    userName: ctx.userName,
+    items: ctx.lineItems,
+    foodIds: Array.isArray(ctx.foodIds) && ctx.foodIds.length > 0
+      ? ctx.foodIds
+      : ctx.lineItems.map((i) => i.foodItemId),
+    price: ctx.price,
+    cafeId: ctx.cafeId !== undefined && ctx.cafeId !== null ? ctx.cafeId : null,
+    cafeLocation: ctx.cafeGeoPoint,
+    distanceMeters: ctx.distanceMeters !== undefined && ctx.distanceMeters !== null
+      ? ctx.distanceMeters
+      : null,
+    distanceCalculated: ctx.distanceCalculated,
+    pickupWindowMinutes: ctx.pickupWindowMinutes,
+    status: "pending",
+    deadlineStatus: "NOT_READY",
+    noShowProcessed: false,
+    deadlineExtended: false,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    cafes: derivedCafes || [UNASSIGNED_CAFE],
+  };
+}
+
+async function placeOrderInTransaction(transaction, ctx) {
+  const userSnapshot = await transaction.get(ctx.userRef);
+  if (!userSnapshot.exists || userSnapshot.data().role !== "student") {
+    throw new HttpsError(
+      "unavailable",
+      "Unable to verify your active orders. Please try again."
+    );
+  }
+  const userData = userSnapshot.data();
+  if (userData.accountStatus === "SUSPENDED") {
+    throw new HttpsError(
+      "permission-denied",
+      "Your account is suspended and cannot place orders."
+    );
+  }
+  const summary = userData.pickupReliability &&
+      typeof userData.pickupReliability === "object"
+    ? userData.pickupReliability
+    : null;
+  const limit = restrictionFor(summary).activeOrderLimit;
+
+  if (limit != null) {
+    await assertActiveOrderLimit(transaction, ctx.uid, limit);
+  }
+
+  const existingOrder = await transaction.get(ctx.orderRef);
+  if (existingOrder.exists) {
+    throw new HttpsError(
+      "already-exists",
+      "This order has already been placed."
+    );
+  }
+
+  await assertFoodsAvailable(transaction, ctx.lineItems);
+
+  if (limit != null) {
+    transaction.update(ctx.userRef, {
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  }
+
+  transaction.set(ctx.orderRef, buildOrderData(ctx));
+  return ctx.orderId;
+}
+
 exports.placeOrder = onCall(
   {
     authPolicy: "required",
@@ -1764,288 +2327,19 @@ exports.placeOrder = onCall(
       );
     }
 
-    // ── Request envelope validation ───────────────────────────────
-    const data = request.data;
-    if (
-      data === null ||
-      typeof data !== "object" ||
-      Array.isArray(data) ||
-      JSON.stringify(data).length > 65536
-    ) {
-      throw new HttpsError("invalid-argument", "Invalid request payload.");
-    }
-
-    const allowedKeys = [
-      "orderId", "studentId", "userName", "items", "foodIds", "price",
-      "cafeId", "cafeLocation", "distanceMeters", "distanceCalculated",
-      "pickupWindowMinutes",
-    ];
-    if (!Object.keys(data).every((k) => allowedKeys.includes(k))) {
-      throw new HttpsError(
-        "invalid-argument",
-        "Request payload contains unsupported fields."
-      );
-    }
-
-    const {
-      orderId, studentId, userName, items, foodIds, price, cafeId,
-      cafeLocation, distanceMeters, distanceCalculated, pickupWindowMinutes,
-    } = data;
-
-    if (
-      typeof orderId !== "string" ||
-      orderId.length === 0 ||
-      orderId.length > 64 ||
-      !/^[A-Za-z0-9_-]+$/.test(orderId)
-    ) {
-      throw new HttpsError("invalid-argument", "orderId is invalid.");
-    }
-    if (studentId !== uid) {
-      throw new HttpsError(
-        "permission-denied",
-        "You can only place orders for your own account."
-      );
-    }
-    if (typeof userName !== "string" || userName.length === 0 || userName.length > 100) {
-      throw new HttpsError("invalid-argument", "userName is invalid.");
-    }
-    if (!Array.isArray(items) || items.length === 0 || items.length > 50) {
-      throw new HttpsError("invalid-argument", "items is invalid.");
-    }
-    if (!Number.isFinite(price) || price < 0) {
-      throw new HttpsError("invalid-argument", "price is invalid.");
-    }
-    if (
-      !Number.isInteger(pickupWindowMinutes) ||
-      pickupWindowMinutes < 10 ||
-      pickupWindowMinutes > 25
-    ) {
-      throw new HttpsError("invalid-argument", "pickupWindowMinutes is invalid.");
-    }
-    if (typeof distanceCalculated !== "boolean") {
-      throw new HttpsError("invalid-argument", "distanceCalculated is invalid.");
-    }
-    if (
-      distanceMeters !== undefined &&
-      distanceMeters !== null &&
-      (!Number.isFinite(distanceMeters) || distanceMeters < 0)
-    ) {
-      throw new HttpsError("invalid-argument", "distanceMeters is invalid.");
-    }
-    if (cafeId !== undefined && cafeId !== null && typeof cafeId !== "string") {
-      throw new HttpsError("invalid-argument", "cafeId is invalid.");
-    }
-    if (foodIds !== undefined && foodIds !== null) {
-      if (!Array.isArray(foodIds) || foodIds.length > 50) {
-        throw new HttpsError("invalid-argument", "foodIds is invalid.");
-      }
-    }
-
-    // cafeLocation arrives from the client as { latitude, longitude } (a
-    // GeoPoint is not JSON-serializable over a callable); stored as GeoPoint.
-    let cafeGeoPoint = null;
-    if (cafeLocation !== undefined && cafeLocation !== null) {
-      if (
-        typeof cafeLocation !== "object" ||
-        !Number.isFinite(cafeLocation.latitude) ||
-        !Number.isFinite(cafeLocation.longitude)
-      ) {
-        throw new HttpsError("invalid-argument", "cafeLocation is invalid.");
-      }
-      cafeGeoPoint = new admin.firestore.GeoPoint(
-        cafeLocation.latitude,
-        cafeLocation.longitude
-      );
-    }
-
-    // Normalise line items to a safe minimal shape (only accepted fields).
-    const lineItems = items.map((item) => {
-      if (item === null || typeof item !== "object" || Array.isArray(item)) {
-        throw new HttpsError("invalid-argument", "items is invalid.");
-      }
-      const foodItemId = item.foodItemId;
-      if (typeof foodItemId !== "string" || foodItemId.length === 0 || foodItemId.length > 128) {
-        throw new HttpsError("invalid-argument", "items is invalid.");
-      }
-      const quantity = item.quantity;
-      if (!Number.isInteger(quantity) || quantity <= 0 || quantity >= 100) {
-        throw new HttpsError("invalid-argument", "items is invalid.");
-      }
-      const itemPrice = item.price;
-      if (!Number.isFinite(itemPrice) || itemPrice < 0) {
-        throw new HttpsError("invalid-argument", "items is invalid.");
-      }
-      return {
-        foodItemId,
-        title: typeof item.title === "string" ? item.title.slice(0, 200) : "",
-        price: itemPrice,
-        quantity,
-        image: typeof item.image === "string" ? item.image.slice(0, 2000) : "",
-        selectedCafe: typeof item.selectedCafe === "string"
-          ? item.selectedCafe.slice(0, 100)
-          : null,
-      };
-    });
-
-    // One cafe per order: every line item must resolve to the same cafe.
-    // Items without a `selectedCafe` (e.g. off-campus listings) count as a
-    // distinct cafe so they cannot be mixed with campus-cafe items. The
-    // client enforces the same rule when adding to the cart; this is the
-    // authoritative server-side gate so mixed-cafe orders can never exist.
-    const distinctCafes = new Set();
-    let hasCafelessItem = false;
-    for (const item of lineItems) {
-      const cafe = typeof item.selectedCafe === "string" &&
-          item.selectedCafe.trim().length > 0
-        ? item.selectedCafe.trim()
-        : null;
-      if (cafe === null) hasCafelessItem = true;
-      else distinctCafes.add(cafe);
-    }
-    if (distinctCafes.size > 1 || (distinctCafes.size === 1 && hasCafelessItem)) {
-      throw new HttpsError(
-        "invalid-argument",
-        "You can only order from one cafe per order. Please place separate orders for items from different cafes."
-      );
-    }
-
-    const orderRef = db.collection("orders").doc(orderId);
+    const payload = parsePlaceOrderRequest(request.data, uid);
+    const orderRef = db.collection("orders").doc(payload.orderId);
     const userRef = db.collection("users").doc(uid);
 
     try {
-      const placedOrderId = await db.runTransaction(async (transaction) => {
-        // 1. Read the authoritative user profile: role, suspension state and
-        //    the server-maintained reliability summary (Phase B data).
-        const userSnapshot = await transaction.get(userRef);
-        if (!userSnapshot.exists || userSnapshot.data().role !== "student") {
-          // §18 — fail safely: never assume a NORMAL restriction when the
-          // authoritative state cannot be read.
-          throw new HttpsError(
-            "unavailable",
-            "Unable to verify your active orders. Please try again."
-          );
-        }
-        const userData = userSnapshot.data();
-        if (userData.accountStatus === "SUSPENDED") {
-          throw new HttpsError(
-            "permission-denied",
-            "Your account is suspended and cannot place orders."
-          );
-        }
-
-        // 2. Derive the active-order limit from the authoritative summary.
-        //    restrictionFor reads only server-maintained summary fields and
-        //    never recomputes reliability; it also covers students whose
-        //    stored summary predates Phase E (no restrictionLevel yet).
-        const summary = userData.pickupReliability &&
-            typeof userData.pickupReliability === "object"
-          ? userData.pickupReliability
-          : null;
-        const limit = restrictionFor(summary).activeOrderLimit;
-
-        // 3. Count currently active orders inside the same transaction that
-        //    creates the order — two concurrent attempts can never both pass.
-        if (limit != null) {
-          const activeSnapshot = await transaction.get(
-            db.collection("orders")
-              .where("studentId", "==", uid)
-              .where("status", "in", ACTIVE_ORDER_STATUSES)
-          );
-          if (activeSnapshot.size >= limit) {
-            throw new HttpsError(
-              "failed-precondition",
-              limit === 1
-                ? "You currently have an active order. Please collect it before placing another order."
-                : "You currently have " + limit +
-                  " active orders. Collect one before placing another order.",
-              { code: "ACTIVE_ORDER_LIMIT", activeOrderLimit: limit }
-            );
-          }
-        }
-
-        // 4. Verify the client-generated order ID is not already taken.
-        const existingOrder = await transaction.get(orderRef);
-        if (existingOrder.exists) {
-          throw new HttpsError(
-            "already-exists",
-            "This order has already been placed."
-          );
-        }
-
-        // 5. Authoritative food availability check (previously enforced in
-        //    the client transaction; now server-side so it cannot be skipped).
-        //    All reads must precede all writes in a Firestore transaction.
-        for (const item of lineItems) {
-          const foodSnapshot = await transaction.get(
-            db.collection("food_items").doc(item.foodItemId)
-          );
-          const available = foodSnapshot.exists
-            ? foodSnapshot.data().available !== false
-            : false;
-          if (!available) {
-            throw new HttpsError(
-              "failed-precondition",
-              "Some items are no longer available.",
-              { code: "ITEMS_UNAVAILABLE" }
-            );
-          }
-        }
-
-        // 6. Contention write (only for restricted students, where a limit
-        //    is being enforced): concurrent placeOrder attempts create
-        //    DIFFERENT order documents, so Firestore's write-conflict
-        //    detection on those docs would not serialize them. Touching the
-        //    shared user document forces the transactions to conflict on the
-        //    same document: the loser aborts and retries with a fresh
-        //    snapshot, re-counts the active orders and is rejected (or
-        //    proceeds correctly) — the limit can never be bypassed by two
-        //    devices racing (§14). Unrestricted students skip this write.
-        if (limit != null) {
-          transaction.update(userRef, {
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-          });
-        }
-
-        // 7. Create the order (server-authoritative write). The onNewOrder
-        //    trigger still runs afterwards (cancellation deadline, pricing
-        //    normalization, notifications).
-        const derivedCafes = deriveOrderCafes(lineItems);
-        const orderData = {
-          orderId,
-          studentId: uid,
-          userName,
-          items: lineItems,
-          foodIds: Array.isArray(foodIds) && foodIds.length > 0
-            ? foodIds
-            : lineItems.map((i) => i.foodItemId),
-          price,
-          cafeId: cafeId !== undefined && cafeId !== null ? cafeId : null,
-          cafeLocation: cafeGeoPoint,
-          distanceMeters: distanceMeters !== undefined && distanceMeters !== null
-            ? distanceMeters
-            : null,
-          distanceCalculated,
-          pickupWindowMinutes,
-          status: "pending",
-          deadlineStatus: "NOT_READY",
-          noShowProcessed: false,
-          deadlineExtended: false,
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-          // Server-authoritative per-cafe scoping list: derived from the
-          // validated line items, protected from client writes by the rules.
-          // A genuinely cafeless order (e.g. off-campus items without a
-          // selection) is tagged with the UNASSIGNED sentinel instead of
-          // omitting the field: it is then served by any active admin and
-          // NEW_ORDER notifications reach every admin (the legacy
-          // "cafeless → all admins" fallback), so it is never left
-          // unopenable or invisible.
-          cafes: derivedCafes || [UNASSIGNED_CAFE],
-        };
-        transaction.set(orderRef, orderData);
-
-        return orderId;
-      });
+      const placedOrderId = await db.runTransaction((transaction) =>
+        placeOrderInTransaction(transaction, {
+          uid,
+          orderRef,
+          userRef,
+          ...payload,
+        })
+      );
 
       console.log(`[placeOrder] Order ${placedOrderId} placed`);
       return { success: true, orderId: placedOrderId, orderStatus: "pending" };
@@ -2254,6 +2548,87 @@ async function backfillOrderCafes(orderRef, orderData) {
  * @return {Promise<number|null>} the recomputed authoritative total, or
  *   null when no correction was made (pricing already authoritative).
  */
+/**
+ * Resolve the authoritative unit price and quantity for one line item from
+ * its `food_items` document. Throws (holding the order) when the item cannot
+ * be priced: no food ID, lookup failure, missing doc, non-finite menu price,
+ * or non-positive quantity. Never falls back to the client-supplied price.
+ *
+ * @param {admin.firestore.DocumentReference} orderRef
+ * @param {*} item — a line item from `orderData.items`
+ * @return {Promise<{unitPrice: number, quantity: number}>}
+ */
+async function resolveLineItemPrice(orderRef, item) {
+  const foodId = item && (item.foodItemId || item.id);
+
+  if (typeof foodId !== "string" || foodId.length === 0) {
+    throw new Error(
+      `[normalizeOrderPricing] Order ${orderRef.id} has an item without a ` +
+      `food ID — holding order`
+    );
+  }
+
+  let snap;
+  try {
+    snap = await orderRef.firestore
+        .collection("food_items")
+        .doc(foodId)
+        .get();
+  } catch (err) {
+    console.warn(
+      `[normalizeOrderPricing] food_items/${foodId} lookup failed: ${err.message}`
+    );
+    throw new Error(
+      `[normalizeOrderPricing] Order ${orderRef.id} food_items/${foodId} ` +
+      `lookup failed — holding order`,
+      { cause: err },
+    );
+  }
+  if (!snap.exists) {
+    throw new Error(
+      `[normalizeOrderPricing] Order ${orderRef.id} references missing ` +
+      `food_items/${foodId} — holding order`
+    );
+  }
+  const menuData = snap.data();
+  const unitPrice = menuData && menuData.price;
+  const quantity = item && item.quantity;
+
+  if (typeof unitPrice !== "number" || !Number.isFinite(unitPrice)) {
+    throw new Error(
+      `[normalizeOrderPricing] food_items/${foodId} has no finite price — ` +
+      `cannot price order ${orderRef.id} — holding order`
+    );
+  }
+  if (typeof quantity !== "number" || !Number.isInteger(quantity) || quantity <= 0) {
+    throw new Error(
+      `[normalizeOrderPricing] Order ${orderRef.id} item ${foodId} has ` +
+      `invalid quantity (${quantity}) — holding order`
+    );
+  }
+
+  return { unitPrice, quantity };
+}
+
+/**
+ * Whether the stored order pricing (total and per-item unit prices) diverges
+ * from the authoritative figures and therefore needs a corrective write.
+ *
+ * @param {number} resolvedTotalValue — recomputed authoritative total
+ * @param {Array<{price: number, quantity: number}>} prices
+ * @param {Object} orderData
+ * @return {boolean}
+ */
+function pricingNeedsCorrection(resolvedTotalValue, prices, orderData) {
+  const storedTotal =
+    typeof orderData.price === "number" ? orderData.price : 0;
+  const needsPriceFix = Math.abs(resolvedTotalValue - storedTotal) > 0.001;
+  const needsItemFix = prices.some(
+    (p, i) => p.price !== (orderData.items[i] && orderData.items[i].price)
+  );
+  return needsPriceFix || needsItemFix;
+}
+
 async function normalizeOrderPricing(orderRef, orderData) {
   if (!orderData || !Array.isArray(orderData.items) || orderData.items.length === 0) {
     return null;
@@ -2263,8 +2638,6 @@ async function normalizeOrderPricing(orderRef, orderData) {
   const prices = [];
 
   for (const item of orderData.items) {
-    const foodId = item && (item.foodItemId || item.id);
-
     // Every line item must resolve to an authoritative menu record — never
     // fall back to the client-supplied price. A missing or unreadable
     // record holds the order (the trigger's retry policy redelivers the
@@ -2277,66 +2650,12 @@ async function normalizeOrderPricing(orderRef, orderData) {
     // missing items, so a missing doc at trigger time is a rare anomaly
     // (deleted post-placement / legacy order) and the retry is bounded by
     // the Cloud Functions retry window.
-    if (typeof foodId !== "string" || foodId.length === 0) {
-      throw new Error(
-        `[normalizeOrderPricing] Order ${orderRef.id} has an item without a ` +
-        `food ID — holding order`
-      );
-    }
-
-    let snap;
-    try {
-      snap = await orderRef.firestore
-          .collection("food_items")
-          .doc(foodId)
-          .get();
-    } catch (err) {
-      console.warn(
-        `[normalizeOrderPricing] food_items/${foodId} lookup failed: ${err.message}`
-      );
-      throw new Error(
-        `[normalizeOrderPricing] Order ${orderRef.id} food_items/${foodId} ` +
-        `lookup failed — holding order`,
-        { cause: err },
-      );
-    }
-    if (!snap.exists) {
-      throw new Error(
-        `[normalizeOrderPricing] Order ${orderRef.id} references missing ` +
-        `food_items/${foodId} — holding order`
-      );
-    }
-    const menuData = snap.data();
-    const unitPrice = menuData && menuData.price;
-    const quantity = item && item.quantity;
-
-    // The resolved menu price must be finite and the quantity a positive
-    // integer before the line may contribute to the total.
-    if (typeof unitPrice !== "number" || !Number.isFinite(unitPrice)) {
-      throw new Error(
-        `[normalizeOrderPricing] food_items/${foodId} has no finite price — ` +
-        `cannot price order ${orderRef.id} — holding order`
-      );
-    }
-    if (typeof quantity !== "number" || !Number.isInteger(quantity) || quantity <= 0) {
-      throw new Error(
-        `[normalizeOrderPricing] Order ${orderRef.id} item ${foodId} has ` +
-        `invalid quantity (${quantity}) — holding order`
-      );
-    }
-
+    const { unitPrice, quantity } = await resolveLineItemPrice(orderRef, item);
     prices.push({ price: unitPrice, quantity });
     resolvedTotal.value += unitPrice * quantity;
   }
 
-  const storedTotal =
-    typeof orderData.price === "number" ? orderData.price : 0;
-  const needsPriceFix = Math.abs(resolvedTotal.value - storedTotal) > 0.001;
-  const needsItemFix = prices.some(
-    (p, i) => p.price !== (orderData.items[i] && orderData.items[i].price)
-  );
-
-  if (!needsPriceFix && !needsItemFix) {
+  if (!pricingNeedsCorrection(resolvedTotal.value, prices, orderData)) {
     return null;
   }
 
@@ -2941,11 +3260,206 @@ async function deferReliabilityEvent(orderRef) {
 // FUNCTION 2: onOrderStatusChanged  (Firestore trigger)
 // ════════════════════════════════════════════════════════════════════════════
 
+// ── onOrderStatusChanged helpers ──────────────────────────────────────────────
+//
+// The trigger is split into small single-purpose helpers so the onDocumentUpdated
+// callback stays within the cognitive complexity budget while preserving every
+// backfill, terminal-timestamp, reliability and notification behaviour.
+
+/**
+ * Run an idempotent order backfill (foodIds / cafes) with bounded retries.
+ * @param {string} label — "foodIds" or "cafes" (used in log/error text)
+ * @param {Function} backfillFn — the idempotent backfill call
+ * @return {Promise<boolean>} false when the order no longer exists (nothing to
+ *   do — the caller should return early), true when it completed or rethrew.
+ */
+async function runOrderBackfill(label, backfillFn) {
+  try {
+    await withRetry(backfillFn, {
+      maxRetries: 3,
+      baseDelayMs: 200,
+      maxDelayMs: 2000,
+      isPermanent: (err) => isNotFoundError(err), // order deleted mid-run
+    });
+    return true;
+  } catch (err) {
+    console.error(
+      `[onOrderStatusChanged] ${label} backfill failed: ${err.message}`
+    );
+    // NOT_FOUND means the order no longer exists — nothing left to
+    // backfill and no status/notification work is meaningful for a
+    // deleted order, so return early instead of retrying a permanent
+    // failure.  Any other failure is rethrown so the event is not
+    // acknowledged as successful.
+    if (isNotFoundError(err)) {
+      return false;
+    }
+    throw err;
+  }
+}
+
+/**
+ * Stamp an authoritative terminal timestamp (collectedAt / expiredAt) on the
+ * order, guarded by a fresh re-read so a redelivered event cannot re-stamp
+ * (drift) the persisted value. The get → update is intentionally a single
+ * atomic write (not a read-modify-write): a concurrent same-event redelivery
+ * could at worst overwrite the timestamp with another ~now value, which is
+ * harmless because the reliability engine re-reads whichever value won.
+ * @param {admin.firestore.DocumentReference} ref
+ * @param {Object} data — the after snapshot for the field guard
+ * @param {string} fieldName — "collectedAt" or "expiredAt"
+ * @param {Object} extraFields — additional fields written with the timestamp
+ * @param {string} logMessage
+ */
+async function stampTerminalTimestamp(ref, data, fieldName, extraFields, logMessage) {
+  if (data[fieldName] == null) {
+    const freshSnapshot = await ref.get();
+    if (freshSnapshot.exists && freshSnapshot.data()[fieldName] == null) {
+      await ref.update({
+        [fieldName]: admin.firestore.Timestamp.now(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        ...extraFields,
+      });
+      console.log(logMessage);
+    }
+  }
+}
+
+/**
+ * Handle a transition into READY: record the authoritative readyAt and the
+ * distance-based pickup deadline, then notify the student.
+ * @param {admin.firestore.DocumentReference} ref
+ * @param {Object} afterData
+ * @param {string} orderId
+ */
+async function handleOrderReady(ref, afterData, orderId) {
+  if (afterData.readyAt != null) return;
+
+  const now = admin.firestore.Timestamp.now();
+  // Honor the order's stored (distance-based) pickup window when it is a
+  // valid window (10–25 minutes, the range placeOrder validates); fall
+  // back to the default for legacy orders that predate distance windows.
+  const storedWindow = afterData.pickupWindowMinutes;
+  const windowMinutes =
+    Number.isInteger(storedWindow) &&
+    storedWindow >= 10 &&
+    storedWindow <= 25
+      ? storedWindow
+      : PICKUP_WINDOW_MINUTES;
+  const deadline = new admin.firestore.Timestamp(
+    now.seconds + windowMinutes * 60,
+    now.nanoseconds,
+  );
+
+  await ref.update({
+    readyAt: now,
+    pickupDeadline: deadline,
+    pickupWindowMinutes: windowMinutes,
+    deadlineStatus: "ACTIVE",
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  console.log(
+    `[onOrderStatusChanged] Order marked READY. ` +
+    `Pickup deadline: ${deadline.toDate().toISOString()}`,
+  );
+
+  const studentId = afterData.studentId;
+  if (studentId) {
+    try {
+      await createNotification({
+        recipientId: studentId,
+        recipientRole: "student",
+        type: "ORDER_READY",
+        title: "Order Ready for Pickup",
+        message: `Your order #${orderId} is ready! ` +
+                 `Please collect it within ${windowMinutes} minutes.`,
+        orderId,
+        deepLink: `/orders/${orderId}`,
+        eventId: notificationEventId("ORDER_READY", orderId),
+        createdBy: "system",
+      });
+    } catch (notifErr) {
+      console.error(
+        `[onOrderStatusChanged] Failed to create ORDER_READY notification:`, notifErr
+      );
+    }
+  }
+}
+
+/**
+ * Handle a transition into COLLECTED: persist the authoritative collectedAt
+ * (before reliability processing) and, for a genuine READY → COLLECTED
+ * transition, count the pickup in the student's reliability summary.
+ * @param {admin.firestore.DocumentReference} ref
+ * @param {Object} afterData
+ * @param {string} beforeStatus — canonicalised previous status
+ */
+async function handleOrderCollected(ref, afterData, beforeStatus) {
+  // Persist the authoritative terminal timestamp BEFORE reliability
+  // processing: the reliability engine's transaction re-reads the order
+  // and uses the persisted collectedAt (never a fresh now) for the
+  // recent-window history entry, so the history timestamp always equals
+  // the order's authoritative collection time.
+  await stampTerminalTimestamp(
+    ref,
+    afterData,
+    "collectedAt",
+    { deadlineStatus: "COLLECTED" },
+    `[onOrderStatusChanged] Order marked COLLECTED.`
+  );
+
+  // Phase B.2 — terminal pickup outcome: update the student's
+  // reliability summary. Only a genuine READY → COLLECTED transition
+  // counts: an order that jumps straight to a terminal state without
+  // ever being READY (an invalid transition per the rules) must never
+  // affect reliability. Idempotency is enforced by the
+  // reliabilityProcessed marker inside the transaction, never by this
+  // branch. A transient failure is rethrown so Cloud Functions retries
+  // the whole event — the marker makes the retry safe, and swallowing
+  // it would permanently lose the event (orders are rarely updated
+  // again after a terminal state).
+  if (beforeStatus === "ready") {
+    await processReliabilityEvent(ref, "COLLECTED");
+  }
+}
+
+/**
+ * Handle a transition into NO_SHOW (admin marks directly): persist the
+ * authoritative expiredAt and, for a genuine READY → NO_SHOW transition,
+ * count the missed pickup in the student's reliability summary.
+ * @param {admin.firestore.DocumentReference} ref
+ * @param {Object} afterData
+ * @param {string} beforeStatus — canonicalised previous status
+ */
+async function handleOrderNoShow(ref, afterData, beforeStatus) {
+  // Persist the authoritative terminal timestamp BEFORE reliability
+  // processing (same reasoning as the COLLECTED branch): the engine's
+  // history entry uses the persisted expiredAt, and a fresh-read guard
+  // prevents a redelivered event from re-stamping it. The scheduled
+  // processor already writes expiredAt in its update, so its event
+  // snapshot carries it and this write is skipped.
+  await stampTerminalTimestamp(
+    ref,
+    afterData,
+    "expiredAt",
+    { noShowProcessed: true, deadlineStatus: "EXPIRED" },
+    `[onOrderStatusChanged] Order marked NO_SHOW.`
+  );
+
+  // Phase B.2 — terminal pickup outcome: update the student's
+  // reliability summary (see the COLLECTED branch above for why the
+  // timestamp is persisted first and why failures are rethrown).
+  if (beforeStatus === "ready") {
+    await processReliabilityEvent(ref, "NO_SHOW");
+  }
+}
+
 exports.onOrderStatusChanged = onDocumentUpdated(
   {
     document: "orders/{orderId}",
     region: "us-central1",
-    // Retry the whole event when the backfill rethrows a transient error,
+    // Retry the whole event when a backfill rethrows a transient error,
     // so a failed backfill is not acknowledged as a successful event.
     retry: true,
   },
@@ -2954,6 +3468,8 @@ exports.onOrderStatusChanged = onDocumentUpdated(
     const afterData = event.data.after.data();
 
     if (!beforeData || !afterData) return;
+
+    const ref = event.data.after.ref;
 
     // Backfill `foodIds` on legacy orders (see helpers above) before any
     // review eligibility can be evaluated.  Runs on every order update —
@@ -2967,52 +3483,15 @@ exports.onOrderStatusChanged = onDocumentUpdated(
     // backfillOrderFoodIds is idempotent (no-op when foodIds is present,
     // with any value) and the ORDER_READY notification is deduplicated by
     // eventId in createNotification — no side effects are duplicated.
-    try {
-      await withRetry(
-        () => backfillOrderFoodIds(event.data.after.ref, afterData),
-        {
-          maxRetries: 3,
-          baseDelayMs: 200,
-          maxDelayMs: 2000,
-          isPermanent: (err) => isNotFoundError(err), // order deleted mid-run
-        },
-      );
-    } catch (err) {
-      console.error(
-        `[onOrderStatusChanged] foodIds backfill failed: ${err.message}`
-      );
-      // NOT_FOUND means the order no longer exists — nothing left to
-      // backfill and no status/notification work is meaningful for a
-      // deleted order, so return early instead of retrying a permanent
-      // failure.  Any other failure is rethrown so the event is not
-      // acknowledged as successful.
-      if (isNotFoundError(err)) {
-        return;
-      }
-      throw err;
+    if (!(await runOrderBackfill("foodIds", () => backfillOrderFoodIds(ref, afterData)))) {
+      return;
     }
 
     // Backfill `cafes` (server-authoritative per-cafe scoping list) on
     // legacy orders touched by any update — the same idempotent pattern as
     // the foodIds backfill above.
-    try {
-      await withRetry(
-        () => backfillOrderCafes(event.data.after.ref, afterData),
-        {
-          maxRetries: 3,
-          baseDelayMs: 200,
-          maxDelayMs: 2000,
-          isPermanent: (err) => isNotFoundError(err), // order deleted mid-run
-        },
-      );
-    } catch (err) {
-      console.error(
-        `[onOrderStatusChanged] cafes backfill failed: ${err.message}`
-      );
-      if (isNotFoundError(err)) {
-        return;
-      }
-      throw err;
+    if (!(await runOrderBackfill("cafes", () => backfillOrderCafes(ref, afterData)))) {
+      return;
     }
 
     if (beforeData.status === afterData.status) return;
@@ -3025,100 +3504,13 @@ exports.onOrderStatusChanged = onDocumentUpdated(
 
     // ── READY: record the authoritative readyAt + pickupDeadline ────
     if (status === "ready") {
-      if (afterData.readyAt != null) return;
-
-      const now = admin.firestore.Timestamp.now();
-      // Honor the order's stored (distance-based) pickup window when it is a
-      // valid window (10–25 minutes, the range placeOrder validates); fall
-      // back to the default for legacy orders that predate distance windows.
-      const storedWindow = afterData.pickupWindowMinutes;
-      const windowMinutes =
-        Number.isInteger(storedWindow) &&
-        storedWindow >= 10 &&
-        storedWindow <= 25
-          ? storedWindow
-          : PICKUP_WINDOW_MINUTES;
-      const deadline = new admin.firestore.Timestamp(
-        now.seconds + windowMinutes * 60,
-        now.nanoseconds,
-      );
-
-      await event.data.after.ref.update({
-        readyAt: now,
-        pickupDeadline: deadline,
-        pickupWindowMinutes: windowMinutes,
-        deadlineStatus: "ACTIVE",
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
-
-      console.log(
-        `[onOrderStatusChanged] Order marked READY. ` +
-        `Pickup deadline: ${deadline.toDate().toISOString()}`,
-      );
-
-      const studentId = afterData.studentId;
-      if (studentId) {
-        try {
-          await createNotification({
-            recipientId: studentId,
-            recipientRole: "student",
-            type: "ORDER_READY",
-            title: "Order Ready for Pickup",
-            message: `Your order #${event.params.orderId} is ready! ` +
-                     `Please collect it within ${windowMinutes} minutes.`,
-            orderId: event.params.orderId,
-            deepLink: `/orders/${event.params.orderId}`,
-            eventId: notificationEventId("ORDER_READY", event.params.orderId),
-            createdBy: "system",
-          });
-        } catch (notifErr) {
-          console.error(
-            `[onOrderStatusChanged] Failed to create ORDER_READY notification:`, notifErr
-          );
-        }
-      }
+      await handleOrderReady(ref, afterData, event.params.orderId);
       return;
     }
 
     // ── COLLECTED: record the authoritative collectedAt ─────────────
     if (status === "collected") {
-      // Persist the authoritative terminal timestamp BEFORE reliability
-      // processing: the reliability engine's transaction re-reads the order
-      // and uses the persisted collectedAt (never a fresh now) for the
-      // recent-window history entry, so the history timestamp always equals
-      // the order's authoritative collection time. The write is guarded by
-      // a fresh re-read so a redelivered event cannot re-stamp (drift) the
-      // persisted timestamp; the scheduled-expiry path already carries its
-      // terminal fields in the update, so its event snapshot skips this.
-      // The get → update is intentionally a single atomic write (not a
-      // read-modify-write): a concurrent same-event redelivery could at
-      // worst overwrite collectedAt with another ~now value, which is
-      // harmless because the engine re-reads whichever value won.
-      if (afterData.collectedAt == null) {
-        const freshSnapshot = await event.data.after.ref.get();
-        if (freshSnapshot.exists && freshSnapshot.data().collectedAt == null) {
-          await event.data.after.ref.update({
-            collectedAt: admin.firestore.Timestamp.now(),
-            deadlineStatus: "COLLECTED",
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-          });
-          console.log(`[onOrderStatusChanged] Order marked COLLECTED.`);
-        }
-      }
-
-      // Phase B.2 — terminal pickup outcome: update the student's
-      // reliability summary. Only a genuine READY → COLLECTED transition
-      // counts: an order that jumps straight to a terminal state without
-      // ever being READY (an invalid transition per the rules) must never
-      // affect reliability. Idempotency is enforced by the
-      // reliabilityProcessed marker inside the transaction, never by this
-      // branch. A transient failure is rethrown so Cloud Functions retries
-      // the whole event — the marker makes the retry safe, and swallowing
-      // it would permanently lose the event (orders are rarely updated
-      // again after a terminal state).
-      if (beforeStatus === "ready") {
-        await processReliabilityEvent(event.data.after.ref, "COLLECTED");
-      }
+      await handleOrderCollected(ref, afterData, beforeStatus);
       return;
     }
 
@@ -3126,31 +3518,7 @@ exports.onOrderStatusChanged = onDocumentUpdated(
     //    order no_show directly. The scheduled processor already writes
     //    these fields, so its updates make this branch a no-op.
     if (status === "no_show") {
-      // Persist the authoritative terminal timestamp BEFORE reliability
-      // processing (same reasoning as the COLLECTED branch): the engine's
-      // history entry uses the persisted expiredAt, and a fresh-read guard
-      // prevents a redelivered event from re-stamping it. The scheduled
-      // processor already writes expiredAt in its update, so its event
-      // snapshot carries it and this write is skipped.
-      if (afterData.expiredAt == null) {
-        const freshSnapshot = await event.data.after.ref.get();
-        if (freshSnapshot.exists && freshSnapshot.data().expiredAt == null) {
-          await event.data.after.ref.update({
-            expiredAt: admin.firestore.Timestamp.now(),
-            noShowProcessed: true,
-            deadlineStatus: "EXPIRED",
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-          });
-          console.log(`[onOrderStatusChanged] Order marked NO_SHOW.`);
-        }
-      }
-
-      // Phase B.2 — terminal pickup outcome: update the student's
-      // reliability summary (see the COLLECTED branch above for why the
-      // timestamp is persisted first and why failures are rethrown).
-      if (beforeStatus === "ready") {
-        await processReliabilityEvent(event.data.after.ref, "NO_SHOW");
-      }
+      await handleOrderNoShow(ref, afterData, beforeStatus);
       return;
     }
   },
@@ -3236,7 +3604,6 @@ exports.onNewOrder = onDocumentCreated(
       throw err;
     }
 
-    const studentId = orderData.studentId || orderData.userId;
     const studentName = orderData.userName || "A student";
     const orderId = event.params.orderId;
 
@@ -4609,6 +4976,125 @@ async function updateFoodRatingStats(foodId, { removeRating, addRating }, eventI
 }
 
 /**
+ * Extract the shared review context for an onReviewChanged event.
+ *
+ * Returns null when there is nothing to process (no event data or no
+ * foodId), so callers can skip. All before/after derived values are
+ * normalized here to keep the trigger branches small.
+ */
+function extractReviewRatingContext(event) {
+  if (!event.data) {
+    console.log(
+      `[onReviewChanged] Review has no event data — skipping`
+    );
+    return null;
+  }
+
+  const beforeData = event.data.before.data();
+  const afterData = event.data.after.data();
+  const before = beforeData || null;
+  const after = afterData || null;
+
+  const beforeFoodId = before ? (before.foodId || null) : null;
+  const afterFoodId = after ? (after.foodId || null) : null;
+  const foodId = afterFoodId || beforeFoodId;
+
+  if (!foodId) {
+    console.log(
+      `[onReviewChanged] Review has no foodId — skipping`
+    );
+    return null;
+  }
+
+  return {
+    foodId,
+    before,
+    after,
+    beforeRating: before ? (before.rating || null) : null,
+    afterRating: after ? (after.rating || null) : null,
+  };
+}
+
+/**
+ * Apply a rating delta to the food item stats after logging.
+ */
+async function applyReviewRatingChange(foodId, { removeRating, addRating }, eventId, logMessage) {
+  console.log(logMessage);
+  await updateFoodRatingStats(foodId, {
+    removeRating,
+    addRating,
+  }, eventId);
+}
+
+/** Case 1: Review document created. */
+async function handleReviewCreated(ctx, event) {
+  if (ctx.after.deleted) {
+    console.log(
+      `[onReviewChanged] Review created as deleted — skipping`
+    );
+    return;
+  }
+  await applyReviewRatingChange(ctx.foodId, {
+    removeRating: null,
+    addRating: ctx.afterRating,
+  }, event.id, `[onReviewChanged] Review CREATED, rating=${ctx.afterRating}`);
+}
+
+/** Case 2: Review document deleted (hard delete of an active review). */
+async function handleReviewDeleted(ctx, event) {
+  if (ctx.before.deleted || ctx.beforeRating == null) {
+    console.log(
+      `[onReviewChanged] Review hard-deleted, already soft-deleted or no rating — skipping`
+    );
+    return;
+  }
+  await applyReviewRatingChange(ctx.foodId, {
+    removeRating: ctx.beforeRating,
+    addRating: null,
+  }, event.id, `[onReviewChanged] Review DELETED, rating=${ctx.beforeRating}`);
+}
+
+/** Case 3: Review document updated — soft-delete, restore, or rating edit. */
+async function handleReviewUpdated(ctx, event) {
+  if (ctx.before.deleted && ctx.after.deleted) {
+    console.log(
+      `[onReviewChanged] Review already deleted — skipping`
+    );
+    return;
+  }
+
+  if (!ctx.before.deleted && ctx.after.deleted) {
+    await applyReviewRatingChange(ctx.foodId, {
+      removeRating: ctx.beforeRating,
+      addRating: null,
+    }, event.id, `[onReviewChanged] Review SOFT-DELETED, rating=${ctx.beforeRating}`);
+    return;
+  }
+
+  if (ctx.before.deleted && !ctx.after.deleted) {
+    await applyReviewRatingChange(ctx.foodId, {
+      removeRating: null,
+      addRating: ctx.afterRating,
+    }, event.id, `[onReviewChanged] Review RESTORED, rating=${ctx.afterRating}`);
+    return;
+  }
+
+  if (ctx.beforeRating !== ctx.afterRating) {
+    await applyReviewRatingChange(ctx.foodId, {
+      removeRating: ctx.beforeRating,
+      addRating: ctx.afterRating,
+    }, event.id,
+      `[onReviewChanged] Review UPDATED, ` +
+      `rating ${ctx.beforeRating} → ${ctx.afterRating}`
+    );
+    return;
+  }
+
+  console.log(
+    `[onReviewChanged] Review updated metadata — no rating change`
+  );
+}
+/**
  * Firestore trigger on reviews/{reviewId} for all write operations.
  *
  * Handles:
@@ -4627,130 +5113,126 @@ exports.onReviewChanged = onDocumentWritten(
     retry: true,
   },
   async (event) => {
-    if (!event.data) {
-      console.log(
-        `[onReviewChanged] Review has no event data — skipping`
-      );
-      return;
+    const ctx = extractReviewRatingContext(event);
+    if (!ctx) return;
+
+    if (!ctx.before && ctx.after) {
+      return handleReviewCreated(ctx, event);
     }
 
-    const beforeData = event.data.before.data();
-    const afterData = event.data.after.data();
-
-    // ── Determine the operation and extract rating changes ───────────
-    const before = beforeData || null;
-    const after = afterData || null;
-
-    const beforeFoodId = before ? (before.foodId || null) : null;
-    const afterFoodId = after ? (after.foodId || null) : null;
-    const foodId = afterFoodId || beforeFoodId;
-
-    if (!foodId) {
-      console.log(
-        `[onReviewChanged] Review has no foodId — skipping`
-      );
-      return;
+    if (ctx.before && !ctx.after) {
+      return handleReviewDeleted(ctx, event);
     }
 
-    const beforeRating = before ? (before.rating || null) : null;
-    const afterRating = after ? (after.rating || null) : null;
-    const beforeDeleted = before ? (before.deleted || false) : false;
-    const afterDeleted = after ? (after.deleted || false) : false;
-
-    // ── Case 1: Document created (no before) ─────────────────────────
-    if (!before && after) {
-      if (after.deleted) {
-        console.log(
-          `[onReviewChanged] Review created as deleted — skipping`
-        );
-        return;
-      }
-      console.log(
-        `[onReviewChanged] Review CREATED, rating=${afterRating}`
-      );
-      await updateFoodRatingStats(foodId, {
-        removeRating: null,
-        addRating: afterRating,
-      }, event.id);
-      return;
-    }
-
-    // ── Case 2: Document deleted (no after) ──────────────────────────
-    if (before && !after) {
-      if (before.deleted || beforeRating == null) {
-        console.log(
-          `[onReviewChanged] Review hard-deleted, already soft-deleted or no rating — skipping`
-        );
-        return;
-      }
-      console.log(
-        `[onReviewChanged] Review DELETED, rating=${beforeRating}`
-      );
-      await updateFoodRatingStats(foodId, {
-        removeRating: beforeRating,
-        addRating: null,
-      }, event.id);
-      return;
-    }
-
-    // ── Case 3: Document updated (both before and after) ─────────────
-    if (before && after) {
-      // Both already deleted — no rating change to process.  The rating
-      // was already removed when the review was soft-deleted (Case 3a).
-      // Any subsequent update to a deleted document (e.g. updatedAt)
-      // must not modify stats again.
-      if (before.deleted && after.deleted) {
-        console.log(
-          `[onReviewChanged] Review already deleted — skipping`
-        );
-        return;
-      }
-
-      // ── Sub-case 3a: Soft-delete toggle ────────────────────────────
-      if (!before.deleted && after.deleted) {
-        console.log(
-          `[onReviewChanged] Review SOFT-DELETED, rating=${beforeRating}`
-        );
-        await updateFoodRatingStats(foodId, {
-          removeRating: beforeRating,
-          addRating: null,
-        }, event.id);
-        return;
-      }
-
-      // ── Sub-case 3b: Restore from soft-delete ──────────────────────
-      if (before.deleted && !after.deleted) {
-        console.log(
-          `[onReviewChanged] Review RESTORED, rating=${afterRating}`
-        );
-        await updateFoodRatingStats(foodId, {
-          removeRating: null,
-          addRating: afterRating,
-        }, event.id);
-        return;
-      }
-
-      // ── Sub-case 3c: Rating change (edit) ─────────────────────────
-      if (beforeRating !== afterRating) {
-        console.log(
-          `[onReviewChanged] Review UPDATED, ` +
-          `rating ${beforeRating} → ${afterRating}`
-        );
-        await updateFoodRatingStats(foodId, {
-          removeRating: beforeRating,
-          addRating: afterRating,
-        }, event.id);
-        return;
-      }
-
-      // ── Sub-case 3d: Non-rating update (comment, tags, etc.) ───────
-      console.log(
-        `[onReviewChanged] Review updated metadata — no rating change`
-      );
-    }
+    return handleReviewUpdated(ctx, event);
   },
 );
 
+/**
+ * Read a migration's persisted progress.
+ *
+ * Returns null when the migration is already marked completed (so the
+ * caller exits immediately), otherwise the state document contents.
+ */
+async function readMigrationProgress(stateRef, label) {
+  const stateSnap = await stateRef.get();
+  const state = stateSnap.exists ? stateSnap.data() : {};
+  if (state.status === "completed") {
+    console.log(`${label} Migration already completed — skipping`);
+    return null;
+  }
+  return state;
+}
+
+/**
+ * Backfill a page of order documents with retry, collecting failures.
+ *
+ * Transient Firestore write failures are retried with bounded backoff
+ * (withRetry) so a single blip never permanently skips an order.  Order IDs
+ * that fail permanently are returned for persisting in the migration state
+ * so operators can requeue them after completion.  NOT_FOUND (order deleted
+ * mid-run) is excluded — there is nothing to requeue for a deleted order.
+ */
+async function backfillMigrationPage(docs, backfillFn, label) {
+  let backfilledCount = 0;
+  const failedOrderIds = [];
+  for (const doc of docs) {
+    try {
+      const didBackfill = await withRetry(
+        () => backfillFn(doc.ref, doc.data()),
+        {
+          maxRetries: 3,
+          baseDelayMs: 200,
+          maxDelayMs: 2000,
+          isPermanent: (err) => isNotFoundError(err),
+        },
+      );
+      if (didBackfill) {
+        backfilledCount++;
+      }
+    } catch (err) {
+      if (!isNotFoundError(err)) {
+        failedOrderIds.push(doc.id);
+      }
+      console.error(
+        `${label} Backfill failed after retries: ${err.message}`
+      );
+    }
+  }
+  return { backfilledCount, failedOrderIds };
+}
+
+/**
+ * Retry backfill on previously-failed order IDs (final phase).
+ *
+ * The forward-only cursor walks past failures on non-final pages, so those
+ * orders would never be revisited by the main walk.  Deleted orders are
+ * resolved (dropped) rather than failed again.  Returns the set of resolved
+ * IDs plus the number successfully backfilled this pass.
+ */
+async function retryMigrationFailures(orderIds, backfillFn, label) {
+  const resolvedRetryIds = new Set();
+  let backfilledCount = 0;
+  for (const orderId of orderIds) {
+    try {
+      const orderDoc = await db.collection("orders").doc(orderId).get();
+      if (!orderDoc.exists) {
+        resolvedRetryIds.add(orderId);
+        continue;
+      }
+      const didBackfill = await withRetry(
+        () => backfillFn(orderDoc.ref, orderDoc.data()),
+        {
+          maxRetries: 3,
+          baseDelayMs: 200,
+          maxDelayMs: 2000,
+          isPermanent: (err) => isNotFoundError(err),
+        },
+      );
+      if (didBackfill) backfilledCount++;
+      resolvedRetryIds.add(orderId);
+    } catch (err) {
+      if (!isNotFoundError(err)) {
+        console.error(
+          `${label} Retry backfill failed for ${orderId}: ${err.message}`
+        );
+      }
+    }
+  }
+  return { resolvedRetryIds, backfilledCount };
+}
+
+/**
+ * Merge prior and current failure IDs, deduplicating and capping so the
+ * state doc stays bounded: a failed order ID is tens of bytes, so retaining
+ * every failure since the start could exceed Firestore's 1 MiB document
+ * limit and stall the write.
+ */
+function accumulateMigrationFailedIds(priorFailedIds, failedOrderIds) {
+  return [
+    ...new Set([...priorFailedIds, ...failedOrderIds]),
+  ].slice(-MAX_FAILED_IDS);
+}
 // ════════════════════════════════════════════════════════════════════════════
 // FUNCTION 9: migrateLegacyOrderFoodIds  (Scheduled — one-time backfill)
 // ════════════════════════════════════════════════════════════════════════════
@@ -4807,16 +5289,11 @@ exports.migrateLegacyOrderFoodIds = functions
     .onRun(async (context) => {
       console.log("[migrateFoodIds] Scheduled run started...");
 
-      // ── Read persisted progress ───────────────────────────────────
-      const stateSnap = await MIGRATION_STATE_REF.get();
-      const state = stateSnap.exists ? stateSnap.data() : {};
-
-      if (state.status === "completed") {
-        console.log(
-          "[migrateFoodIds] Migration already completed — skipping"
-        );
-        return null;
-      }
+      const state = await readMigrationProgress(
+        MIGRATION_STATE_REF,
+        "[migrateFoodIds]",
+      );
+      if (!state) return null;
 
       // phase: 'collected' | 'COLLECTED' | 'completed'
       const phase = state.phase || "collected";
@@ -4838,42 +5315,11 @@ exports.migrateLegacyOrderFoodIds = functions
         `found ${snapshot.size} order(s)`
       );
 
-      // ── Backfill each order (idempotent; failures never stall the run) ──
-      // Transient Firestore write failures are retried with bounded backoff
-      // (withRetry) so a single blip never permanently skips an order — the
-      // cursor only advances after the page has been processed.  Order IDs
-      // that fail permanently are persisted in the migration state so
-      // operators can requeue them after completion.
-      let backfilledCount = 0;
-      const failedOrderIds = [];
-      for (const doc of snapshot.docs) {
-        try {
-          const didBackfill = await withRetry(
-            () => backfillOrderFoodIds(doc.ref, doc.data()),
-            {
-              maxRetries: 3,
-              baseDelayMs: 200,
-              maxDelayMs: 2000,
-              isPermanent: (err) => isNotFoundError(err), // order deleted mid-run
-            },
-          );
-          if (didBackfill) {
-            backfilledCount++;
-          }
-        } catch (err) {
-          // Final failure after retries — persist the order ID for later
-          // requeue and log loudly.  NOT_FOUND (order deleted mid-run) is
-          // excluded: there is nothing to requeue for a deleted order.
-          // The cursor still advances so the migration keeps moving.
-          if (!isNotFoundError(err)) {
-            failedOrderIds.push(doc.id);
-          }
-          console.error(
-            `[migrateFoodIds] Backfill failed ` +
-            `after retries: ${err.message}`
-          );
-        }
-      }
+      let { backfilledCount, failedOrderIds } = await backfillMigrationPage(
+        snapshot.docs,
+        backfillOrderFoodIds,
+        "[migrateFoodIds]",
+      );
 
       // ── Advance phase / cursor ────────────────────────────────────
       // Fewer results than the batch size means the phase is exhausted.
@@ -4898,51 +5344,27 @@ exports.migrateLegacyOrderFoodIds = functions
       const priorFailedIds = Array.isArray(state.failedOrderIds)
         ? state.failedOrderIds
         : [];
-      // Deduplicate first, then cap so the state doc stays bounded: a failed
-      // order ID is tens of bytes, so retaining every failure since the start
-      // could exceed Firestore's 1 MiB document limit and stall the write.
-      const accumulatedFailedIds = [
-        ...new Set([...priorFailedIds, ...failedOrderIds]),
-      ].slice(-MAX_FAILED_IDS);
+      const accumulatedFailedIds = accumulateMigrationFailedIds(
+        priorFailedIds,
+        failedOrderIds,
+      );
 
       // ── Bounded retry pass for previously-failed orders (final phase) ──
-      // The forward-only cursor walks past failures on non-final pages, so
-      // those orders would never be revisited by the main walk. Once the
-      // final phase's walk is exhausted, re-attempt up to MIGRATION_BATCH_SIZE
-      // accumulated failed IDs per run — the slice keeps a single run within
-      // the function timeout; IDs beyond the slice stay in failedOrderIds
-      // for the next run.
+      // Re-attempt up to MIGRATION_BATCH_SIZE accumulated failed IDs per run
+      // once the final phase's walk is exhausted — the slice keeps a single
+      // run within the function timeout; IDs beyond the slice stay in
+      // failedOrderIds for the next run.
       const retryCandidates = accumulatedFailedIds.slice(0, MIGRATION_BATCH_SIZE);
-      const resolvedRetryIds = new Set();
+      let resolvedRetryIds = new Set();
       if (isLastPage && phase === "COLLECTED" &&
           retryCandidates.length > 0) {
-        for (const orderId of retryCandidates) {
-          try {
-            const orderDoc = await db.collection("orders").doc(orderId).get();
-            if (!orderDoc.exists) {
-              // Deleted mid-run — nothing to retry, not a failure: drop it.
-              resolvedRetryIds.add(orderId);
-              continue;
-            }
-            const didBackfill = await withRetry(
-              () => backfillOrderFoodIds(orderDoc.ref, orderDoc.data()),
-              {
-                maxRetries: 3,
-                baseDelayMs: 200,
-                maxDelayMs: 2000,
-                isPermanent: (err) => isNotFoundError(err),
-              },
-            );
-            if (didBackfill) backfilledCount++;
-            resolvedRetryIds.add(orderId);
-          } catch (err) {
-            if (!isNotFoundError(err)) {
-              console.error(
-                `[migrateFoodIds] Retry backfill failed for ${orderId}: ${err.message}`
-              );
-            }
-          }
-        }
+        const retry = await retryMigrationFailures(
+          retryCandidates,
+          backfillOrderFoodIds,
+          "[migrateFoodIds]",
+        );
+        resolvedRetryIds = retry.resolvedRetryIds;
+        backfilledCount += retry.backfilledCount;
       }
 
       // Successfully retried (or deleted) orders are resolved — drop them
@@ -5028,13 +5450,11 @@ exports.migrateLegacyOrderCafes = functions
     .onRun(async () => {
       console.log("[migrateCafes] Scheduled run started...");
 
-      const stateSnap = await MIGRATION_CAFES_STATE_REF.get();
-      const state = stateSnap.exists ? stateSnap.data() : {};
-
-      if (state.status === "completed") {
-        console.log("[migrateCafes] Migration already completed — skipping");
-        return null;
-      }
+      const state = await readMigrationProgress(
+        MIGRATION_CAFES_STATE_REF,
+        "[migrateCafes]",
+      );
+      if (!state) return null;
 
       const cursor = state.cursor || null;
 
@@ -5052,31 +5472,11 @@ exports.migrateLegacyOrderCafes = functions
         `[migrateCafes] Found ${snapshot.size} order(s)`
       );
 
-      let backfilledCount = 0;
-      const failedOrderIds = [];
-      for (const doc of snapshot.docs) {
-        try {
-          const didBackfill = await withRetry(
-            () => backfillOrderCafes(doc.ref, doc.data()),
-            {
-              maxRetries: 3,
-              baseDelayMs: 200,
-              maxDelayMs: 2000,
-              isPermanent: (err) => isNotFoundError(err), // order deleted mid-run
-            },
-          );
-          if (didBackfill) {
-            backfilledCount++;
-          }
-        } catch (err) {
-          if (!isNotFoundError(err)) {
-            failedOrderIds.push(doc.id);
-          }
-          console.error(
-            `[migrateCafes] Backfill failed after retries: ${err.message}`
-          );
-        }
-      }
+      let { backfilledCount, failedOrderIds } = await backfillMigrationPage(
+        snapshot.docs,
+        backfillOrderCafes,
+        "[migrateCafes]",
+      );
 
       const isLastPage = snapshot.size < MIGRATION_BATCH_SIZE;
       const nextCursor = isLastPage
@@ -5089,9 +5489,10 @@ exports.migrateLegacyOrderCafes = functions
       // Deduplicate first, then cap so the state doc stays bounded: a failed
       // order ID is tens of bytes, so retaining every failure since the start
       // could exceed Firestore's 1 MiB document limit and stall the write.
-      const accumulatedFailedIds = [
-        ...new Set([...priorFailedIds, ...failedOrderIds]),
-      ].slice(-MAX_FAILED_IDS);
+      const accumulatedFailedIds = accumulateMigrationFailedIds(
+        priorFailedIds,
+        failedOrderIds,
+      );
 
       // ── Bounded retry pass for previously-failed orders ──────────────
       // The forward-only cursor walks past failures on non-final pages, so
@@ -5101,35 +5502,15 @@ exports.migrateLegacyOrderCafes = functions
       // function timeout; IDs beyond the slice stay in failedOrderIds and
       // are picked up by a later run.
       const retryCandidates = accumulatedFailedIds.slice(0, MIGRATION_BATCH_SIZE);
-      const resolvedRetryIds = new Set();
+      let resolvedRetryIds = new Set();
       if (isLastPage && retryCandidates.length > 0) {
-        for (const orderId of retryCandidates) {
-          try {
-            const orderDoc = await db.collection("orders").doc(orderId).get();
-            if (!orderDoc.exists) {
-              // Deleted mid-run — nothing to retry, not a failure: drop it.
-              resolvedRetryIds.add(orderId);
-              continue;
-            }
-            const didBackfill = await withRetry(
-              () => backfillOrderCafes(orderDoc.ref, orderDoc.data()),
-              {
-                maxRetries: 3,
-                baseDelayMs: 200,
-                maxDelayMs: 2000,
-                isPermanent: (err) => isNotFoundError(err),
-              },
-            );
-            if (didBackfill) backfilledCount++;
-            resolvedRetryIds.add(orderId);
-          } catch (err) {
-            if (!isNotFoundError(err)) {
-              console.error(
-                `[migrateCafes] Retry backfill failed for ${orderId}: ${err.message}`
-              );
-            }
-          }
-        }
+        const retry = await retryMigrationFailures(
+          retryCandidates,
+          backfillOrderCafes,
+          "[migrateCafes]",
+        );
+        resolvedRetryIds = retry.resolvedRetryIds;
+        backfilledCount += retry.backfilledCount;
       }
 
       // Successfully retried (or deleted) orders are resolved — drop them

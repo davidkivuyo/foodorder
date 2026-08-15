@@ -60,13 +60,13 @@ export default {
         return await serveLatest(ctx);
       }
 
-      const releaseMatch = url.pathname.match(/^\/release\/(v[\w.\-]+)$/);
+      const releaseMatch = url.pathname.match(/^\/release\/(v[\w.-]+)$/);
       if (releaseMatch) {
         return await serveRelease(releaseMatch[1], ctx);
       }
 
       const assetMatch = url.pathname.match(
-        /^\/(v[\w.\-]+)\/([\w.\-]+\.(apk|sha256))$/
+        /^\/(v[\w.-]+)\/([\w.-]+\.(apk|sha256))$/
       );
       if (assetMatch) {
         const [, tag, filename] = assetMatch;
@@ -75,6 +75,7 @@ export default {
 
       return new Response("Not found", { status: 404 });
     } catch (err) {
+      console.error("Request handler error:", err);
       return new Response(
         JSON.stringify({ error: "Service temporarily unavailable" }),
         { status: 502, headers: { "content-type": "application/json" } }
@@ -123,6 +124,7 @@ async function serveLatest(ctx) {
       ttl: LATEST_META_TTL,
     });
   } catch (err) {
+    console.error("serveLatest error:", err);
     lastLatestRefreshFailureAt = Date.now() / 1000;
     if (cached) {
       return staleResponse(cached);
@@ -148,6 +150,7 @@ async function serveRelease(tag, ctx) {
       immutable: true,
     });
   } catch (err) {
+    console.error("serveRelease error:", err);
     return jsonResponse({ error: "Release metadata unavailable" }, 502);
   }
 }
@@ -247,7 +250,7 @@ function staleResponse(cached) {
 function rewriteGithubUrls(obj, tag) {
   if (typeof obj === "string") {
     const match = obj.match(
-      /^https:\/\/github\.com\/[^/]+\/[^/]+\/releases\/download\/[^/]+\/([\w.\-]+)$/
+      /^https:\/\/github\.com\/[^/]+\/[^/]+\/releases\/download\/[^/]+\/([\w.-]+)$/
     );
     if (match) {
       return `https://${ALLOWED_HOST}/${tag}/${match[1]}`;
@@ -273,32 +276,32 @@ function rewriteGithubUrls(obj, tag) {
 // is deliberately strict rather than trying to guess which fields are
 // "download-like".
 function findDisallowedUrl(obj) {
-  if (typeof obj === "string") {
-    if (!looksLikeAbsoluteUrl(obj)) return null;
-    try {
-      const parsed = new URL(obj);
-      if (parsed.protocol !== "https:" || parsed.host !== ALLOWED_HOST) {
-        return obj;
-      }
-    } catch {
-      // Not a parseable URL at all — not a leak, just a plain string field
-      return null;
-    }
-    return null;
-  }
-  if (Array.isArray(obj)) {
-    for (const item of obj) {
-      const bad = findDisallowedUrl(item);
-      if (bad) return bad;
-    }
-    return null;
-  }
+  if (typeof obj === "string") return findDisallowedUrlInString(obj);
+  if (Array.isArray(obj)) return findDisallowedUrlInIterable(obj);
   if (obj && typeof obj === "object") {
-    for (const value of Object.values(obj)) {
-      const bad = findDisallowedUrl(value);
-      if (bad) return bad;
+    return findDisallowedUrlInIterable(Object.values(obj));
+  }
+  return null;
+}
+
+function findDisallowedUrlInString(str) {
+  if (!looksLikeAbsoluteUrl(str)) return null;
+  try {
+    const parsed = new URL(str);
+    if (parsed.protocol !== "https:" || parsed.host !== ALLOWED_HOST) {
+      return str;
     }
+  } catch {
+    // Not a parseable URL at all — not a leak, just a plain string field
     return null;
+  }
+  return null;
+}
+
+function findDisallowedUrlInIterable(items) {
+  for (const item of items) {
+    const bad = findDisallowedUrl(item);
+    if (bad) return bad;
   }
   return null;
 }

@@ -33,6 +33,29 @@
 //   8  Students cannot forge the `cafes` array (no create rule; protected on update)
 //   9  placeOrder writes the server-authoritative `cafes` array
 //  10  Cafeless orders are tagged UNASSIGNED and are readable by any admin
+//  11  onNewOrder notifies only the scoped cafe admin for a legacy order
+//      backfilled with cafes
+//  12  onNewOrder repairs an EMPTY cafes array (deriving the cafe from items)
+//      and notifies the scoped admin
+//  13  An UNASSIGNED order can be processed (updated) by any active admin
+//  14  An admin without a cafeName can read a cafeless order, but not a
+//      cafe-scoped one
+//  15  onNewOrder backfill repairs malformed/absent cafes and tags cafeless
+//      orders with UNASSIGNED
+//
+// Additional describe blocks in this suite cover, for the same emulator:
+//   • cart serialization lock document (_cart_lock_) write rules
+//   • createAdminAccount callable (no self-registration, auth + profile +
+//     audit, payload validation, duplicate-email mapping)
+//   • reactivateStudent callable (backend-only audit, deduped notification)
+//   • audit_logs read scoping (per cafe; cafeless records readable by any
+//     admin; students denied)
+//
+// Note: the excuseNoShow callable has its own dedicated emulator suite
+// (test/excuse_no_show_integration.test.js, Phase G Tests 1-14) covering
+// cross-cafe/suspended-admin denial, non-NO_SHOW rejection, idempotency
+// without duplicate audit/notification documents, and atomic commit — it is
+// not repeated here.
 //
 // Run (requires Java 21+ — e.g. JAVA_HOME=/usr/lib/jvm/java-25-openjdk):
 //   npm run test:cafe-scoping:integration   (inside functions/)

@@ -380,7 +380,8 @@ describe("Pickup reliability — recent window (Tests 5, 6, 12)", () => {
     const s = await userReliability();
     const colEntry = s.recentPickupHistory.find((e) => e.orderId === "rel-ts-col");
     const nsEntry = s.recentPickupHistory.find((e) => e.orderId === "rel-ts-ns");
-    assert.ok(colEntry && nsEntry, "history entries exist");
+    assert.ok(colEntry, "COLLECTED history entry exists");
+    assert.ok(nsEntry, "NO_SHOW history entry exists");
     assert.ok(
       colOrder.data().collectedAt instanceof admin.firestore.Timestamp,
       "collectedAt persisted",
