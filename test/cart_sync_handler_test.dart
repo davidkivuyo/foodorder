@@ -80,7 +80,10 @@ void main() {
           .doc(userId)
           .collection('cart')
           .get();
-      return snapshot.docs;
+      // Ignore the serialization lock document (it carries no foodItemId).
+      return snapshot.docs
+          .where((d) => d.data()['foodItemId'] != null)
+          .toList();
     }
 
     test('applies the operation when the food item exists and is available',

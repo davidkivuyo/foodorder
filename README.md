@@ -210,7 +210,49 @@ Create these collections manually in the Firestore Console (or through the admin
 | `section` | `{ name: "campus_favourite" }` |
 
 #### f) Create the First Admin User
-1. this is created in the admin app but consider doing manually in firestore database.
+
+Admin self-registration is disabled for security (Firestore rules reject any
+client-side `role: admin` profile creation, and the client SDK cannot create
+another user's credentials). The **first** admin must be bootstrapped with
+the Admin SDK (rules-bypassing); subsequent admins are created by a
+signed-in admin through the admin app's **Admin** action (top bar), which
+invokes the server-authoritative `createAdminAccount` callable.
+
+Bootstrap the first admin with a Node script using a service account:
+
+```bash
+cd functions
+npm install firebase-admin
+node -e '
+const admin = require("firebase-admin");
+const serviceAccount = require("/path/to/serviceAccountKey.json");
+admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
+const email = "admin@example.com";
+const password = "<choose-a-strong-password>";
+admin.auth().createUser({ email, password, emailVerified: true })
+  .then(async (u) => {
+    await admin.firestore().collection("users").doc(u.uid).set({
+      fullName: "Cafe Administrator",
+      cafeName: "Main Cafeteria",
+      email,
+      phoneNumber: "",
+      role: "admin",
+      accountStatus: "ACTIVE",
+      strikePercentage: 0,
+      strikeCount: 0,
+      lastStrikeAt: null,
+      lastPardonAt: null,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    console.log("First admin created:", u.uid);
+  })
+  .catch((e) => console.error(e));
+'
+```
+
+`cafeName` must match the cafe name the admin manages — it drives the
+per-cafe order scoping (`adminServesOrder()`).
 
 ### 3. Install Dependencies
 
@@ -429,6 +471,7 @@ firebase functions:secrets:set CLOUDINARY_API_SECRET
 | `status` | string | `pending` → `accepted` → `preparing` → `ready` → `collected` \| `no_show` |
 | `cafe` | string | Selected cafe name |
 | `cafeId` | string | Selected cafe ID |
+| `cafes` | array | Server-authoritative list of cafe names this order belongs to (derived from line-item `selectedCafe`; written by `placeOrder`/backfill, protected from client writes). Drives per-cafe admin scoping (`adminServesOrder()`) |
 | `cafeLocation` | geopoint | Geolocation coordinates of the cafe |
 | `distanceMeters` | number | Walking distance in meters calculated client-side |
 | `distanceCalculated` | boolean | True if walking distance was calculated at checkout |
@@ -556,6 +599,8 @@ Each map in the `items` array contains:
 Read and write your own firestore rules. follow best practices in the official documentations.
 
 **Order creation is server-exclusive:** `firestore.rules` exposes **no** client `create` on `/orders` (the old `validOrderCreateRequest()` helper was removed). Orders are created only by the `placeOrder` Cloud Function callable — the client invokes it via `OrderPlacementService` (wired through `CartService.placeOrder`) — so the Phase E active-order limit cannot be bypassed by writing an order document directly, and server-owned fields (`createdAt`, `cancellationDeadline`, `readyAt`, `pickupDeadline`, `collectedAt`, `expiredAt`, `noShowProcessed`, ...) cannot be forged on create. App builds older than Phase E that placed orders with a direct client write must be updated before the new rules are deployed.
+
+**Per-cafe admin scoping:** admins can read/update/delete only orders belonging to their own cafe. Each order carries a server-authoritative `cafes` array (cafe names derived from the validated line items' `selectedCafe`); the `adminServesOrder()` helper requires the admin's `users/{uid}.cafeName` to appear in that array, and `cafes` is in `adminNotModifyingProtectedOrderFields()` so no client (admin included) can forge it. The admin app queries orders with `where('cafes', 'array-contains', cafeName)` — the matching Firestore composite index (`cafes` ASC + `createdAt` DESC) is declared in `firestore.indexes.json`. There is **no absent-field fallback**: a cafeless order is accessible to no admin through the client rules — `migrateLegacyOrderCafes` (scheduled every 5 min, idempotent, cursor-resumable) and the `onNewOrder`/`onOrderStatusChanged` triggers backfill the `cafes` array with the Admin SDK (rules-bypassing) before any admin needs to operate on the order, so per-cafe scoping is never bypassed. NEW_ORDER admin notifications are delivered only to admins whose `cafeName` is in the order's `cafes` list (legacy orders fall back to notifying all admins).
 
 ---
 
@@ -934,7 +979,9 @@ flutter analyze
 
 ---
 
-## Contributing (contributions are restricted to maintainers only)
+## Contributing
+
+* Push access are restricted to maintainers only
 
 ### Branch Workflow
 

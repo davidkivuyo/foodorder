@@ -47,8 +47,10 @@ void main() {
         rules.indexOf('match /section/{sectionId}'),
       );
       // Students may only create orders (status pending) and read their own;
-      // every update requires the admin gate.
-      expect(orderBlock, contains('allow update: if isAdmin()'));
+      // every update requires the admin gate (adminServesOrder() — which
+      // internally requires isAdmin() — so per-cafe scoping still preserves
+      // the admin-only gate).
+      expect(orderBlock, contains('allow update: if adminServesOrder()'));
       expect(orderBlock, isNot(contains('allow update: if isAuth()')));
     });
 

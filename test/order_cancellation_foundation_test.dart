@@ -133,7 +133,7 @@ void main() {
         rules.indexOf('match /orders/{docId}'),
         rules.indexOf('match /section/{sectionId}'),
       );
-      expect(orderBlock, contains('allow update: if isAdmin()'));
+      expect(orderBlock, contains('allow update: if adminServesOrder()'));
       expect(orderBlock, isNot(contains('allow update: if isAuth()')));
     });
   });

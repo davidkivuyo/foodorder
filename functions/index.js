@@ -20,6 +20,10 @@
  * 10) migrateLegacyOrderFoodIds — Scheduled (every 5 min) one-time backfill of
  *    the denormalised `foodIds` array on legacy COLLECTED orders so they become
  *    reviewable; bounded batch, resumable via a persisted cursor, self-completing.
+ * 10b) migrateLegacyOrderCafes — Scheduled (every 5 min) one-time backfill of
+ *    the server-authoritative `cafes` array on legacy orders (any status) so
+ *    per-cafe admin scoping covers historical orders; bounded batch, resumable
+ *    via a persisted cursor, self-completing.
  * 11) auditReviewCreationRate — Scheduled (every 24h) review-rate guardrail.
  */
 
@@ -122,8 +126,25 @@ function isAlreadyExistsError(err) {
     err.code === 6 ||
     String(err.code) === "6" ||
     err.code === "ALREADY_EXISTS" ||
-    err.code === "already-exists" ||
-    /already exists/i.test(String(err.message || ""))
+    err.code === "already-exists"
+  );
+}
+
+/**
+ * Whether a Firestore operation failed because the target document no longer
+ * exists (e.g. an order deleted mid-run). The Admin SDK surfaces the gRPC
+ * NOT_FOUND status (numeric code 5); the string forms are accepted too for
+ * robustness across SDK versions.
+ * @param {*} err
+ * @return {boolean}
+ */
+function isNotFoundError(err) {
+  if (!err) return false;
+  return (
+    err.code === 5 ||
+    String(err.code) === "5" ||
+    err.code === "NOT_FOUND" ||
+    err.code === "not-found"
   );
 }
 
@@ -324,7 +345,7 @@ async function deactivateTokenDoc(docId, reason) {
       baseDelayMs: 100,
       maxDelayMs: 1000,
       isPermanent: (err) =>
-        err.code === "NOT_FOUND" || // doc already deleted
+        isNotFoundError(err) || // doc already deleted
         err.code === "PERMISSION_DENIED",
     },
   );
@@ -1866,6 +1887,28 @@ exports.placeOrder = onCall(
       };
     });
 
+    // One cafe per order: every line item must resolve to the same cafe.
+    // Items without a `selectedCafe` (e.g. off-campus listings) count as a
+    // distinct cafe so they cannot be mixed with campus-cafe items. The
+    // client enforces the same rule when adding to the cart; this is the
+    // authoritative server-side gate so mixed-cafe orders can never exist.
+    const distinctCafes = new Set();
+    let hasCafelessItem = false;
+    for (const item of lineItems) {
+      const cafe = typeof item.selectedCafe === "string" &&
+          item.selectedCafe.trim().length > 0
+        ? item.selectedCafe.trim()
+        : null;
+      if (cafe === null) hasCafelessItem = true;
+      else distinctCafes.add(cafe);
+    }
+    if (distinctCafes.size > 1 || (distinctCafes.size === 1 && hasCafelessItem)) {
+      throw new HttpsError(
+        "invalid-argument",
+        "You can only order from one cafe per order. Please place separate orders for items from different cafes."
+      );
+    }
+
     const orderRef = db.collection("orders").doc(orderId);
     const userRef = db.collection("users").doc(uid);
 
@@ -1966,7 +2009,8 @@ exports.placeOrder = onCall(
         // 7. Create the order (server-authoritative write). The onNewOrder
         //    trigger still runs afterwards (cancellation deadline, pricing
         //    normalization, notifications).
-        transaction.set(orderRef, {
+        const derivedCafes = deriveOrderCafes(lineItems);
+        const orderData = {
           orderId,
           studentId: uid,
           userName,
@@ -1988,7 +2032,16 @@ exports.placeOrder = onCall(
           deadlineExtended: false,
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        });
+          // Server-authoritative per-cafe scoping list: derived from the
+          // validated line items, protected from client writes by the rules.
+          // Orders with no derivable cafe (e.g. off-campus items without a
+          // selection) OMIT the field entirely: the rules, notification
+          // routing and migration all treat an absent field as the legacy
+          // "untagged" state, so a cafeless order falls back to notifying
+          // every admin instead of being left invisible.
+          ...(derivedCafes ? { cafes: derivedCafes } : {}),
+        };
+        transaction.set(orderRef, orderData);
 
         return orderId;
       });
@@ -2081,6 +2134,73 @@ async function backfillOrderFoodIds(orderRef, orderData) {
   });
   if (migrated) {
     console.log("[backfillFoodIds] Backfilled foodIds for order");
+  }
+  return migrated;
+}
+
+// ── Order cafes backfill ─────────────────────────────────────────────────────
+//
+// Admin order access is scoped per cafe (firestore.rules adminServesOrder()):
+// an admin may read/update only orders whose server-authoritative `cafes`
+// array contains the admin's own `cafeName`.  The `cafes` array is derived
+// from the validated line items' `selectedCafe` values and written by the
+// backend (placeOrder on create, these helpers for legacy orders) — the
+// rules protect the field from ALL client writes, so it cannot be forged.
+
+/**
+ * Derive the deduplicated, non-empty `cafes` list from an order's nested
+ * `items` array (the cafe each line item was ordered from).
+ * @param {*} items — the order's `items` field
+ * @return {string[]|null} — derived cafe names, or null when none can be
+ *   derived
+ */
+function deriveOrderCafes(items) {
+  if (!Array.isArray(items)) return null;
+  const cafes = [];
+  for (const item of items) {
+    if (!item || typeof item !== "object") continue;
+    const cafe = typeof item.selectedCafe === "string" ? item.selectedCafe.trim() : "";
+    if (cafe.length > 0 && !cafes.includes(cafe)) {
+      cafes.push(cafe);
+    }
+  }
+  return cafes.length > 0 ? cafes : null;
+}
+
+/**
+ * Backfill `cafes` on an order document when the field is absent.
+ *
+ * The presence check and the write run inside a single Firestore transaction
+ * (the order is re-read immediately before the write), and ANY existing
+ * `cafes` value — a populated list, an empty array, or a malformed
+ * historical value — aborts the backfill so existing data is never clobbered
+ * or reinterpreted.
+ *
+ * @param {admin.firestore.DocumentReference} orderRef
+ * @param {Object} orderData — the trigger snapshot, used only for the early
+ *   no-data guard; the authoritative presence check re-reads the document
+ *   inside the transaction.
+ * @return {Promise<boolean>} true when a backfill write was performed
+ */
+async function backfillOrderCafes(orderRef, orderData) {
+  if (!orderData) return false;
+  const migrated = await db.runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(orderRef);
+    if (!snapshot.exists) return false;
+    const data = snapshot.data();
+    // Presence of the field with ANY value means it is already populated —
+    // never overwrite or reinterpret empty/malformed historical values.
+    if (data.cafes !== undefined) return false;
+    const cafes = deriveOrderCafes(data.items);
+    if (!cafes) return false; // Nothing derivable — leave unchanged.
+    transaction.update(orderRef, {
+      cafes,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    return true;
+  });
+  if (migrated) {
+    console.log("[backfillCafes] Backfilled cafes for order");
   }
   return migrated;
 }
@@ -2744,7 +2864,7 @@ exports.onOrderStatusChanged = onDocumentUpdated(
           maxRetries: 3,
           baseDelayMs: 200,
           maxDelayMs: 2000,
-          isPermanent: (err) => err.code === "NOT_FOUND", // order deleted mid-run
+          isPermanent: (err) => isNotFoundError(err), // order deleted mid-run
         },
       );
     } catch (err) {
@@ -2756,7 +2876,30 @@ exports.onOrderStatusChanged = onDocumentUpdated(
       // deleted order, so return early instead of retrying a permanent
       // failure.  Any other failure is rethrown so the event is not
       // acknowledged as successful.
-      if (err.code === "NOT_FOUND") {
+      if (isNotFoundError(err)) {
+        return;
+      }
+      throw err;
+    }
+
+    // Backfill `cafes` (server-authoritative per-cafe scoping list) on
+    // legacy orders touched by any update — the same idempotent pattern as
+    // the foodIds backfill above.
+    try {
+      await withRetry(
+        () => backfillOrderCafes(event.data.after.ref, afterData),
+        {
+          maxRetries: 3,
+          baseDelayMs: 200,
+          maxDelayMs: 2000,
+          isPermanent: (err) => isNotFoundError(err), // order deleted mid-run
+        },
+      );
+    } catch (err) {
+      console.error(
+        `[onOrderStatusChanged] cafes backfill failed: ${err.message}`
+      );
+      if (isNotFoundError(err)) {
         return;
       }
       throw err;
@@ -2775,15 +2918,25 @@ exports.onOrderStatusChanged = onDocumentUpdated(
       if (afterData.readyAt != null) return;
 
       const now = admin.firestore.Timestamp.now();
+      // Honor the order's stored (distance-based) pickup window when it is a
+      // valid window (10–25 minutes, the range placeOrder validates); fall
+      // back to the default for legacy orders that predate distance windows.
+      const storedWindow = afterData.pickupWindowMinutes;
+      const windowMinutes =
+        Number.isInteger(storedWindow) &&
+        storedWindow >= 10 &&
+        storedWindow <= 25
+          ? storedWindow
+          : PICKUP_WINDOW_MINUTES;
       const deadline = new admin.firestore.Timestamp(
-        now.seconds + PICKUP_WINDOW_MINUTES * 60,
+        now.seconds + windowMinutes * 60,
         now.nanoseconds,
       );
 
       await event.data.after.ref.update({
         readyAt: now,
         pickupDeadline: deadline,
-        pickupWindowMinutes: PICKUP_WINDOW_MINUTES,
+        pickupWindowMinutes: windowMinutes,
         deadlineStatus: "ACTIVE",
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
@@ -2802,7 +2955,7 @@ exports.onOrderStatusChanged = onDocumentUpdated(
             type: "ORDER_READY",
             title: "Order Ready for Pickup",
             message: `Your order #${event.params.orderId} is ready! ` +
-                     `Please collect it within ${PICKUP_WINDOW_MINUTES} minutes.`,
+                     `Please collect it within ${windowMinutes} minutes.`,
             orderId: event.params.orderId,
             deepLink: `/orders/${event.params.orderId}`,
             eventId: notificationEventId("ORDER_READY", event.params.orderId),
@@ -2930,7 +3083,7 @@ exports.onNewOrder = onDocumentCreated(
           maxRetries: 3,
           baseDelayMs: 200,
           maxDelayMs: 2000,
-          isPermanent: (err) => err.code === "NOT_FOUND", // order deleted mid-run
+          isPermanent: (err) => isNotFoundError(err), // order deleted mid-run
         },
       );
     } catch (err) {
@@ -2942,7 +3095,32 @@ exports.onNewOrder = onDocumentCreated(
       // order, so return early instead of retrying a permanent failure.
       // Any other failure is rethrown so the event is not acknowledged
       // as successful.
-      if (err.code === "NOT_FOUND") {
+      if (isNotFoundError(err)) {
+        return;
+      }
+      throw err;
+    }
+
+    // Backfill `cafes` (server-authoritative per-cafe scoping list) when an
+    // order was created without it (e.g. by a legacy app build).  Orders
+    // from the current placeOrder callable already include the field, so
+    // this is a no-op for them.  Same retry semantics as the foodIds
+    // backfill above.
+    try {
+      await withRetry(
+        () => backfillOrderCafes(event.data.ref, orderData),
+        {
+          maxRetries: 3,
+          baseDelayMs: 200,
+          maxDelayMs: 2000,
+          isPermanent: (err) => isNotFoundError(err), // order deleted mid-run
+        },
+      );
+    } catch (err) {
+      console.error(
+        `[onNewOrder] cafes backfill failed: ${err.message}`
+      );
+      if (isNotFoundError(err)) {
         return;
       }
       throw err;
@@ -2951,6 +3129,21 @@ exports.onNewOrder = onDocumentCreated(
     const studentId = orderData.studentId || orderData.userId;
     const studentName = orderData.userName || "A student";
     const orderId = event.params.orderId;
+
+    // Server-authoritative per-cafe scoping list. Orders from the current
+    // placeOrder callable carry the field. Legacy orders that the backfill
+    // above just tagged are NOT reflected in the pre-write orderData, so
+    // derive the cafes from the same items the backfill used — a legacy
+    // order successfully scoped by the backfill must notify its cafe's
+    // admin instead of falling back to every admin. An EMPTY `cafes` array
+    // is treated as absent: it was written by the old `|| []` behaviour and
+    // the backfill refuses to touch it, so it must not be treated as a real
+    // scoping scope (which would notify zero admins). Genuinely cafeless
+    // orders (nothing derivable) still fall back to all admins.
+    const afterCafes =
+      Array.isArray(orderData.cafes) && orderData.cafes.length > 0
+        ? orderData.cafes
+        : deriveOrderCafes(orderData.items);
 
     // Phase 15 — order financial integrity: correct any client-tampered
     // line-item prices and the order total against the authoritative
@@ -3027,9 +3220,29 @@ exports.onNewOrder = onDocumentCreated(
         return;
       }
 
-      console.log(`[onNewOrder] Notifying ${adminSnapshot.size} admin(s)`);
+      // Per-cafe scoping: an admin is notified only when their cafeName is
+      // in the order's server-authoritative `cafes` list.  Legacy orders
+      // without a `cafes` list fall back to notifying every admin (the
+      // pre-scoping behaviour) so no order is ever left invisible.
+      const orderCafes = Array.isArray(afterCafes) ? afterCafes : null;
+      const servingAdmins = orderCafes
+        ? adminSnapshot.docs.filter((doc) => {
+            const adminCafe = doc.data().cafeName;
+            return typeof adminCafe === "string" &&
+              orderCafes.includes(adminCafe);
+          })
+        : adminSnapshot.docs;
 
-      const adminIds = adminSnapshot.docs.map((doc) => doc.id);
+      if (servingAdmins.length === 0) {
+        console.log(
+          `[onNewOrder] No admin serves cafes of order — skipping notifications`
+        );
+        return;
+      }
+
+      console.log(`[onNewOrder] Notifying ${servingAdmins.length} admin(s)`);
+
+      const adminIds = servingAdmins.map((doc) => doc.id);
       const notificationPromises = adminIds.map((adminId) => {
         return createNotification({
           recipientId: adminId,
@@ -3157,6 +3370,169 @@ exports.onNewNotification = onDocumentCreated(
         `[onNewNotification] Push delivery error:`, err
       );
     }
+  },
+);
+
+// ════════════════════════════════════════════════════════════════════════════
+// FUNCTION 4.5: createAdminAccount  (Callable — existing admin only)
+// ════════════════════════════════════════════════════════════════════════════
+
+// Server-authoritative admin provisioning (no self-registration): only an
+// existing, ACTIVE admin may create a new admin account. The client SDK
+// cannot create another user's credentials while staying signed in, so the
+// auth account AND the users/{uid} admin profile are created here with the
+// Admin SDK (rules-bypassing). Self-registration stays blocked by the
+// Firestore rules (validUserCreateRequest requires isAdmin()), and a brand
+// new deployment bootstraps its first admin out-of-band (Admin SDK script —
+// see README).
+exports.createAdminAccount = onCall(
+  {
+    authPolicy: "required",
+    enforceAppCheck: true,
+    region: "us-central1",
+  },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError(
+        "unauthenticated",
+        "You must be signed in to create an admin account."
+      );
+    }
+
+    // ── Phase 15 — full admin authorization (mirrors deleteCloudinaryImage)
+    // Role verification alone is not enough: the account must exist, carry
+    // the admin role, and be ACTIVE (deny-by-default on accountStatus).
+    const callerUid = request.auth.uid;
+    const callerDoc = await admin
+      .firestore().collection("users").doc(callerUid).get();
+    const callerData = callerDoc.data();
+    if (!callerDoc.exists || !callerData) {
+      throw new HttpsError(
+        "permission-denied",
+        "Account not found. Please contact support."
+      );
+    }
+    if (callerData.role !== "admin") {
+      throw new HttpsError(
+        "permission-denied",
+        "Only an existing admin can create admin accounts."
+      );
+    }
+    if (callerData.accountStatus !== "ACTIVE") {
+      throw new HttpsError(
+        "permission-denied",
+        "Your account is suspended and cannot create admin accounts."
+      );
+    }
+
+    // ── Request validation ─────────────────────────────────────────────
+    const data = request.data;
+    if (data === null || typeof data !== "object" || Array.isArray(data)) {
+      throw new HttpsError("invalid-argument", "Invalid request payload.");
+    }
+    const email = typeof data.email === "string" ? data.email.trim() : "";
+    const password = typeof data.password === "string" ? data.password : "";
+    const fullName = typeof data.fullName === "string" ? data.fullName.trim() : "";
+    const cafeName = typeof data.cafeName === "string" ? data.cafeName.trim() : "";
+    const phoneNumber =
+      typeof data.phoneNumber === "string" ? data.phoneNumber.trim() : "";
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      throw new HttpsError("invalid-argument", "A valid admin email is required.");
+    }
+    if (password.length < 6) {
+      throw new HttpsError(
+        "invalid-argument",
+        "Password must be at least 6 characters."
+      );
+    }
+    if (fullName.length === 0 || fullName.length > 100) {
+      throw new HttpsError(
+        "invalid-argument",
+        "A full name (max 100 characters) is required."
+      );
+    }
+    if (cafeName.length === 0 || cafeName.length > 100) {
+      throw new HttpsError(
+        "invalid-argument",
+        "A cafe name (max 100 characters) is required."
+      );
+    }
+    if (phoneNumber.length >= 20) {
+      throw new HttpsError(
+        "invalid-argument",
+        "Phone number must be under 20 characters."
+      );
+    }
+
+    // ── Create the auth account, then the admin profile ───────────────
+    let newUid;
+    try {
+      const created = await admin.auth().createUser({
+        email,
+        password,
+        emailVerified: false,
+        displayName: fullName,
+      });
+      newUid = created.uid;
+    } catch (err) {
+      const code = err && err.code ? String(err.code) : "";
+      if (code === "auth/email-already-in-use" || code === "auth/email-exists") {
+        throw new HttpsError(
+          "already-exists",
+          "An admin account with this email already exists."
+        );
+      }
+      console.error(`[createAdminAccount] Auth user creation failed:`, err);
+      throw new HttpsError("internal", "Could not create the admin account.");
+    }
+
+    try {
+      await admin.firestore().collection("users").doc(newUid).set({
+        fullName,
+        cafeName,
+        email,
+        phoneNumber: phoneNumber || null,
+        role: "admin",
+        accountStatus: "ACTIVE",
+        strikePercentage: 0,
+        strikeCount: 0,
+        lastStrikeAt: null,
+        lastPardonAt: null,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      // Immutable audit record of the privileged action (Phase 15 Part 12).
+      await admin.firestore().collection("audit_logs").add({
+        adminId: callerUid,
+        action: "CREATE_ADMIN",
+        reason: `Created admin account for ${email}`,
+        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    } catch (err) {
+      // Best-effort rollback: remove BOTH the auth account and the
+      // users/{newUid} profile. The profile may already have been written
+      // when a later step fails (e.g. the audit write), so without this a
+      // dangling admin-profile document (no matching auth user) would
+      // linger; deleting both lets the caller retry cleanly.
+      console.error(`[createAdminAccount] Profile write failed:`, err);
+      try {
+        await admin.auth().deleteUser(newUid);
+      } catch (cleanupErr) {
+        console.error(`[createAdminAccount] Cleanup delete failed:`, cleanupErr);
+      }
+      try {
+        await admin.firestore().collection("users").doc(newUid).delete();
+      } catch (cleanupErr) {
+        console.error(
+          `[createAdminAccount] Profile cleanup delete failed:`, cleanupErr
+        );
+      }
+      throw new HttpsError("internal", "Could not create the admin account.");
+    }
+
+    return { uid: newUid, email };
   },
 );
 
@@ -3820,6 +4196,13 @@ exports.onReviewChanged = onDocumentWritten(
 /** Max orders processed per scheduled run. */
 const MIGRATION_BATCH_SIZE = 100;
 
+/**
+ * Max permanently-failed order IDs retained in the migration state doc.
+ * Keeps the state document far below Firestore's 1 MiB limit while still
+ * exposing the most recent failures to operators for requeueing.
+ */
+const MAX_FAILED_IDS = 1000;
+
 /** Firestore state document for the legacy foodIds backfill migration. */
 const MIGRATION_STATE_REF = db.collection("migrations").doc("food_ids_backfill");
 
@@ -3880,7 +4263,7 @@ exports.migrateLegacyOrderFoodIds = functions
               maxRetries: 3,
               baseDelayMs: 200,
               maxDelayMs: 2000,
-              isPermanent: (err) => err.code === "NOT_FOUND", // order deleted mid-run
+              isPermanent: (err) => isNotFoundError(err), // order deleted mid-run
             },
           );
           if (didBackfill) {
@@ -3891,7 +4274,7 @@ exports.migrateLegacyOrderFoodIds = functions
           // requeue and log loudly.  NOT_FOUND (order deleted mid-run) is
           // excluded: there is nothing to requeue for a deleted order.
           // The cursor still advances so the migration keeps moving.
-          if (err.code !== "NOT_FOUND") {
+          if (!isNotFoundError(err)) {
             failedOrderIds.push(doc.id);
           }
           console.error(
@@ -3909,8 +4292,11 @@ exports.migrateLegacyOrderFoodIds = functions
         ? null
         : snapshot.docs[snapshot.docs.length - 1].id;
 
+      // Phase advance: the first phase ('collected') always moves to
+      // 'COLLECTED' once exhausted. Completion of the final phase is decided
+      // after the retry pass below.
       if (isLastPage) {
-        nextPhase = phase === "collected" ? "COLLECTED" : "completed";
+        nextPhase = phase === "collected" ? "COLLECTED" : phase;
       }
 
       // Accumulated permanently-failed order IDs across ALL runs so far,
@@ -3921,15 +4307,75 @@ exports.migrateLegacyOrderFoodIds = functions
       const priorFailedIds = Array.isArray(state.failedOrderIds)
         ? state.failedOrderIds
         : [];
+      // Deduplicate first, then cap so the state doc stays bounded: a failed
+      // order ID is tens of bytes, so retaining every failure since the start
+      // could exceed Firestore's 1 MiB document limit and stall the write.
       const accumulatedFailedIds = [
         ...new Set([...priorFailedIds, ...failedOrderIds]),
-      ];
+      ].slice(-MAX_FAILED_IDS);
+
+      // ── Bounded retry pass for previously-failed orders (final phase) ──
+      // The forward-only cursor walks past failures on non-final pages, so
+      // those orders would never be revisited by the main walk. Once the
+      // final phase's walk is exhausted, re-attempt up to MIGRATION_BATCH_SIZE
+      // accumulated failed IDs per run — the slice keeps a single run within
+      // the function timeout; IDs beyond the slice stay in failedOrderIds
+      // for the next run.
+      const retryCandidates = accumulatedFailedIds.slice(0, MIGRATION_BATCH_SIZE);
+      const resolvedRetryIds = new Set();
+      if (isLastPage && phase === "COLLECTED" &&
+          retryCandidates.length > 0) {
+        for (const orderId of retryCandidates) {
+          try {
+            const orderDoc = await db.collection("orders").doc(orderId).get();
+            if (!orderDoc.exists) {
+              // Deleted mid-run — nothing to retry, not a failure: drop it.
+              resolvedRetryIds.add(orderId);
+              continue;
+            }
+            const didBackfill = await withRetry(
+              () => backfillOrderFoodIds(orderDoc.ref, orderDoc.data()),
+              {
+                maxRetries: 3,
+                baseDelayMs: 200,
+                maxDelayMs: 2000,
+                isPermanent: (err) => isNotFoundError(err),
+              },
+            );
+            if (didBackfill) backfilledCount++;
+            resolvedRetryIds.add(orderId);
+          } catch (err) {
+            if (!isNotFoundError(err)) {
+              console.error(
+                `[migrateFoodIds] Retry backfill failed for ${orderId}: ${err.message}`
+              );
+            }
+          }
+        }
+      }
+
+      // Successfully retried (or deleted) orders are resolved — drop them
+      // from the retained list so failedOrderIds tracks only PENDING
+      // failures and completion stays reachable even after many distinct
+      // failures over the life of the migration. Unattempted IDs (beyond
+      // this run's slice) and still-failing IDs remain for the next run.
+      const remainingFailedIds = accumulatedFailedIds.filter(
+        (id) => !resolvedRetryIds.has(id),
+      );
+
+      // Complete only when the final phase's last page AND the retry pass
+      // produced no failures; otherwise stay in the final phase so the next
+      // scheduled run retries (cursor resets to null — backfill no-ops on
+      // tagged orders and the retry pass re-attempts the pending IDs).
+      if (isLastPage && phase === "COLLECTED") {
+        nextPhase = remainingFailedIds.length === 0 ? "completed" : phase;
+      }
 
       const stateUpdate = {
         phase: nextPhase,
         cursor: nextCursor,
         processedCount: (state.processedCount || 0) + backfilledCount,
-        failedOrderIds: accumulatedFailedIds,
+        failedOrderIds: remainingFailedIds,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       };
       if (nextPhase === "completed") {
@@ -3938,11 +4384,194 @@ exports.migrateLegacyOrderFoodIds = functions
       }
       await MIGRATION_STATE_REF.set(stateUpdate, { merge: true });
 
-console.log(
+      console.log(
         `[migrateFoodIds] Run complete: ${backfilledCount} backfilled this run, ` +
         `total=${stateUpdate.processedCount}, ` +
-        `failedTotal=${accumulatedFailedIds.length}, ` +
+        `failedTotal=${remainingFailedIds.length}, ` +
         `nextPhase='${nextPhase}'`
+      );
+
+      return null;
+    });
+
+// ════════════════════════════════════════════════════════════════════════════
+// FUNCTION 9b: migrateLegacyOrderCafes  (Scheduled — every 5 min)
+// ════════════════════════════════════════════════════════════════════════════
+
+// Per-cafe admin scoping (firestore.rules adminServesOrder()) relies on the
+// server-authoritative `cafes` array on every order.  Orders created before
+// that field existed (legacy orders) or by legacy app builds lack it, so a
+// cafe-scoped admin query (`cafes array-contains cafeName`) would silently
+// miss them.  This migration tags every legacy order, mirroring the
+// migrateLegacyOrderFoodIds design:
+//
+//   • Bounded     — processes at most MIGRATION_BATCH_SIZE orders per run.
+//   • Resumable   — progress persisted in migrations/order_cafes_backfill
+//                   with a document-ID cursor; reruns resume where they left
+//                   off, even after a timeout or crash.
+//   • Idempotent  — reuses backfillOrderCafes(), which no-ops when the order
+//                   already has ANY `cafes` value, so reruns never rewrite
+//                   migrated orders.
+//   • Self-terminating — once every order has been visited the state is
+//                   marked 'completed' and subsequent runs exit immediately.
+//
+// Unlike the foodIds migration (which only needs COLLECTED orders for review
+// eligibility), cafe scoping affects every order status — an admin must see
+// pending/accepted/preparing/ready orders too — so this walks the whole
+// `orders` collection ordered by document ID (automatic single-field index;
+// no composite index required).
+
+/** Firestore state document for the legacy order-cafes backfill migration. */
+const MIGRATION_CAFES_STATE_REF = db
+    .collection("migrations")
+    .doc("order_cafes_backfill");
+
+exports.migrateLegacyOrderCafes = functions
+    .runWith({
+      memory: "256MB",
+      timeoutSeconds: 120,
+    })
+    .pubsub
+    .schedule("every 5 minutes")
+    .onRun(async () => {
+      console.log("[migrateCafes] Scheduled run started...");
+
+      const stateSnap = await MIGRATION_CAFES_STATE_REF.get();
+      const state = stateSnap.exists ? stateSnap.data() : {};
+
+      if (state.status === "completed") {
+        console.log("[migrateCafes] Migration already completed — skipping");
+        return null;
+      }
+
+      const cursor = state.cursor || null;
+
+      // ── Fetch one bounded page of orders (any status) ────────────
+      let query = db
+          .collection("orders")
+          .orderBy(admin.firestore.FieldPath.documentId())
+          .limit(MIGRATION_BATCH_SIZE);
+      if (cursor) {
+        query = query.startAfter(cursor);
+      }
+
+      const snapshot = await query.get();
+      console.log(
+        `[migrateCafes] Found ${snapshot.size} order(s)`
+      );
+
+      let backfilledCount = 0;
+      const failedOrderIds = [];
+      for (const doc of snapshot.docs) {
+        try {
+          const didBackfill = await withRetry(
+            () => backfillOrderCafes(doc.ref, doc.data()),
+            {
+              maxRetries: 3,
+              baseDelayMs: 200,
+              maxDelayMs: 2000,
+              isPermanent: (err) => isNotFoundError(err), // order deleted mid-run
+            },
+          );
+          if (didBackfill) {
+            backfilledCount++;
+          }
+        } catch (err) {
+          if (!isNotFoundError(err)) {
+            failedOrderIds.push(doc.id);
+          }
+          console.error(
+            `[migrateCafes] Backfill failed after retries: ${err.message}`
+          );
+        }
+      }
+
+      const isLastPage = snapshot.size < MIGRATION_BATCH_SIZE;
+      const nextCursor = isLastPage
+        ? null
+        : snapshot.docs[snapshot.docs.length - 1].id;
+
+      const priorFailedIds = Array.isArray(state.failedOrderIds)
+        ? state.failedOrderIds
+        : [];
+      // Deduplicate first, then cap so the state doc stays bounded: a failed
+      // order ID is tens of bytes, so retaining every failure since the start
+      // could exceed Firestore's 1 MiB document limit and stall the write.
+      const accumulatedFailedIds = [
+        ...new Set([...priorFailedIds, ...failedOrderIds]),
+      ].slice(-MAX_FAILED_IDS);
+
+      // ── Bounded retry pass for previously-failed orders ──────────────
+      // The forward-only cursor walks past failures on non-final pages, so
+      // those orders would never be revisited by the main walk. When the
+      // walk is exhausted, re-attempt up to MIGRATION_BATCH_SIZE accumulated
+      // failed IDs per run — the slice keeps a single run well within the
+      // function timeout; IDs beyond the slice stay in failedOrderIds and
+      // are picked up by a later run.
+      const retryCandidates = accumulatedFailedIds.slice(0, MIGRATION_BATCH_SIZE);
+      const resolvedRetryIds = new Set();
+      if (isLastPage && retryCandidates.length > 0) {
+        for (const orderId of retryCandidates) {
+          try {
+            const orderDoc = await db.collection("orders").doc(orderId).get();
+            if (!orderDoc.exists) {
+              // Deleted mid-run — nothing to retry, not a failure: drop it.
+              resolvedRetryIds.add(orderId);
+              continue;
+            }
+            const didBackfill = await withRetry(
+              () => backfillOrderCafes(orderDoc.ref, orderDoc.data()),
+              {
+                maxRetries: 3,
+                baseDelayMs: 200,
+                maxDelayMs: 2000,
+                isPermanent: (err) => isNotFoundError(err),
+              },
+            );
+            if (didBackfill) backfilledCount++;
+            resolvedRetryIds.add(orderId);
+          } catch (err) {
+            if (!isNotFoundError(err)) {
+              console.error(
+                `[migrateCafes] Retry backfill failed for ${orderId}: ${err.message}`
+              );
+            }
+          }
+        }
+      }
+
+      // Successfully retried (or deleted) orders are resolved — drop them
+      // from the retained list so failedOrderIds tracks only PENDING
+      // failures and completion stays reachable even after many distinct
+      // failures over the life of the migration. Unattempted IDs (beyond
+      // this run's slice) and still-failing IDs remain for the next run.
+      const remainingFailedIds = accumulatedFailedIds.filter(
+        (id) => !resolvedRetryIds.has(id),
+      );
+
+      // Mark complete only on a failure-free final page AND retry pass;
+      // otherwise keep the migration active so the next run retries the
+      // remaining failed orders (cursor resets to null — backfill no-ops on
+      // tagged orders and the retry pass re-attempts the pending IDs).
+      const completedThisRun = isLastPage && remainingFailedIds.length === 0;
+
+      const stateUpdate = {
+        cursor: nextCursor,
+        processedCount: (state.processedCount || 0) + backfilledCount,
+        failedOrderIds: remainingFailedIds,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      };
+      if (completedThisRun) {
+        stateUpdate.status = "completed";
+        stateUpdate.completedAt = admin.firestore.FieldValue.serverTimestamp();
+      }
+      await MIGRATION_CAFES_STATE_REF.set(stateUpdate, { merge: true });
+
+      console.log(
+        `[migrateCafes] Run complete: ${backfilledCount} backfilled this run, ` +
+        `total=${stateUpdate.processedCount}, ` +
+        `failedTotal=${remainingFailedIds.length}, ` +
+        `completed=${completedThisRun}`
       );
 
       return null;

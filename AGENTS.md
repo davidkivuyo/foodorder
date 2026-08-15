@@ -145,421 +145,422 @@ Do not remove existing comments unless they are directly related to what you are
 
 # Current Phase
 
-# PHASE F — RELIABILITY RECOVERY
+# PHASE G — ADMIN INTERVENTION
 
 ## OBJECTIVE
 
-Implement Phase F of the CampusBite Pickup Reliability System.
+Implement Phase G of the CampusBite Pickup Reliability System.
 
 Previous phases completed:
 
 ✓ Phase A — No-show foundation
 ✓ Phase B — Pickup Reliability calculation
-✓ Phase B.1 — 2-minute order cancellation window
-✓ Phase C — Grace period and automatic NO_SHOW
+✓ Phase B.1 — 2-minute order cancellation
+✓ Phase C — Grace period & automatic NO_SHOW
 ✓ Phase D — Student reliability experience
 ✓ Phase E — Graduated ordering restrictions
+✓ Phase F — Reliability recovery
 
-Phase F introduces the reliability recovery system.
+Phase G introduces controlled administrator intervention.
 
-The purpose is to allow students to naturally recover their pickup reliability through successful order collections.
+The objective is to allow authorized cafe administrators to correct legitimate exceptional cases without recreating the old strike/pardon system.
 
-The system must:
+Examples of legitimate exceptions:
 
-- reward consistent successful pickups through improved reliability
-- automatically relax ordering restrictions when reliability improves
-- avoid permanent punishment
-- avoid manual recovery requirements
-- preserve the existing reliability calculation
-- preserve the existing restriction model
-- minimize Firestore reads and writes
+- Student had an emergency.
+- Cafe instructed the student not to collect.
+- Cafe was unable to fulfill the order.
+- System malfunction caused an incorrect NO_SHOW.
+- Other documented exceptional circumstances.
 
-IMPORTANT:
+The admin must NOT be able to arbitrarily set a student's reliability score.
 
-Do NOT create a second reliability algorithm.
+The admin must act on a specific order/event.
 
-Do NOT create a second score.
-
-Do NOT create recovery points.
-
-Do NOT create a new strike system.
-
-Do NOT create account bans.
-
-Do NOT create permanent suspension.
-
-Use the existing Phase B reliability calculation as the single source of truth.
+The reliability engine remains authoritative.
 
 ---
 
-# 1. FIRST — AUDIT EXISTING IMPLEMENTATION
+# 1. CORE PRINCIPLE
 
-Before modifying code, inspect:
+Admins can:
 
-- PickupReliability model
-- PickupReliability service
-- Reliability calculation
-- Recent pickup history
-- Lifetime counters
-- Reliability score
-- Reliability status
-- Phase E restriction level
-- Active-order limit
-- COLLECTED processing
-- NO_SHOW processing
-- Firestore user schema
-- Firestore order schema
-- Cloud Functions
-- Firestore security rules
-- AccountScreen reliability UI
+EXCUSE a specific NO_SHOW
 
-Do not assume names or locations.
+but cannot:
 
-Reuse the actual implementation.
+- set reliabilityScore directly
+- set collectionRate directly
+- set noShowOrders directly
+- set restrictionLevel directly
+- set arbitrary recovery points
+- erase the original order
+- rewrite historical timestamps
+
+An administrative intervention is a correction to an event.
+
+The reliability engine then recalculates the affected metrics.
 
 ---
 
-# 2. CORE PRINCIPLE
+# 2. AUTHORIZATION
 
-Recovery must happen automatically through successful collections.
+Only authorized cafe administrators may perform intervention.
 
-The flow is:
+Before every intervention verify:
 
-COLLECTED
+- Firebase Authentication session exists.
+- User has admin role.
+- Admin account is active.
+- Admin is authorized to manage the cafe associated with the order.
+- Target order exists.
 
-↓
+Do NOT trust the Flutter UI role alone.
 
-Reliability Engine processes successful pickup
+Do NOT rely on hidden buttons as authorization.
 
-↓
-
-Lifetime counters update
-
-↓
-
-Recent history updates
-
-↓
-
-Recent collection rate updates
-
-↓
-
-Reliability score updates
-
-↓
-
-Reliability status updates
-
-↓
-
-Restriction level is re-evaluated
-
-↓
-
-Restrictions may relax automatically
-
-No separate recovery counter is needed.
+The backend must enforce authorization.
 
 ---
 
-# 3. COLLECTION IS THE RECOVERY EVENT
+# 3. CAFE OWNERSHIP
 
-Only a genuine:
+An admin should normally be allowed to intervene only on orders belonging to their authorized cafe.
 
-READY → COLLECTED
+Example:
 
-transition can improve reliability.
+Admin for:
 
-Do not count:
+Cafe A
 
-- PENDING
-- ACCEPTED
-- PREPARING
-- READY
-- CANCELLED
-- NO_SHOW
-- REJECTED
+must NOT excuse:
 
-as recovery events.
+Cafe B
 
-A successful collection is the only positive pickup outcome.
+orders unless their role explicitly grants cross-cafe administrative access.
+
+Use the existing cafe/admin authorization model.
+
+Do not invent a second role system.
 
 ---
 
-# 4. DO NOT ARTIFICIALLY ADD POINTS
+# 4. WHAT AN ADMIN MAY DO
 
-Do NOT implement something like:
+For this phase implement:
 
-successfulCollection += 5 points
+## Excuse No-Show
 
-or:
+This changes the administrative treatment of a specific no-show.
 
-reliabilityScore += 10
+The admin selects:
 
-The score must continue to be calculated from the existing Phase B metrics.
-
-The existing model is:
-
-lifetimeCollectionRate
-
-+
-
-recentCollectionRate
+Order
 
 ↓
 
-reliabilityScore
+Excuse No-Show
 
-Use the existing formula unchanged.
+↓
 
----
+Select reason
 
-# 5. RECENT HISTORY IS THE PRIMARY RECOVERY MECHANISM
+↓
 
-The existing recent pickup history contains the latest eligible outcomes.
+Optional note
 
-For example:
+↓
 
-recentPickupHistory = [
-    COLLECTED,
-    COLLECTED,
-    NO_SHOW,
-    COLLECTED,
-    COLLECTED
-]
+Confirm
 
-When a new order is collected:
+↓
 
-1. Add COLLECTED.
-2. Keep only the latest configured number of eligible outcomes.
-3. Recalculate recentCollectedOrders.
-4. Recalculate recentNoShowOrders.
-5. Recalculate recentCollectionRate.
-6. Recalculate the existing reliabilityScore.
-7. Recalculate the existing reliabilityStatus.
+Backend validates
 
-Do not create another history list.
+↓
+
+Reliability recalculates
+
+↓
+
+Audit log created
 
 ---
 
-# 6. LIFETIME HISTORY
+# 5. DO NOT CALL IT "REMOVE STRIKE"
 
-A successful collection must also increment the existing:
+There are no strikes.
 
-eligibleOrders
+Use product language such as:
+
+- Excuse No-Show
+- Mark as Excused
+- Correct No-Show
+
+Do NOT use:
+
+- Remove Strike
+- Pardon Strike
+- Strike Removal
+- Clear Strike
+
+The old strike engine has been removed.
+
+---
+
+# 6. ELIGIBLE ORDERS
+
+An order can be excused only if:
+
+status == NO_SHOW
 
 and:
 
-collectedOrders
+noShowAt exists
 
-exactly once.
+and:
 
-The existing:
+the order has not already been excused.
 
-noShowOrders
+Do not allow excusing:
 
-must not change.
+PENDING
 
-Therefore:
+ACCEPTED
 
-eligibleOrders += 1
+PREPARING
 
-collectedOrders += 1
+READY
 
-noShowOrders unchanged
+COLLECTED
 
----
+CANCELLED
 
-# 7. EVENT-DRIVEN RECOVERY
-
-Recovery must happen only when an eligible order becomes:
-
-COLLECTED.
-
-Do NOT recalculate reliability:
-
-- every app launch
-- every AccountScreen open
-- every minute
-- every countdown tick
-- every login
-- every notification
-- every app resume
-
-This is critical for Firestore cost control.
+Only NO_SHOW is eligible.
 
 ---
 
-# 8. IDEMPOTENCY
+# 7. EXCUSE REASONS
 
-A collected order must only contribute to reliability once.
+Provide predefined reasons.
 
-If the same event is processed twice:
+Recommended initial choices:
 
-eligibleOrders must increase once.
+- Student reported emergency
+- Cafe unable to fulfill order
+- System/application issue
+- Pickup information was incorrect
+- Admin-approved exception
+- Other
 
-collectedOrders must increase once.
+Do not allow arbitrary uncontrolled categories.
 
-recent history must contain the order once.
+If:
 
-The reliability score must not be double-counted.
+Other
 
-Use the existing Phase B event-processing mechanism.
+is selected:
 
-If the current implementation uses:
+allow an optional note.
 
-reliabilityProcessed
+Maximum note length:
 
-or equivalent:
+200 characters.
 
-reuse it.
+Trim whitespace.
 
-Do not create another duplicate idempotency field unless necessary.
-
----
-
-# 9. CONCURRENT PROCESSING
-
-Safely handle:
-
-two different orders becoming COLLECTED nearly simultaneously.
-
-Example:
-
-Before:
-
-eligible = 10
-collected = 7
-noShow = 3
-
-Order A → COLLECTED
-
-Order B → COLLECTED
-
-Expected final state:
-
-eligible = 12
-collected = 9
-noShow = 3
-
-Not:
-
-eligible = 11
-collected = 8
-
-Do not allow lost updates.
-
-Use Firestore transactions or the project's existing atomic backend mechanism.
+Reject excessively long input.
 
 ---
 
-# 10. RESTRICTION RECOVERY
+# 8. OPTIONAL ADMIN NOTE
 
-Phase E already defines:
+Allow a short administrative note.
 
-NORMAL
-LIMITED
-HIGHLY_LIMITED
+Maximum:
 
-Do not create new restriction states.
-
-After reliability is recalculated, automatically determine the appropriate restriction level using the existing Phase E thresholds.
-
-For example:
-
-90–100:
-NORMAL
-
-75–89:
-NORMAL
-
-50–74:
-NORMAL
-
-25–49:
-LIMITED
-
-0–24:
-HIGHLY_LIMITED
-
-If eligibleOrders < 3:
-
-NORMAL
-
-Do not change the thresholds in Phase F.
-
----
-
-# 11. AUTOMATIC RESTRICTION RELAXATION
-
-When the calculated reliability crosses a restriction threshold:
-
-automatically update:
-
-pickupReliability.restrictionLevel
-
-Example:
-
-HIGHLY_LIMITED
-    ↓
-successful collections
-    ↓
-score improves to 30
-    ↓
-LIMITED
-
-Then:
-
-LIMITED
-    ↓
-successful collections
-    ↓
-score improves to 52
-    ↓
-NORMAL
-
-Do not require:
-
-- admin approval
-- student request
-- logout/login
-- app reinstall
-- manual refresh
-
----
-
-# 12. DO NOT RELY ON THE CLIENT
-
-Flutter must never decide:
-
-"Restriction should be removed."
-
-The backend remains authoritative.
-
-The client only displays the current state.
+200 characters.
 
 Do not allow:
 
-student → write restrictionLevel = NORMAL
+HTML
+
+scripts
+
+URLs
+
+massive payloads
+
+Use the application's existing input sanitization and validation mechanisms.
+
+Do not expose internal notes publicly.
 
 ---
 
-# 13. MINIMIZE WRITES
+# 9. DATA MODEL
 
-When a COLLECTED event is processed, update the user only if the reliability summary actually changes.
+Do NOT delete the original NO_SHOW data.
 
-At minimum, the event may update:
+The order should preserve:
+
+status = NO_SHOW
+
+noShowAt
+
+The intervention should add fields such as:
+
+noShowExcused
+excusedAt
+excusedBy
+excuseReason
+excuseNote
+
+Use the project's existing naming conventions.
+
+Recommended conceptual structure:
+
+{
+  status: "NO_SHOW",
+
+  noShowAt: Timestamp,
+
+  noShowExcused: true,
+
+  excusedAt: Timestamp,
+
+  excusedBy: adminUid,
+
+  excuseReason: "Student reported emergency",
+
+  excuseNote: "Student informed cafe after emergency."
+}
+
+Do not duplicate existing fields.
+
+---
+
+# 10. IMPORTANT — DO NOT CHANGE ORDER STATUS
+
+Excusing a no-show MUST NOT change:
+
+NO_SHOW → COLLECTED
+
+That would create false operational history.
+
+The food was not actually collected.
+
+The order remains:
+
+NO_SHOW
+
+but becomes:
+
+EXCUSED
+
+for reliability purposes.
+
+Use a separate boolean/state field rather than rewriting the historical order outcome.
+
+---
+
+# 11. RELIABILITY EFFECT
+
+An excused NO_SHOW must no longer count as an unexcused failed pickup.
+
+Conceptually:
+
+Before:
+
+eligibleOrders += 1
+noShowOrders += 1
+
+After excusal:
+
+exclude that event from reliability failure calculations.
+
+The exact recalculation must use the existing Phase B architecture.
+
+Do NOT simply subtract 1 from:
+
+reliabilityScore
+
+or:
+
+noShowOrders
+
+inside the admin app.
+
+---
+
+# 12. RECALCULATION STRATEGY
+
+The backend must recalculate the reliability summary after an excuse.
+
+Do NOT make the Flutter app calculate the corrected score.
+
+Do NOT query the entire order history from the Flutter app.
+
+Reuse the existing reliability service/processor.
+
+---
+
+# 13. RECENT HISTORY CORRECTION
+
+If the excused order exists in:
+
+recentPickupHistory
+
+it must be removed or converted so that it no longer counts as:
+
+NO_SHOW
+
+Do not replace it with:
+
+COLLECTED
+
+because the order was not collected.
+
+The preferred representation is:
+
+EXCUSED
+
+or omission from the reliability event window.
+
+Use whichever approach best matches the existing Phase B implementation.
+
+The important rule is:
+
+EXCUSED must not count as success or failure.
+
+---
+
+# 14. LIFETIME METRIC CORRECTION
+
+After excuse:
 
 eligibleOrders
 
+must represent only eligible unexcused pickup outcomes according to the established reliability model.
+
+noShowOrders
+
+must exclude the excused event.
+
 collectedOrders
 
-recent history
+must remain unchanged.
 
-recentCollectionRate
+Do not incorrectly turn:
 
-collectionRate
+NO_SHOW → COLLECTED.
+
+---
+
+# 15. RESTRICTION RECALCULATION
+
+After reliability recalculation:
+
+recalculate:
 
 reliabilityScore
 
@@ -567,404 +568,526 @@ reliabilityStatus
 
 restrictionLevel
 
-updatedAt
-
-Use the existing structure.
-
-Do not rewrite unrelated user fields.
-
-If a computed field has not changed, do not write it separately.
-
-Prefer one atomic user-document update/transaction.
-
----
-
-# 14. NO ADDITIONAL FIRESTORE READS FROM STUDENT UI
-
-The AccountScreen must continue using the existing user/reliability data.
-
-Do not query historical orders to determine whether recovery occurred.
-
-Do not add a new recovery listener.
-
-Do not add a new recovery collection.
-
-If an existing user snapshot listener already supplies:
-
-pickupReliability
-
-reuse it.
-
----
-
-# 15. RECOVERY MESSAGE
-
-Phase D already provides the student reliability UI.
-
-Extend it only if necessary to reflect recovery naturally.
-
-Examples:
-
-After successful collections:
-
-"Your pickup record is improving."
-
-"Great job collecting your recent orders."
-
-"Keep it up — your ordering limits have been reduced."
-
-When restriction improves:
-
-"Your pickup reliability has improved. Your ordering limit is now 2 active orders."
-
-When NORMAL is restored:
-
-"Your pickup reliability is back to normal."
-
-Keep language positive.
-
-Do not mention:
-
-- punishment
-- strikes
-- bans
-- penalties
-
----
-
-# 16. DO NOT OVERREWARD
-
-Recovery should be proportional.
-
-Do not give bonus points.
-
-Do not automatically raise reliability above what the existing calculation produces.
-
-Do not skip the lifetime component.
-
-Do not ignore previous no-shows.
-
-The system should reflect:
-
-recent improvement
-
-while still preserving:
-
-historical behavior
-
-This is exactly why Phase B uses lifetime + recent performance.
-
----
-
-# 17. RECENT VS LIFETIME BEHAVIOR
-
-The existing weighted reliability model remains authoritative.
+Use existing Phase B + Phase E logic.
 
 Example:
 
-Lifetime:
+Before:
 
-50 eligible
-45 collected
-5 no-show
-
-lifetimeRate = 90%
-
-Recent:
-
-4 collected
-1 no-show
-
-recentRate = 80%
-
-Existing weighted score:
-
-90 × 0.70 + 80 × 0.30
-
-Do not change the formula.
-
-If a student continues collecting successfully, recent performance improves naturally.
-
----
-
-# 18. RECOVERY EXAMPLE
-
-Example:
-
-Initial state:
-
-reliabilityScore = 22
-restrictionLevel = HIGHLY_LIMITED
-activeOrderLimit = 1
-
-Student successfully collects orders.
-
-After several valid collections:
-
-reliabilityScore = 31
-
-Expected:
-
+reliabilityScore = 40
 restrictionLevel = LIMITED
-activeOrderLimit = 2
 
-More successful collections:
+After excusing a no-show:
 
-reliabilityScore = 52
-
-Expected:
-
+reliabilityScore = 55
 restrictionLevel = NORMAL
-No artificial active-order limit.
 
-This recovery must happen automatically.
+The change should happen automatically if the corrected reliability crosses a threshold.
 
----
-
-# 19. RESTRICTION CHANGES MUST BE ATOMIC
-
-When the reliability engine recalculates the score and restriction:
-
-update them together.
-
-Avoid a temporary inconsistent state such as:
-
-reliabilityScore = 52
-restrictionLevel = HIGHLY_LIMITED
-
-unless unavoidable during a transaction.
-
-Use an atomic backend operation where appropriate.
-
----
-
-# 20. NO-SHOW PROCESSING MUST REMAIN UNCHANGED
-
-Do not alter Phase C's:
-
-- grace period
-- hard cutoff
-- automatic NO_SHOW processor
-- server time validation
-- transaction logic
-
-Phase F only handles the recovery side.
-
-NO_SHOW remains:
-
-eligibleOrders += 1
-
-noShowOrders += 1
-
-recent history += NO_SHOW
-
----
-
-# 21. CANCELLATION MUST REMAIN EXCLUDED
-
-A valid cancellation during the 2-minute cancellation window must not:
-
-improve reliability
-
-or:
-
-reduce reliability.
-
-It simply remains excluded.
-
-Do not change Phase B.1.
-
----
-
-# 22. EXCUSED NO-SHOW COMPATIBILITY
-
-Phase F must be compatible with a future admin "Excuse No-show" feature.
-
-Do not permanently design reliability data so a historical no-show cannot later be corrected.
-
-If a future phase changes:
-
-NO_SHOW → EXCUSED
-
-the reliability engine must be capable of recalculating affected metrics.
-
-Do not implement admin excuse functionality in Phase F.
-
----
-
-# 23. SECURITY
-
-Students can:
-
-READ their own reliability.
-
-Students cannot:
-
-WRITE reliability.
-
-Students cannot:
-
-WRITE restrictionLevel.
-
-Students cannot:
-
-WRITE collectedOrders.
-
-Students cannot:
-
-WRITE recentPickupHistory.
-
-Students cannot:
-
-WRITE reliabilityScore.
-
-Backend remains authoritative.
-
----
-
-# 24. ADMIN ACCESS
-
-Admins may read reliability according to the existing Phase E authorization model.
-
-Do not introduce arbitrary admin write access.
-
-Do not add manual recovery controls.
-
-Manual admin intervention will be implemented separately.
-
----
-
-# 25. PERFORMANCE
-
-The recovery system must:
-
-- run only on COLLECTED events
-- use existing reliability infrastructure
-- avoid historical order scans
-- avoid new listeners
-- avoid client polling
-- avoid per-minute updates
-- avoid per-second writes
-
----
-
-# 26. TESTING
-
-Create/update automated tests.
-
-## Test 1 — Successful collection
-
-Order:
-
-READY → COLLECTED
-
-Expected:
-
-eligibleOrders + 1
-
-collectedOrders + 1
-
-noShowOrders unchanged
-
----
-
-## Test 2 — Duplicate collection event
-
-Same order processed twice.
-
-Expected:
-
-counts increase once.
-
----
-
-## Test 3 — Recent history
-
-New COLLECTED order enters recent history.
-
-Expected:
-
-latest event = COLLECTED
-
-oldest event removed if history exceeds configured limit.
-
----
-
-## Test 4 — Reliability improvement
-
-Start:
-
-reliabilityScore = 24
-
-restrictionLevel = HIGHLY_LIMITED
-
-Process enough successful collections to cross the restriction threshold.
-
-Expected:
-
-restrictionLevel becomes LIMITED.
-
----
-
-## Test 5 — Full recovery
-
-Continue successful collections until score crosses the NORMAL threshold.
-
-Expected:
-
-restrictionLevel = NORMAL.
-
----
-
-## Test 6 — Insufficient history
-
-eligibleOrders < 3
-
-Expected:
+Do not manually set:
 
 restrictionLevel = NORMAL
 
-regardless of raw score.
+---
+
+# 16. ATOMICITY
+
+The intervention must be atomic.
+
+The following must not become partially updated:
+
+1. Order excuse state
+2. Reliability summary
+3. Recent history
+4. Restriction level
+5. Audit log
+
+Use a Firestore transaction or appropriate backend atomic mechanism.
+
+If the operation fails:
+
+none of the changes should be committed.
 
 ---
 
-## Test 7 — No-show unchanged
+# 17. IDEMPOTENCY
 
-Process NO_SHOW.
+An already excused order cannot be excused again.
+
+If:
+
+noShowExcused == true
+
+return:
+
+ALREADY_EXCUSED
+
+or an equivalent safe business result.
+
+Do not create another audit record.
+
+Do not recalculate reliability unnecessarily.
+
+---
+
+# 18. RACE CONDITION
+
+Handle:
+
+Admin A excuses order
+
+while:
+
+Admin B excuses same order
+
+Only one intervention may succeed.
+
+The second request must detect:
+
+noShowExcused == true
+
+and stop.
+
+Do not create duplicate corrections.
+
+---
+
+# 19. ADMIN UI
+
+In the Admin App, on the student/order management screen:
+
+For an eligible NO_SHOW order display:
+
+Excuse No-Show
+
+Do not display the option for other statuses.
+
+---
+
+# 20. CONFIRMATION DIALOG
+
+Before intervention display:
+
+Excuse this no-show?
+
+Explain:
+
+"This removes this no-show from the student's pickup reliability calculation. The original order history will remain unchanged."
+
+Buttons:
+
+Cancel
+
+Confirm
+
+Do not execute immediately without confirmation.
+
+---
+
+# 21. REASON SELECTION
+
+Before confirmation require:
+
+Excuse Reason
+
+Use a dropdown/bottom-sheet selection.
+
+Do not default silently to:
+
+Other
+
+unless the UI explicitly allows it.
+
+---
+
+# 22. AUDIT LOGGING
+
+Every successful intervention MUST create an immutable audit record.
+
+Use the existing:
+
+audit_logs
+
+collection.
+
+Record:
+
+action = NO_SHOW_EXCUSED
+
+orderId
+
+studentId
+
+cafeId
+
+adminId
+
+timestamp
+
+reason
+
+adminNote
+
+previousReliabilitySummary
+(optional only if existing architecture safely supports it)
+
+newReliabilitySummary
+(optional only if needed)
+
+Do not store unnecessary personal information.
+
+---
+
+# 23. AUDIT LOG IMMUTABILITY
+
+Admins must NOT be able to edit or delete excuse audit logs.
+
+Students must NOT be able to read private administrative notes unless a future policy explicitly allows it.
+
+Audit logs are append-only.
+
+---
+
+# 24. STUDENT VISIBILITY
+
+The student should see that the no-show was excused.
+
+The order can display:
+
+NO-SHOW
+
+Excused
+
+The student should understand that the order itself was not collected, but it was excluded from their reliability calculation.
+
+Do not expose:
+
+admin UID
+
+private admin note
+
+internal authorization details
+
+---
+
+# 25. STUDENT NOTIFICATION
+
+If the existing notification architecture supports appropriate account/order notifications, create:
+
+"Your missed pickup has been excused."
+
+Example:
+
+"An administrator reviewed Order #CB-1234 and excused the missed pickup. It will not affect your pickup reliability."
+
+Do not send a notification if the intervention did not succeed.
+
+Use the existing:
+
+notifications
+
+collection
+
+and existing FCM pipeline.
+
+Do not create a second notification system.
+
+---
+
+# 26. NOTIFICATION IDEMPOTENCY
+
+If the backend retries:
+
+do not send duplicate excuse notifications.
+
+Use the existing eventId/deduplication mechanism.
+
+For example:
+
+NO_SHOW_EXCUSED_{orderId}
+
+Reuse the existing notification architecture.
+
+---
+
+# 27. SECURITY RULES
+
+Students:
+
+READ own orders
+
+READ own reliability
+
+CANNOT:
+
+excuse no-show
+
+modify:
+
+noShowExcused
+excusedAt
+excusedBy
+excuseReason
+excuseNote
+
+Admins:
+
+read authorized orders
+
+request an excuse through the approved backend operation
+
+Do not allow direct arbitrary client writes to excuse fields.
+
+---
+
+# 28. ADMIN BACKEND OPERATION
+
+Prefer a dedicated callable HTTPS Cloud Function or another trusted backend operation:
+
+excuseNoShow(orderId, reason, note)
+
+The backend must:
+
+1. Authenticate requester.
+2. Verify admin role.
+3. Verify cafe authorization.
+4. Read order.
+5. Verify status == NO_SHOW.
+6. Verify not already excused.
+7. Update order.
+8. Recalculate reliability.
+9. Recalculate restriction.
+10. Create audit log.
+11. Create notification.
+12. Commit atomically where feasible.
+
+Reuse existing backend service abstractions.
+
+---
+
+# 29. DO NOT TRUST CLIENT-PROVIDED STUDENT ID
+
+The client should provide:
+
+orderId
+
+The backend should derive:
+
+studentId
+
+from:
+
+orders/{orderId}
+
+Do not accept:
+
+studentId
+
+as an authoritative client-provided argument.
+
+Similarly derive:
+
+cafeId
+
+from the order.
+
+---
+
+# 30. COST OPTIMIZATION
+
+Do not query:
+
+all student orders
+
+all reviews
+
+all notifications
+
+all food items
+
+for an excuse action.
+
+Use:
+
+target order
+
+existing reliability summary
+
+existing reliability history
+
+only as needed.
+
+If Phase B stores sufficient recent/lifetime summary data, use it.
+
+Do not perform a full order-history scan unless the existing data model absolutely requires it.
+
+If a full recalculation is required for correctness, document why and assess whether the Phase B data model should be extended rather than adding repeated expensive scans.
+
+---
+
+# 31. NO DIRECT ADMIN PROFILE EDIT
+
+Do NOT allow admins to edit:
+
+reliabilityScore
+
+collectionRate
+
+restrictionLevel
+
+directly.
+
+The only allowed intervention in this phase is:
+
+EXCUSE NO_SHOW
+
+The reliability engine recalculates all affected values.
+
+---
+
+# 32. STUDENT SUPPORT FLOW
+
+Add a clear path for students to request an intervention.
+
+Recommended later UI:
+
+"Report an issue"
+
+Can be added in help and support screen where a student can report via the support email
+
+But do NOT build a full support/ticketing system in this phase.
+
+For now, only ensure the backend can record legitimate admin intervention.
+
+---
+
+# 33. MULTIPLE CAFE ADMINISTRATORS
+
+If multiple admins manage the same cafe:
+
+all authorized admins may review and excuse eligible no-shows.
+
+The audit log must identify exactly which admin performed the action.
+
+---
+
+# 34. CROSS-CAFE SECURITY
+
+Admin for Cafe A:
+
+MUST NOT excuse:
+
+Cafe B
+
+orders.
+
+Unless the existing role model explicitly defines a higher-level administrator.
+
+Do not weaken cafe isolation.
+
+---
+
+# 35. PRIVACY
+
+Do not expose:
+
+student location
+
+email
+
+phone
+
+FCM token
+
+private admin note
+
+to unauthorized users.
+
+The excuse record should contain only the minimum information needed for auditing and reliability correction.
+
+---
+
+# 36. TESTING
+
+Create/update tests for:
+
+## TEST 1 — Valid no-show
+
+NO_SHOW
+
+not excused
 
 Expected:
 
-Phase B no-show logic works normally.
-
-Phase F must not treat it as recovery.
+Excuse No-Show button visible.
 
 ---
 
-## Test 8 — Cancellation unchanged
+## TEST 2 — Excuse
 
-Process CANCELLED.
+Admin selects:
+
+Student reported emergency
+
+Confirm.
 
 Expected:
 
-reliability unchanged.
+noShowExcused = true
+
+reliability recalculates.
 
 ---
 
-## Test 9 — Concurrent collections
+## TEST 3 — Already excused
 
-Two orders become COLLECTED simultaneously.
+Attempt excuse again.
 
 Expected:
 
-both are counted exactly once.
+rejected.
 
-No lost update.
+No duplicate audit log.
+
+No duplicate notification.
 
 ---
 
-## Test 10 — Student write attempt
+## TEST 4 — Wrong status
 
-Student tries to modify reliability.
+Attempt excuse on:
+
+READY
+
+Expected:
+
+rejected.
+
+---
+
+## TEST 5 — Collected order
+
+Attempt excuse.
+
+Expected:
+
+rejected.
+
+---
+
+## TEST 6 — Cancelled order
+
+Attempt excuse.
+
+Expected:
+
+rejected.
+
+---
+
+## TEST 7 — Unauthorized admin
+
+Cafe A admin attempts to excuse Cafe B order.
 
 Expected:
 
@@ -972,154 +1095,183 @@ PERMISSION_DENIED.
 
 ---
 
-## Test 11 — Restriction recovery consistency
+## TEST 8 — Student attempt
 
-Reliability score improves across a threshold.
-
-Expected:
-
-score and restrictionLevel update atomically.
-
----
-
-## Test 12 — App UI
-
-After backend recovery:
-
-AccountScreen receives updated data.
+Student attempts excuseNoShow.
 
 Expected:
 
-reliability and restriction information update automatically using the existing user listener.
-
-No manual refresh required.
+PERMISSION_DENIED.
 
 ---
 
-# 27. FIRESTORE COST AUDIT
+## TEST 9 — Reliability correction
 
-Before completing Phase F:
+Before:
 
-Inspect every added Firestore operation.
+eligible = 10
+collected = 7
+noShow = 3
 
-Target:
+Excuse one no-show.
 
-COLLECTED event
-    ↓
-one backend reliability transaction/update
+Expected:
 
-Avoid:
-
-- querying all historical orders
-- querying all recent orders unnecessarily
-- new student-side listeners
-- repeated recalculation
-- repeated writes when state has not changed
-
-If the existing Phase B engine already performs the required operation:
-
-extend it instead of adding another operation.
+reliability calculations no longer count the excused event as an unexcused failure.
 
 ---
 
-# 28. BACKWARD COMPATIBILITY
+## TEST 10 — Restriction recovery
+
+Before:
+
+restrictionLevel = LIMITED
+
+After excusing a no-show:
+
+reliability crosses threshold.
+
+Expected:
+
+restrictionLevel = NORMAL
+
+if the existing Phase E rules produce that result.
+
+---
+
+## TEST 11 — Recent history
+
+If the excused order exists in recent history:
+
+Expected:
+
+it no longer counts as NO_SHOW.
+
+---
+
+## TEST 12 — Notification
+
+Successful excuse:
+
+one student notification.
+
+Repeated attempt:
+
+no duplicate notification.
+
+---
+
+## TEST 13 — Audit
+
+Successful excuse:
+
+one immutable audit log.
+
+Repeated attempt:
+
+no duplicate audit log.
+
+---
+
+## TEST 14 — Concurrent admin actions
+
+Two admins attempt to excuse the same order simultaneously.
+
+Expected:
+
+one succeeds.
+
+one is rejected as already processed.
+
+---
+
+# 37. PERFORMANCE TESTING
+
+Verify:
+
+- no full order-history query from the admin UI
+- no unnecessary listeners
+- no repeated reads
+- no duplicate writes
+- one controlled backend operation per intervention
+
+Admin UI should not continuously poll for intervention state.
+
+---
+
+# 38. BACKWARD COMPATIBILITY
 
 Do not break:
 
 - authentication
 - cart
-- order creation
+- orders
 - cancellation
-- ACCEPTED
-- PREPARING
-- READY
-- COLLECTED
-- NO_SHOW
 - grace period
-- Phase B reliability
-- Phase C expiry
-- Phase D UI
-- Phase E restrictions
+- NO_SHOW processing
+- reliability calculation
+- reliability recovery
+- graduated restrictions
 - notifications
+- FCM
 - reviews
 - favourites
 - admin order management
 
-Do not reintroduce the old strike system.
+Do not reintroduce:
+
+- strikes
+- suspension
+- bans
+- automatic punishment
 
 ---
 
-# 29. DO NOT IMPLEMENT FUTURE PHASES
+# 39. FINAL ACCEPTANCE CRITERIA
 
-STOP after Phase F.
+Phase G is complete only when:
 
-Do NOT implement:
+✓ Authorized admins can excuse legitimate NO_SHOW orders.
 
-❌ Admin excuse/pardon
+✓ Admin cafe authorization is enforced server-side.
 
-❌ Food rescue
+✓ Students cannot excuse orders.
 
-❌ Food waste analytics
+✓ Only NO_SHOW orders are eligible.
 
-❌ Reliability rewards
+✓ Original order remains NO_SHOW.
 
-❌ New reliability notifications
+✓ Excused no-shows are excluded from reliability failure calculations.
 
-❌ Permanent suspension
+✓ Collected orders remain collected.
 
-❌ Account banning
+✓ Cancelled orders remain cancelled.
 
-❌ Manual reliability editing
+✓ Reliability recalculates correctly.
 
-❌ New punishment mechanisms
+✓ Restriction level recalculates automatically.
 
----
+✓ Audit log is created.
 
-# 30. FINAL ACCEPTANCE CRITERIA
+✓ Audit log is immutable.
 
-Phase F is complete only when:
+✓ Student receives an appropriate notification if enabled.
 
-✓ Successful collections improve reliability naturally.
+✓ Duplicate excuses are prevented.
 
-✓ Lifetime metrics are updated exactly once.
+✓ Concurrent admin actions are handled safely.
 
-✓ Recent history is updated exactly once.
+✓ Admins cannot directly edit reliability score.
 
-✓ Reliability score uses the existing Phase B formula.
-
-✓ No artificial recovery points are introduced.
-
-✓ Restriction levels automatically relax when thresholds are crossed.
-
-✓ HIGHLY_LIMITED can become LIMITED.
-
-✓ LIMITED can become NORMAL.
-
-✓ New users remain unrestricted.
-
-✓ Insufficient-history users remain unrestricted.
-
-✓ No-show events do not improve reliability.
-
-✓ Cancelled orders do not affect reliability.
-
-✓ Students cannot manipulate recovery data.
-
-✓ Recovery is server-authoritative.
-
-✓ No additional historical order scans are introduced.
-
-✓ No additional client listeners are introduced unnecessarily.
+✓ No unnecessary Firestore reads are introduced.
 
 ✓ No unnecessary Firestore writes are introduced.
 
-✓ Existing Phase E restrictions remain intact.
+✓ Existing recovery system remains functional.
 
-✓ Existing order lifecycle remains intact.
+✓ Existing graduated restrictions remain functional.
 
-✓ Existing Phase C expiry remains intact.
-
-✓ Existing Phase D UI remains compatible.
+✓ No old strike functionality returns.
 
 ---
 
@@ -1130,22 +1282,25 @@ After implementation, provide:
 1. Files inspected.
 2. Files modified.
 3. Files created.
-4. Existing Phase B reliability architecture reused.
-5. Recovery implementation.
-6. Recent-history behavior.
-7. Restriction relaxation behavior.
-8. Transaction/concurrency strategy.
-9. Firestore security changes.
-10. Firestore reads introduced.
-11. Firestore writes introduced.
-12. Cost optimization analysis.
-13. Tests performed.
-14. Security tests.
-15. Any unresolved risks.
+4. Admin intervention architecture.
+5. Backend authorization mechanism.
+6. Excuse data model.
+7. Reliability recalculation strategy.
+8. Restriction recalculation strategy.
+9. Transaction/idempotency strategy.
+10. Audit log implementation.
+11. Notification implementation.
+12. Firestore security changes.
+13. Firestore reads introduced.
+14. Firestore writes introduced.
+15. Cost analysis.
+16. Security test results.
+17. Functional test results.
+18. Any unresolved risks.
 
-STOP AFTER PHASE F.
+STOP AFTER PHASE G.
 
-Do not begin Phase G.
+Do not begin Phase H.
 
 ---
 

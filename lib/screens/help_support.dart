@@ -186,7 +186,7 @@ class ContactScreen extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             const Text(
-              'Have a problem with your order or a suggestion for Campus Bite? Let us know!',
+              'An app feature is broken, a bug, a problem with your order or a suggestion for Campus Bite? Let us know!',
               style: TextStyle(fontSize: 16),
             ),
             const SizedBox(height: 24),

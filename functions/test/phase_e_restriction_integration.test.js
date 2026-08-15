@@ -584,4 +584,67 @@ describe("Phase E — concurrency & failure handling (Tests 14, 15)", () => {
     );
     assert.equal(await orderById("CB-UNAVAIL"), null);
   });
+
+  it("mixed-cafe line items reject the order server-side", async () => {
+    // One cafe per order: the same food from two different cafes is rejected
+    // before any food-availability lookup runs.
+    await assert.rejects(
+      placeOrder("student1", placeOrderPayload({
+        orderId: "CB-MIXED",
+        items: [
+          {
+            foodItemId: "food_1",
+            title: "Rice & Beans",
+            price: 3000,
+            quantity: 1,
+            image: "",
+            selectedCafe: "Cafe A",
+          },
+          {
+            foodItemId: "food_1",
+            title: "Rice & Beans",
+            price: 3000,
+            quantity: 1,
+            image: "",
+            selectedCafe: "Cafe B",
+          },
+        ],
+        foodIds: ["food_1", "food_1"],
+        price: 6000,
+      })),
+      (err) => err.code === "invalid-argument"
+        && err.message.includes("one cafe per order"),
+    );
+    assert.equal(await orderById("CB-MIXED"), null);
+  });
+
+  it("cafeless off-campus items cannot be mixed with campus-cafe items", async () => {
+    await assert.rejects(
+      placeOrder("student1", placeOrderPayload({
+        orderId: "CB-OFFCAMPUS-MIX",
+        items: [
+          {
+            foodItemId: "food_1",
+            title: "Rice & Beans",
+            price: 3000,
+            quantity: 1,
+            image: "",
+            selectedCafe: "Cafe A",
+          },
+          {
+            foodItemId: "food_1",
+            title: "Rice & Beans",
+            price: 3000,
+            quantity: 1,
+            image: "",
+            selectedCafe: null,
+          },
+        ],
+        foodIds: ["food_1", "food_1"],
+        price: 6000,
+      })),
+      (err) => err.code === "invalid-argument",
+    );
+    assert.equal(await orderById("CB-OFFCAMPUS-MIX"), null);
+  });
 });

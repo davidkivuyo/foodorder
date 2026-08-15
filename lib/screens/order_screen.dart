@@ -84,11 +84,71 @@ class _OrdersScreenState extends State<OrdersScreen>
     }
   }
 
+  /// Resolve the cafe a reordered item should be stored under.
+  ///
+  /// Prefers the order's stored [CartItem.selectedCafe]; legacy orders may
+  /// lack it, in which case the item's single canonical cafe (e.g. 'Cafe A')
+  /// is used so the cart doc key, one-cafe classification and server-side
+  /// cafes derivation stay consistent. Null is preserved only when the item
+  /// is genuinely cafeless or has no single canonical cafe.
+  String? _reorderItemCafe(CartItem item) {
+    final stored = item.selectedCafe;
+    if (stored != null && stored.trim().isNotEmpty) return stored.trim();
+    if (item.foodItem.availableCafes.length == 1) {
+      return item.foodItem.availableCafes.first;
+    }
+    return null;
+  }
+
   /// Reorder all items from a previous order
   Future<void> _handleReorder(FoodOrder order) async {
     final cartService = CartService();
     int addedCount = 0;
     int unavailableCount = 0;
+
+    // One cafe per order: the reordered items must resolve to EXACTLY one
+    // cafe class (a cafeless item resolves to '' — its own class). Legacy
+    // multi-cafe orders are rejected up front so they can never be partially
+    // reordered into a mixed cart, and the single cafe must match the cart's
+    // cafe when the cart already holds items.
+    final orderCafes = <String>{
+      for (final item in order.items) (_reorderItemCafe(item) ?? '').trim(),
+    };
+    if (orderCafes.length != 1) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'You can only order from one cafe per order. This order mixes '
+            'items from different cafes — please add them separately.',
+          ),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
+    final singleOrderCafe = orderCafes.first;
+    final currentCartCafe = cartService.cartItems.isEmpty
+        ? null
+        : cartService.cartItems.first.displayCafe.trim();
+    if (currentCartCafe != null && currentCartCafe != singleOrderCafe) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'You can only order from one cafe per order. Your cart already '
+            'has items from $currentCartCafe. Clear the cart or place a '
+            'separate order.',
+          ),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
 
     for (final item in order.items) {
       // Ensure the FoodItem has a non-empty document ID
@@ -109,12 +169,12 @@ class _OrdersScreenState extends State<OrdersScreen>
 
       if (targetFoodItem.available) {
         for (int i = 0; i < item.quantity; i++) {
-          await cartService.addToCart(
+          final added = await cartService.addToCart(
             targetFoodItem,
-            selectedCafe: item.selectedCafe,
+            selectedCafe: _reorderItemCafe(item),
           );
+          if (added) addedCount++;
         }
-        addedCount += item.quantity;
       } else {
         unavailableCount += item.quantity;
       }
