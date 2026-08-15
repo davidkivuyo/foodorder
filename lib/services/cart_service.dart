@@ -28,6 +28,16 @@ import 'order_placement_service.dart';
 import 'performance_service.dart';
 import 'sync_queue_service.dart';
 
+/// Thrown inside the add transaction when the cart holds no item documents
+/// but its serialization-lock marker conflicts with the incoming cafe. The
+/// state is ambiguous — a stale marker left behind by a failed lock sync on
+/// an empty cart, or a concurrent add that committed after the outer query
+/// snapshot — so the add path retries with a fresh snapshot instead of
+/// rejecting outright.
+class _AmbiguousCartLockMarkerRetry implements Exception {
+  const _AmbiguousCartLockMarkerRetry();
+}
+
 class CartService extends ChangeNotifier {
   // Singleton pattern to share state across screens
   static final CartService _instance = CartService._internal();
@@ -564,18 +574,49 @@ class CartService extends ChangeNotifier {
               final markerCafe = lockSnap.exists
                   ? (lockSnap.data()?['cafe'] as String? ?? '').trim()
                   : null;
-              final conflictingCafe = freshCafes
-                      .where((c) => c != incomingCafe)
-                      .firstOrNull ??
-                  (markerCafe != null && markerCafe != incomingCafe
-                      ? markerCafe
-                      : null);
-              if (conflictingCafe != null) {
+              final markerConflicts =
+                  markerCafe != null && markerCafe != incomingCafe;
+              if (freshCafes.isNotEmpty) {
+                final conflictingCafe = freshCafes
+                    .where((c) => c != incomingCafe)
+                    .firstOrNull;
+                if (conflictingCafe != null) {
+                  // A persisted item from another cafe is a definite conflict.
+                  AppLog.d(
+                    '[CartService] Refused add of ${item.title}: persisted '
+                    'cart holds $conflictingCafe (one cafe per order)',
+                  );
+                  return false; // rejected — no writes, no retry needed
+                }
+                if (markerConflicts) {
+                  // Every visible item matches the incoming cafe, yet the lock
+                  // marker reflects a different cafe — a concurrent add that
+                  // committed after the outer query snapshot but is not in our
+                  // transaction-fresh re-read set. Reject rather than risk a
+                  // mixed-cafe cart.
+                  AppLog.d(
+                    '[CartService] Refused add of ${item.title}: lock marker '
+                    'holds $markerCafe (concurrent add, one cafe per order)',
+                  );
+                  return false;
+                }
+              } else if (markerConflicts) {
+                // No item docs in the transaction-fresh re-read set and the
+                // marker disagrees with the incoming cafe. The state is
+                // ambiguous: a stale marker left behind by a failed lock sync
+                // on a genuinely empty cart, or a concurrent add committed
+                // after this snapshot. On an early attempt, retry with a fresh
+                // snapshot (the attempt loop re-queries); on the last attempt,
+                // treat the cart as empty — the lock write below overwrites
+                // the stale marker and stays the serialization point.
+                if (attempt < 2) {
+                  throw const _AmbiguousCartLockMarkerRetry();
+                }
                 AppLog.d(
-                  '[CartService] Refused add of ${item.title}: persisted '
-                  'cart holds $conflictingCafe (one cafe per order)',
+                  '[CartService] Cart is empty; clearing stale cart lock '
+                  'marker "$markerCafe" before adding ${item.title} '
+                  'from "$incomingCafe"',
                 );
-                return false; // rejected — no writes, no retry needed
               }
 
               bool migrateLegacy = false;
@@ -617,8 +658,10 @@ class CartService extends ChangeNotifier {
           );
         } on Exception {
           // Transaction conflict (a concurrent add won the lock or modified
-          // a document we read) — re-read the persisted cart and re-run the
-          // transaction-fresh check before retrying.
+          // a document we read) or an ambiguous stale/absent lock marker
+          // (_AmbiguousCartLockMarkerRetry) — re-read the persisted cart with
+          // a fresh snapshot and re-run the transaction-fresh check before
+          // retrying.
           if (attempt >= 2) rethrow;
         }
       }

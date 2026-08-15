@@ -29,15 +29,21 @@ service cloud.firestore {
     // Per-cafe admin scoping (Phase 18): an admin may read/update/delete an
     // order only when their own `cafeName` is in the order's
     // server-authoritative `cafes` list (written by placeOrder / the
-    // backfill helpers, protected from all client writes).  There is NO
-    // absent/empty fallback: a cafeless order is accessible to no admin
-    // through the client rules. The backend backfill helpers
-    // (migrateLegacyOrderCafes, onNewOrder/onOrderStatusChanged) run with
-    // the Admin SDK (rules-bypassing) and tag an order before any admin
-    // needs to operate on it, so per-cafe scoping is never bypassed.
+    // backfill helpers, protected from all client writes).
+    //
+    // A cafeless order — one the backend tagged with the UNASSIGNED sentinel,
+    // or a legacy order whose `cafes` is absent/empty and not yet backfilled —
+    // is served by any active admin. This mirrors the NEW_ORDER notification
+    // fallback that delivers cafeless orders to every admin, so an admin is
+    // never notified about an order they cannot open or process. The backend
+    // (backfillOrderCafes, migrateLegacyOrderCafes) normalizes such orders to
+    // an explicit `cafes` value as soon as they are written or visited.
     function adminServesOrder() {
       return isAdmin()
-        && resource.data.cafes.hasAny([callerDoc().data.cafeName]);
+        && (!('cafes' in resource.data)
+            || resource.data.cafes.size() == 0
+            || resource.data.cafes.hasAny([callerDoc().data.cafeName])
+            || resource.data.cafes.hasAny(['UNASSIGNED']));
     }
     function callerDoc() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid));
@@ -166,7 +172,16 @@ service cloud.firestore {
         // Server-written collection timestamp — the onOrderStatusChanged
         // Cloud Function records it with the Admin SDK when an order is
         // collected; no client or admin app write may forge it.
-        && !('collectedAt' in changed);
+        && !('collectedAt' in changed)
+        // Phase G — no-show excuse fields are written ONLY by the
+        // excuseNoShow callable (Admin SDK). Neither student nor admin
+        // client may forge them: excusing is a backend-enforced
+        // intervention, and noShowExcused guards the idempotency marker.
+        && !('noShowExcused' in changed)
+        && !('excusedAt' in changed)
+        && !('excusedBy' in changed)
+        && !('excuseReason' in changed)
+        && !('excuseNote' in changed);
     }
 
     // Normalise legacy order status spellings to the app's canonical casing.
@@ -633,7 +648,8 @@ service cloud.firestore {
         'read', 'readAt', 'deleted', 'deletedAt', 'createdAt', 'createdBy'];
       let allowedTypes = ['ORDER_ACCEPTED', 'ORDER_PREPARING', 'ORDER_READY',
         'PICKUP_REMINDER', 'ORDER_NO_SHOW', 'STRIKE_ISSUED', 'STRIKE_REMOVED',
-        'ACCOUNT_SUSPENDED', 'ACCOUNT_REACTIVATED', 'NEW_ORDER'];
+        'ACCOUNT_SUSPENDED', 'ACCOUNT_REACTIVATED', 'NEW_ORDER',
+        'NO_SHOW_EXCUSED'];
       return request.resource.data.keys().hasOnly(allowed)
         && request.resource.data.recipientId is string
         && request.resource.data.recipientId.size() > 0
@@ -651,16 +667,18 @@ service cloud.firestore {
         'deepLink', 'metadata', 'read', 'readAt', 'deleted', 'deletedAt'];
       let allowedTypes = ['ORDER_ACCEPTED', 'ORDER_PREPARING', 'ORDER_READY',
         'PICKUP_REMINDER', 'ORDER_NO_SHOW', 'STRIKE_ISSUED', 'STRIKE_REMOVED',
-        'ACCOUNT_SUSPENDED', 'ACCOUNT_REACTIVATED', 'NEW_ORDER'];
+        'ACCOUNT_SUSPENDED', 'ACCOUNT_REACTIVATED', 'NEW_ORDER',
+        'NO_SHOW_EXCUSED'];
       return changed.hasOnly(allowed)
         && (!('type' in changed) || request.resource.data.type in allowedTypes);
     }
 
     function validAuditLogCreate() {
       let allowed = ['studentId', 'adminId', 'action', 'previousStrike', 'newStrike',
-        'reason', 'timestamp',
-        'orderId', 'previousStrikeCount', 'newStrikeCount', 'performedBy'];      let allowedActions = ['ISSUE_STRIKE', 'PARDON', 'RESET', 'SUSPEND', 'REACTIVATE',
-        'automatic_no_show', 'CREATE_ADMIN'];
+        'reason', 'timestamp', 'note',
+        'orderId', 'previousStrikeCount', 'newStrikeCount', 'performedBy',
+        'cafeId'];      let allowedActions = ['ISSUE_STRIKE', 'PARDON', 'RESET', 'SUSPEND', 'REACTIVATE',
+        'automatic_no_show', 'CREATE_ADMIN', 'NO_SHOW_EXCUSED'];
       return request.resource.data.keys().hasOnly(allowed)
         && request.resource.data.action in allowedActions
         && request.resource.data.reason is string
@@ -713,9 +731,9 @@ service cloud.firestore {
       // placeOrder callable (Phase E), so Firestore Rules cannot be used to
       // bypass the active-order limit or forge server-owned fields.
       // Per-cafe scoping: only an admin whose cafeName is in the order's
-      // server-authoritative `cafes` list may update or delete it. An order
-      // without the field is manageable by no admin until the
-      // migrateLegacyOrderCafes backfill tags it.
+      // server-authoritative `cafes` list may update or delete it. A
+      // cafeless order (absent/empty `cafes`, or tagged with the UNASSIGNED
+      // sentinel) is manageable by any active admin.
       allow update: if adminServesOrder()
         && adminNotModifyingProtectedOrderFields()
         && validOrderStatusTransition();

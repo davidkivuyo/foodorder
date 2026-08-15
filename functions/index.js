@@ -2034,12 +2034,13 @@ exports.placeOrder = onCall(
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
           // Server-authoritative per-cafe scoping list: derived from the
           // validated line items, protected from client writes by the rules.
-          // Orders with no derivable cafe (e.g. off-campus items without a
-          // selection) OMIT the field entirely: the rules, notification
-          // routing and migration all treat an absent field as the legacy
-          // "untagged" state, so a cafeless order falls back to notifying
-          // every admin instead of being left invisible.
-          ...(derivedCafes ? { cafes: derivedCafes } : {}),
+          // A genuinely cafeless order (e.g. off-campus items without a
+          // selection) is tagged with the UNASSIGNED sentinel instead of
+          // omitting the field: it is then served by any active admin and
+          // NEW_ORDER notifications reach every admin (the legacy
+          // "cafeless → all admins" fallback), so it is never left
+          // unopenable or invisible.
+          cafes: derivedCafes || [UNASSIGNED_CAFE],
         };
         transaction.set(orderRef, orderData);
 
@@ -2147,6 +2148,14 @@ async function backfillOrderFoodIds(orderRef, orderData) {
 // backend (placeOrder on create, these helpers for legacy orders) — the
 // rules protect the field from ALL client writes, so it cannot be forged.
 
+// Sentinel value for genuinely cafeless orders (no line item has a resolvable
+// cafe). It guarantees every order carries a non-empty `cafes` list so per-cafe
+// scoping is never bypassed by an absent/empty value; such orders are served
+// by any active admin (firestore.rules adminServesOrder()) and are delivered
+// to every admin in NEW_ORDER notifications, mirroring the legacy
+// "notify all admins" fallback.
+const UNASSIGNED_CAFE = "UNASSIGNED";
+
 /**
  * Derive the deduplicated, non-empty `cafes` list from an order's nested
  * `items` array (the cafe each line item was ordered from).
@@ -2168,18 +2177,35 @@ function deriveOrderCafes(items) {
 }
 
 /**
- * Backfill `cafes` on an order document when the field is absent.
+ * True when `cafes` is a populated list of non-empty strings — the only
+ * representation the scoping rules accept as authoritative.
+ * @param {*} cafes
+ * @return {boolean}
+ */
+function isValidCafesList(cafes) {
+  return (
+    Array.isArray(cafes) &&
+    cafes.length > 0 &&
+    cafes.every((c) => typeof c === "string" && c.trim().length > 0)
+  );
+}
+
+/**
+ * Normalize the server-authoritative `cafes` list on an order document.
  *
- * The presence check and the write run inside a single Firestore transaction
- * (the order is re-read immediately before the write), and ANY existing
- * `cafes` value — a populated list, an empty array, or a malformed
- * historical value — aborts the backfill so existing data is never clobbered
- * or reinterpreted.
+ * The check and the write run inside a single Firestore transaction (the
+ * order is re-read immediately before the write). An order is repaired when
+ * its `cafes` field is absent, an empty array, or otherwise malformed: the
+ * derived list is written when the line items resolve to at least one cafe,
+ * otherwise the UNASSIGNED sentinel is written so the order still carries a
+ * non-empty scoping list that any admin may serve. Existing valid
+ * (non-empty, string) lists are left untouched — never clobbered or
+ * reinterpreted.
  *
  * @param {admin.firestore.DocumentReference} orderRef
  * @param {Object} orderData — the trigger snapshot, used only for the early
- *   no-data guard; the authoritative presence check re-reads the document
- *   inside the transaction.
+ *   no-data guard; the authoritative check re-reads the document inside the
+ *   transaction.
  * @return {Promise<boolean>} true when a backfill write was performed
  */
 async function backfillOrderCafes(orderRef, orderData) {
@@ -2188,11 +2214,11 @@ async function backfillOrderCafes(orderRef, orderData) {
     const snapshot = await transaction.get(orderRef);
     if (!snapshot.exists) return false;
     const data = snapshot.data();
-    // Presence of the field with ANY value means it is already populated —
-    // never overwrite or reinterpret empty/malformed historical values.
-    if (data.cafes !== undefined) return false;
-    const cafes = deriveOrderCafes(data.items);
-    if (!cafes) return false; // Nothing derivable — leave unchanged.
+    // Absent, empty, or malformed values are repaired; a valid non-empty
+    // list is authoritative and left exactly as-is (idempotent no-op).
+    if (isValidCafesList(data.cafes)) return false;
+    const derived = deriveOrderCafes(data.items);
+    const cafes = derived ? derived : [UNASSIGNED_CAFE];
     transaction.update(orderRef, {
       cafes,
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -2580,6 +2606,90 @@ function recomputeReliability(existing, outcome, orderId, timestamp) {
   // (COLLECTED / NO_SHOW only), so deriving the restriction here adds NO
   // extra Firestore writes, and the level always follows the current score
   // (recovery is automatic when the score crosses a threshold).
+  const restriction = restrictionFor({
+    eligibleOrders,
+    reliabilityScore: rawReliabilityScore,
+  });
+
+  return {
+    eligibleOrders,
+    collectedOrders,
+    noShowOrders,
+    collectionRate,
+    recentEligibleOrders,
+    recentCollectedOrders,
+    recentNoShowOrders,
+    recentCollectionRate,
+    reliabilityScore,
+    status,
+    restrictionLevel: restriction.restrictionLevel,
+    restrictionReason: restriction.restrictionReason,
+    updatedAt: timestamp,
+    recentPickupHistory: history,
+  };
+}
+
+/**
+ * Recompute a student's reliability summary after an admin EXCUSES one
+ * no-show (Phase G — ADMIN INTERVENTION).
+ *
+ * Excusing is a correction to a counted event, NOT a rewrite of history:
+ * the order stays NO_SHOW, but the event stops counting as an unexcused
+ * failed pickup. The excused order is removed from recentPickupHistory
+ * (omission — never converted to COLLECTED, so it counts as neither
+ * success nor failure) and the lifetime eligible/no-show counters are
+ * decremented by one. All rates, score, status and the Phase E restriction
+ * are then recomputed with the SAME formulas as [recomputeReliability] so
+ * the correction is consistent with the incremental engine.
+ *
+ * Callers must only invoke this when the excused no-show was actually
+ * counted (reliabilityProcessed === true && reliabilityOutcome ===
+ * 'NO_SHOW'); otherwise subtracting would corrupt an uncounted summary.
+ *
+ * @param {Object|undefined} existing — current pickupReliability map (or none)
+ * @param {string} orderId — the excused order to exclude
+ * @param {admin.firestore.Timestamp} timestamp — intervention time
+ * @return {Object} the corrected summary map (safe to write as a nested map)
+ */
+function recomputeReliabilityAfterExcuse(existing, orderId, timestamp) {
+  const prev = existing && typeof existing === "object"
+    ? { ...emptyReliabilitySummary(), ...existing }
+    : emptyReliabilitySummary();
+  const history = Array.isArray(prev.recentPickupHistory)
+    ? prev.recentPickupHistory.filter((e) => e && e.orderId !== orderId)
+    : [];
+
+  const eligibleOrders = Math.max(0, prev.eligibleOrders - 1);
+  const collectedOrders = prev.collectedOrders;
+  const noShowOrders = Math.max(0, prev.noShowOrders - 1);
+
+  const rawCollectionRate =
+    eligibleOrders === 0
+      ? 100
+      : (collectedOrders / eligibleOrders) * 100;
+
+  const recentEligibleOrders = history.length;
+  const recentCollectedOrders = history.filter(
+    (e) => e.outcome === "COLLECTED"
+  ).length;
+  const recentNoShowOrders = history.filter(
+    (e) => e.outcome === "NO_SHOW"
+  ).length;
+  const rawRecentCollectionRate =
+    recentEligibleOrders === 0
+      ? 100
+      : (recentCollectedOrders / recentEligibleOrders) * 100;
+
+  const rawReliabilityScore =
+    eligibleOrders === 0
+      ? 100
+      : rawCollectionRate * 0.7 + rawRecentCollectionRate * 0.3;
+
+  const collectionRate = roundRate(rawCollectionRate);
+  const recentCollectionRate = roundRate(rawRecentCollectionRate);
+  const reliabilityScore = roundRate(rawReliabilityScore);
+  const status = reliabilityStatusFor(eligibleOrders, rawReliabilityScore);
+
   const restriction = restrictionFor({
     eligibleOrders,
     reliabilityScore: rawReliabilityScore,
@@ -3137,13 +3247,17 @@ exports.onNewOrder = onDocumentCreated(
     // order successfully scoped by the backfill must notify its cafe's
     // admin instead of falling back to every admin. An EMPTY `cafes` array
     // is treated as absent: it was written by the old `|| []` behaviour and
-    // the backfill refuses to touch it, so it must not be treated as a real
-    // scoping scope (which would notify zero admins). Genuinely cafeless
-    // orders (nothing derivable) still fall back to all admins.
-    const afterCafes =
+    // is repaired by the backfill (deriving from items), so it must not be
+    // treated as a real scoping scope (which would notify zero admins). The
+    // UNASSIGNED sentinel marks a genuinely cafeless order — such an order
+    // falls back to notifying every admin.
+    const rawOrderCafes =
       Array.isArray(orderData.cafes) && orderData.cafes.length > 0
         ? orderData.cafes
         : deriveOrderCafes(orderData.items);
+    const afterCafes = Array.isArray(rawOrderCafes)
+      ? rawOrderCafes.filter((c) => c !== UNASSIGNED_CAFE)
+      : [];
 
     // Phase 15 — order financial integrity: correct any client-tampered
     // line-item prices and the order total against the authoritative
@@ -3221,10 +3335,11 @@ exports.onNewOrder = onDocumentCreated(
       }
 
       // Per-cafe scoping: an admin is notified only when their cafeName is
-      // in the order's server-authoritative `cafes` list.  Legacy orders
-      // without a `cafes` list fall back to notifying every admin (the
-      // pre-scoping behaviour) so no order is ever left invisible.
-      const orderCafes = Array.isArray(afterCafes) ? afterCafes : null;
+      // in the order's server-authoritative `cafes` list.  Cafeless orders
+      // (nothing derivable, or tagged with the UNASSIGNED sentinel) fall
+      // back to notifying every admin (the pre-scoping behaviour) so no
+      // order is ever left invisible.
+      const orderCafes = afterCafes.length > 0 ? afterCafes : null;
       const servingAdmins = orderCafes
         ? adminSnapshot.docs.filter((doc) => {
             const adminCafe = doc.data().cafeName;
@@ -3533,6 +3648,310 @@ exports.createAdminAccount = onCall(
     }
 
     return { uid: newUid, email };
+  },
+);
+
+// ════════════════════════════════════════════════════════════════════════════
+// PHASE G — ADMIN INTERVENTION: excuseNoShow (Callable — cafe admin only)
+// ════════════════════════════════════════════════════════════════════════════
+//
+// Authorized cafe admins can EXCUSE a specific NO_SHOW order (a correction
+// to an event, never a strike/pardon system). The reliability engine stays
+// authoritative: excusing only removes the event from the failure counts
+// and recomputes score / status / restriction with the Phase B + Phase E
+// formulas. The original order remains NO_SHOW — its history is never
+// rewritten. No client can set reliabilityScore/restrictionLevel directly;
+// the ONLY intervention path is this callable.
+
+/** Predefined excuse reasons (AGENTS.md Phase G §7). */
+const EXCUSE_REASONS = [
+  "Student reported emergency",
+  "Cafe unable to fulfill order",
+  "System/application issue",
+  "Pickup information was incorrect",
+  "Admin-approved exception",
+  "Other",
+];
+
+/**
+ * Excuse a no-show order (Phase G).
+ *
+ * Backend-enforced authorization (AGENTS.md §2, §34): the caller must be an
+ * authenticated, ACTIVE admin whose cafeName appears in the order's
+ * server-authoritative `cafes` list. Cross-cafe excuses are denied. The
+ * student ID is DERIVED from the order document, never accepted from the
+ * client (§29).
+ *
+ * Atomicity & idempotency (§16-§18): the eligibility check, the order
+ * excuse fields, the reliability summary correction, and the immutable
+ * audit record are committed in ONE Firestore transaction. The audit doc
+ * uses a deterministic ID derived from the order, and the
+ * `noShowExcused` marker is checked + written in the same transaction, so
+ * concurrent or duplicate excuses can never succeed twice (Firestore
+ * aborts the loser, and its re-read sees the marker and reports
+ * already-excused). The student notification is created AFTER the
+ * transaction commits with an eventId-based dedup, so a failed
+ * intervention never notifies and retries never duplicate (§25-§26).
+ */
+exports.excuseNoShow = onCall(
+  {
+    authPolicy: "required",
+    enforceAppCheck: true,
+    region: "us-central1",
+  },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError(
+        "unauthenticated",
+        "You must be signed in to excuse a no-show."
+      );
+    }
+
+    // ── Admin authorization (mirrors createAdminAccount) ─────────────
+    const callerUid = request.auth.uid;
+    const callerDoc = await admin
+      .firestore().collection("users").doc(callerUid).get();
+    const callerData = callerDoc.data();
+    if (!callerDoc.exists || !callerData) {
+      throw new HttpsError(
+        "permission-denied",
+        "Account not found. Please contact support."
+      );
+    }
+    if (callerData.role !== "admin") {
+      throw new HttpsError(
+        "permission-denied",
+        "Only authorized cafe administrators can excuse a no-show."
+      );
+    }
+    if (callerData.accountStatus !== "ACTIVE") {
+      throw new HttpsError(
+        "permission-denied",
+        "Your account is suspended and cannot excuse a no-show."
+      );
+    }
+    const callerCafeName =
+      typeof callerData.cafeName === "string" ? callerData.cafeName.trim() : "";
+
+    // ── Request envelope validation ──────────────────────────────────
+    const data = request.data;
+    if (
+      data === null ||
+      typeof data !== "object" ||
+      Array.isArray(data) ||
+      JSON.stringify(data).length > 4096
+    ) {
+      throw new HttpsError("invalid-argument", "Invalid request payload.");
+    }
+    const envelopeKeys = Object.keys(data);
+    const validKeys = envelopeKeys.filter(
+      (k) => k === "orderId" || k === "reason" || k === "note"
+    );
+    if (validKeys.length !== envelopeKeys.length || envelopeKeys.length === 0) {
+      throw new HttpsError(
+        "invalid-argument",
+        "Request payload must contain only orderId, reason, and an optional note."
+      );
+    }
+
+    const { orderId, reason, note } = data;
+    if (
+      !orderId ||
+      typeof orderId !== "string" ||
+      orderId.length === 0 ||
+      orderId.length > 128 ||
+      !/^[A-Za-z0-9_-]+$/.test(orderId)
+    ) {
+      throw new HttpsError("invalid-argument", "orderId is invalid.");
+    }
+
+    // Predefined reason only (AGENTS.md §7) — no arbitrary categories.
+    let excuseReason;
+    if (typeof reason === "string" && EXCUSE_REASONS.includes(reason)) {
+      excuseReason = reason;
+    } else {
+      throw new HttpsError(
+        "invalid-argument",
+        "reason must be one of the predefined excuse reasons."
+      );
+    }
+
+    // Optional admin note: trimmed, max 200 chars, no HTML/scripts/URLs
+    // (AGENTS.md §8). The rules language cannot express this, so the
+    // callable enforces it server-side before anything is written.
+    let excuseNote = null;
+    if (note !== undefined && note !== null) {
+      if (typeof note !== "string") {
+        throw new HttpsError("invalid-argument", "note is invalid.");
+      }
+      const trimmed = note.trim();
+      if (trimmed.length > 200) {
+        throw new HttpsError(
+          "invalid-argument",
+          "note must be 200 characters or fewer."
+        );
+      }
+      if (
+        /<[a-z][^>]*>/i.test(trimmed) ||
+        /https?:\/\//i.test(trimmed)
+      ) {
+        throw new HttpsError(
+          "invalid-argument",
+          "note cannot contain HTML, scripts, or URLs."
+        );
+      }
+      excuseNote = trimmed;
+    }
+
+    const orderRef = db.collection("orders").doc(orderId);
+
+    try {
+      const excused = await db.runTransaction(async (transaction) => {
+        const orderSnapshot = await transaction.get(orderRef);
+        if (!orderSnapshot.exists) {
+          throw new HttpsError("not-found", "Order not found.");
+        }
+        const orderData = orderSnapshot.data();
+
+        // ── Cafe authorization (§34): derived from the order's
+        //    server-authoritative cafes list — never a client role claim.
+        //    A cafeless order (absent/empty, or tagged with the UNASSIGNED
+        //    sentinel) is served by any active admin, mirroring the
+        //    adminServesOrder() rules gate and the NEW_ORDER notification
+        //    fallback.
+        const orderCafes = Array.isArray(orderData.cafes)
+          ? orderData.cafes.filter((c) => typeof c === "string")
+          : [];
+        const isCafelessOrder =
+          orderCafes.length === 0 ||
+          orderCafes.every((c) => c === UNASSIGNED_CAFE);
+        if (
+          !isCafelessOrder &&
+          (callerCafeName.length === 0 ||
+            !orderCafes.includes(callerCafeName))
+        ) {
+          throw new HttpsError(
+            "permission-denied",
+            "You are not authorized to manage orders for this cafe."
+          );
+        }
+
+        // ── Eligibility (§6): only NO_SHOW with a recorded noShowAt,
+        //    and never already excused (§17).
+        const canonicalStatus =
+          orderData.status === "COLLECTED" ? "collected" : orderData.status;
+        if (canonicalStatus !== "no_show") {
+          throw new HttpsError(
+            "failed-precondition",
+            "Only no-show orders can be excused."
+          );
+        }
+        if (!(orderData.noShowAt instanceof admin.firestore.Timestamp)) {
+          throw new HttpsError(
+            "failed-precondition",
+            "This order has no recorded no-show time and cannot be excused."
+          );
+        }
+        if (orderData.noShowExcused === true) {
+          // ALREADY_EXCUSED — safe business result (§17). The marker is
+          // read inside this transaction, so a concurrent excuse that
+          // committed first is seen here and reported; the loser never
+          // writes a duplicate correction, audit record, or notification.
+          throw new HttpsError(
+            "failed-precondition",
+            "This no-show has already been excused."
+          );
+        }
+
+        const now = admin.firestore.Timestamp.now();
+        const studentId = orderData.studentId || orderData.userId;
+
+        // ── Reliability correction (§11-§15): only when the no-show was
+        //    actually counted by the engine. The summary correction and the
+        //    order marker commit atomically here.
+        if (
+          typeof studentId === "string" &&
+          studentId.length > 0 &&
+          orderData.reliabilityProcessed === true &&
+          orderData.reliabilityOutcome === "NO_SHOW"
+        ) {
+          const userRef = db.collection("users").doc(studentId);
+          const userSnapshot = await transaction.get(userRef);
+          if (userSnapshot.exists) {
+            const corrected = recomputeReliabilityAfterExcuse(
+              userSnapshot.data().pickupReliability,
+              orderRef.id,
+              now,
+            );
+            transaction.update(userRef, { pickupReliability: corrected });
+          }
+        }
+
+        transaction.update(orderRef, {
+          // The original NO_SHOW data is preserved; the excuse is additive.
+          noShowExcused: true,
+          excusedAt: now,
+          excusedBy: callerUid,
+          excuseReason,
+          excuseNote,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        // ── Immutable audit record (§22-§23). Deterministic doc ID so a
+        //    concurrent duplicate can never append twice.
+        transaction.set(
+          db.collection("audit_logs").doc(`NO_SHOW_EXCUSED_${orderRef.id}`),
+          {
+            action: "NO_SHOW_EXCUSED",
+            adminId: callerUid,
+            orderId: orderRef.id,
+            studentId: studentId || null,
+            cafeId: callerCafeName,
+            reason: excuseReason,
+            note: excuseNote,
+            timestamp: now,
+          },
+        );
+
+        return { studentId: studentId || null };
+      });
+
+      // ── Student notification (§25-§26): created ONLY after the
+      //    transaction committed — a failed intervention never notifies,
+      //    and the eventId dedup prevents duplicate notifications on retry.
+      if (excused.studentId) {
+        try {
+          await createNotification({
+            recipientId: excused.studentId,
+            recipientRole: "student",
+            type: "NO_SHOW_EXCUSED",
+            title: "Missed pickup excused",
+            message: `An administrator reviewed Order #${orderId} and excused ` +
+              `the missed pickup. It will not affect your pickup reliability.`,
+            orderId,
+            eventId: notificationEventId("NO_SHOW_EXCUSED", orderId),
+            createdBy: "system",
+          });
+        } catch (notifErr) {
+          // Notification failure must never fail the intervention.
+          console.error(
+            `[excuseNoShow] Notification failed for order ${orderId}:`, notifErr
+          );
+        }
+      }
+
+      console.log(
+        `[OrderLifecycle] Order ${orderId} no-show excused (reason: ${excuseReason})`
+      );
+      return { success: true, orderId };
+    } catch (err) {
+      if (err instanceof HttpsError) throw err;
+      console.error("[excuseNoShow] Error:", err);
+      throw new HttpsError(
+        "internal",
+        "Could not excuse the no-show. Please try again."
+      );
+    }
   },
 );
 
@@ -4409,9 +4828,10 @@ exports.migrateLegacyOrderFoodIds = functions
 //   • Resumable   — progress persisted in migrations/order_cafes_backfill
 //                   with a document-ID cursor; reruns resume where they left
 //                   off, even after a timeout or crash.
-//   • Idempotent  — reuses backfillOrderCafes(), which no-ops when the order
-//                   already has ANY `cafes` value, so reruns never rewrite
-//                   migrated orders.
+//   • Idempotent  — reuses backfillOrderCafes(), which no-ops on valid
+//                   non-empty `cafes` lists and repairs absent/empty/malformed
+//                   values (derived cafes, or the UNASSIGNED sentinel for
+//                   cafeless orders), so reruns never rewrite migrated orders.
 //   • Self-terminating — once every order has been visited the state is
 //                   marked 'completed' and subsequent runs exit immediately.
 //

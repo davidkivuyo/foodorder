@@ -913,7 +913,11 @@ class _OrdersScreenState extends State<OrdersScreen>
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
-                    '${visuals.icon} ${visuals.label}',
+                    // Phase G — an excused no-show stays NO_SHOW but shows
+                    // the excused treatment on the card.
+                    order.noShowExcused
+                        ? '${visuals.icon} ${visuals.label} · Excused'
+                        : '${visuals.icon} ${visuals.label}',
                     style: TextStyle(
                       color: visuals.color,
                       fontWeight: FontWeight.bold,
@@ -1226,10 +1230,12 @@ class _OrdersScreenState extends State<OrdersScreen>
                       ),
                     ),
 
-                    // No-show notice — mirrors the ORDER_NO_SHOW notification
+                    // No-show notice — mirrors the ORDER_NO_SHOW notification.
+                    // Phase G: an excused no-show renders the excused variant
+                    // (order stays NO_SHOW but is excluded from reliability).
                     if (order.status == OrderStatus.noShow) ...[
                       const SizedBox(height: 12),
-                      const NoShowNotice(),
+                      NoShowNotice(excused: order.noShowExcused),
                     ],
 
                     // Cancellation window (pending orders) — cancel action, or

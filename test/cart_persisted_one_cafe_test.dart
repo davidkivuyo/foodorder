@@ -207,11 +207,10 @@ void main() {
       expect(await cartItemDocs(), hasLength(1));
     });
 
-    test('add is rejected when the lock marker holds a different cafe '
-        '(concurrent add committed after the outer read)', () async {
-      // Simulate a different-cafe add whose transaction committed between the
-      // outer query snapshot and this add's transaction: seed only the lock
-      // marker (no item docs visible to the outer query).
+    test('a stale lock marker with no item docs does not block switching '
+        'cafes (retries then treats the cart as empty)', () async {
+      // Simulate a marker left behind by a failed `_syncCartLockMarker` after
+      // the cart was emptied: only the lock doc exists, pointing at Cafe A.
       await fakeFirestore
           .collection('users')
           .doc(userId)
@@ -224,10 +223,49 @@ void main() {
         itemB,
         selectedCafe: 'Cafe B',
       );
+      expect(success, isTrue,
+          reason: 'an empty cart with a stale marker must not block a '
+              'different cafe');
+
+      final docs = await cartItemDocs();
+      expect(docs.length, 1,
+          reason: 'the Cafe B item is persisted after the stale marker is '
+              'cleared');
+      expect(docs.single.data()['selectedCafe'], 'Cafe B');
+      // The lock marker was overwritten with the new cafe.
+      final lockSnap = await fakeFirestore
+          .collection('users')
+          .doc(userId)
+          .collection('cart')
+          .doc(lockDocId)
+          .get();
+      expect(lockSnap.data()?['cafe'], 'Cafe B');
+    });
+
+    test('add is rejected when a non-empty cart\'s lock marker disagrees '
+        'with the incoming cafe (concurrent-add race protection)', () async {
+      // A cart holding Cafe A items whose lock marker reflects a concurrent
+      // Cafe B add committed after the outer read: the visible items match the
+      // incoming cafe, but the marker is the transaction-fresh signal of the
+      // other cafe — the add must be refused to avoid a mixed-cafe cart.
+      await seedCartItem('food_a', 'Cafe A');
+      await fakeFirestore
+          .collection('users')
+          .doc(userId)
+          .collection('cart')
+          .doc(lockDocId)
+          .set({'cafe': 'Cafe B', 'lockedAt': DateTime.now()});
+      final itemA = _testItem(id: 'food_a2', availableCafes: const ['Cafe A']);
+
+      final success = await cartService.addToCart(
+        itemA,
+        selectedCafe: 'Cafe A',
+      );
       expect(success, isFalse,
-          reason: 'the transaction-fresh lock marker must block the add');
-      expect(await cartItemDocs(), isEmpty,
-          reason: 'no Cafe B item may be persisted');
+          reason: 'a marker disagreeing with a non-empty cart must block '
+              'the add');
+      expect(await cartItemDocs(), hasLength(1),
+          reason: 'no additional item may be persisted');
     });
 
     test('clearing the cart removes the lock marker so a different cafe '

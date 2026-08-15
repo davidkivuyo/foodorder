@@ -26,10 +26,13 @@
 //   3  Admin updates an order from their own cafe (status transition)
 //   4  Admin is denied updating an order from another cafe
 //   5  Admin is denied deleting an order from another cafe
-//   6  Legacy orders (no `cafes`) are not admin-readable until backfilled
-//   7  An admin without a cafeName cannot read scoped orders
+//   6  Legacy orders (no `cafes`) are served by any admin (cafeless fallback)
+//      until the backfill tags them; once tagged, scoping applies
+//   7  An admin without a cafeName cannot read scoped orders (but can read
+//      cafeless/UNASSIGNED ones)
 //   8  Students cannot forge the `cafes` array (no create rule; protected on update)
 //   9  placeOrder writes the server-authoritative `cafes` array
+//  10  Cafeless orders are tagged UNASSIGNED and are readable by any admin
 //
 // Run (requires Java 21+ — e.g. JAVA_HOME=/usr/lib/jvm/java-25-openjdk):
 //   npm run test:cafe-scoping:integration   (inside functions/)
@@ -225,24 +228,26 @@ describe("per-cafe admin order access (adminServesOrder)", () => {
     assert.equal(after.exists, true);
   });
 
-  it("Test 6 — legacy orders (no `cafes`) are not admin-readable until "
-      + "backfilled (scoping never bypassed)", async () => {
+  it("Test 6 — legacy orders (no `cafes`) are served by any active admin "
+      + "until the backfill tags them (cafeless fallback)", async () => {
     const legacy = validOrderPayload();
     delete legacy.cafes;
     await seedOrder("scope-legacy-1", legacy);
-    // No admin — not even one with a matching cafe — can read a cafeless
-    // order through the client rules; the absent-field fallback is gone.
-    await assert.rejects(
-      adminDb("adminA").collection("orders").doc("scope-legacy-1").get(),
-      (err) => err.code === "permission-denied",
-    );
-    await assert.rejects(
-      adminDb("adminB").collection("orders").doc("scope-legacy-1").get(),
-      (err) => err.code === "permission-denied",
-    );
-    // Privileged backfill (Admin SDK) still works and restores normal
-    // scoping: once tagged with Cafe A, adminA can operate and adminB is
-    // denied.
+    // A cafeless order is served by every active admin through the client
+    // rules (mirrors the "notify every admin" fallback), so an admin who was
+    // notified can always open and process it.
+    const adminASnap = await adminDb("adminA")
+        .collection("orders")
+        .doc("scope-legacy-1")
+        .get();
+    assert.equal(adminASnap.exists, true);
+    const adminBSnap = await adminDb("adminB")
+        .collection("orders")
+        .doc("scope-legacy-1")
+        .get();
+    assert.equal(adminBSnap.exists, true);
+    // Privileged backfill (Admin SDK) tags the order with its derived cafe;
+    // scoping then applies normally: adminA can operate and adminB is denied.
     await db.collection("orders").doc("scope-legacy-1").update({
       cafes: ["Cafe A"],
       updatedAt: new Date(),
@@ -338,8 +343,8 @@ describe("per-cafe admin order access (adminServesOrder)", () => {
     );
   });
 
-  it("Test 10 — cafeless orders omit the `cafes` field and are not "
-      + "admin-readable until backfilled", async () => {
+  it("Test 10 — cafeless orders are tagged UNASSIGNED and are served by "
+      + "any active admin", async () => {
     await testEnv.withSecurityRulesDisabled(async (ctx) => {
       await ctx.firestore().collection("food_items").doc("food_1").set({
         id: "food_1",
@@ -374,27 +379,28 @@ describe("per-cafe admin order access (adminServesOrder)", () => {
         pickupWindowMinutes: 20,
       },
     });
-    // The `cafes` field is omitted entirely — never an empty array — so the
-    // absent-field legacy fallback applies everywhere (rules, notifications,
-    // migration).
+    // The `cafes` field carries the UNASSIGNED sentinel — never omitted and
+    // never an empty array — so the order has an explicit scoping scope that
+    // any admin may serve.
     const snap = await db.collection("orders").doc("scope-place-cafeless").get();
     assert.equal(snap.exists, true);
-    assert.equal(
-      "cafes" in snap.data(),
-      false,
-      "cafeless order must omit the cafes field",
+    assert.deepEqual(
+      snap.data().cafes,
+      ["UNASSIGNED"],
+      "cafeless order must carry the UNASSIGNED scoping sentinel",
     );
-    // No admin may read a cafeless order through the client rules — the
-    // backend backfill (Admin SDK) must tag it before it becomes
-    // accessible, so per-cafe scoping is never bypassed.
-    await assert.rejects(
-      adminDb("adminA").collection("orders").doc("scope-place-cafeless").get(),
-      (err) => err.code === "permission-denied",
-    );
-    await assert.rejects(
-      adminDb("adminB").collection("orders").doc("scope-place-cafeless").get(),
-      (err) => err.code === "permission-denied",
-    );
+    // Every active admin may read a cafeless order through the client rules,
+    // so an admin who was notified can always open it.
+    const adminASnap = await adminDb("adminA")
+        .collection("orders")
+        .doc("scope-place-cafeless")
+        .get();
+    assert.equal(adminASnap.exists, true);
+    const adminBSnap = await adminDb("adminB")
+        .collection("orders")
+        .doc("scope-place-cafeless")
+        .get();
+    assert.equal(adminBSnap.exists, true);
   });
 
   it("Test 11 — onNewOrder notifies only the scoped cafe admin for a legacy "
@@ -436,8 +442,8 @@ describe("per-cafe admin order access (adminServesOrder)", () => {
     );
   });
 
-  it("Test 12 — onNewOrder treats an EMPTY cafes array as absent and "
-      + "derives the cafe from items for notifications", async () => {
+  it("Test 12 — onNewOrder repairs an EMPTY cafes array (deriving the cafe "
+      + "from items) and notifies the scoped admin", async () => {
     await testEnv.withSecurityRulesDisabled(async (ctx) => {
       await ctx.firestore().collection("food_items").doc("food_1").set({
         id: "food_1",
@@ -450,10 +456,8 @@ describe("per-cafe admin order access (adminServesOrder)", () => {
     });
 
     // Legacy order written by the old `cafes: deriveOrderCafes(...) || []`
-    // behaviour: an EMPTY array. The backfill refuses to touch any existing
-    // cafes value, so this order is permanently tagged `[]` — an empty array
-    // must therefore be treated as absent for notification scoping, or the
-    // order would notify zero admins (filter over an empty list).
+    // behaviour: an EMPTY array. The backfill now treats empty/malformed
+    // values as needing repair, deriving the cafe from the items.
     const orderId = "scope-empty-cafes-notif";
     const orderData = validOrderPayload({ orderId });
     orderData.cafes = [];
@@ -464,11 +468,10 @@ describe("per-cafe admin order access (adminServesOrder)", () => {
     const snapshot = { ref, data: () => orderData, exists: true };
     await functionsModule.onNewOrder.run({ data: snapshot, params: { orderId } });
 
-    // The backfill aborted (empty array counts as an existing value), so the
-    // stored cafes remain []; the notification must still be scoped via the
-    // items-derived cafes rather than notifying zero admins.
+    // The backfill repaired the empty array with the items-derived cafe, so
+    // the order is scoped to Cafe A and shows up in Cafe A's admin query.
     const orderSnap = await db.collection("orders").doc(orderId).get();
-    assert.deepEqual(orderSnap.data().cafes, []);
+    assert.deepEqual(orderSnap.data().cafes, ["Cafe A"]);
 
     const notifs = await db.collection("notifications").get();
     const recipientIds = notifs.docs
@@ -477,6 +480,110 @@ describe("per-cafe admin order access (adminServesOrder)", () => {
       [...new Set(recipientIds)],
       ["adminA"],
       "order with an empty cafes array must notify its cafe admin (Cafe A)",
+    );
+  });
+
+  it("Test 13 — an UNASSIGNED order can be processed (updated) by any "
+      + "active admin", async () => {
+    await seedOrder("scope-unassigned-upd-1", validOrderPayload({
+      cafes: ["UNASSIGNED"],
+      status: "accepted",
+      createdAt: new Date(Date.now() - 3 * 60000),
+      cancellationDeadline: new Date(Date.now() - 1000),
+    }));
+    // Any active admin (even one from a different cafe) may update it.
+    await adminDb("adminB")
+        .collection("orders")
+        .doc("scope-unassigned-upd-1")
+        .update({ status: "preparing", updatedAt: new Date() });
+    const after = await db.collection("orders").doc("scope-unassigned-upd-1").get();
+    assert.equal(after.data().status, "preparing");
+  });
+
+  it("Test 14 — an admin without a cafeName can read a cafeless order, "
+      + "but not a cafe-scoped one", async () => {
+    await seedOrder("scope-nocafe-cafeless", validOrderPayload({
+      cafes: ["UNASSIGNED"],
+    }));
+    const cafelessSnap = await adminDb("adminNoCafe")
+        .collection("orders")
+        .doc("scope-nocafe-cafeless")
+        .get();
+    assert.equal(cafelessSnap.exists, true);
+    // The cafe-scoped denial from Test 7 still holds.
+    await seedOrder("scope-nocafe-scoped-1", validOrderPayload({ cafes: ["Cafe A"] }));
+    await assert.rejects(
+      adminDb("adminNoCafe")
+          .collection("orders")
+          .doc("scope-nocafe-scoped-1")
+          .get(),
+      (err) => err.code === "permission-denied",
+    );
+  });
+
+  it("Test 15 — onNewOrder backfill repairs malformed/absent cafes and tags "
+      + "cafeless orders with UNASSIGNED", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("food_items").doc("food_1").set({
+        id: "food_1",
+        title: "Rice & Beans",
+        price: 3000,
+        available: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+    });
+
+    // Malformed (non-array) value + derivable items → repaired to the
+    // derived cafe.
+    let orderId = "bf-malformed-1";
+    let orderData = validOrderPayload({ orderId });
+    orderData.cafes = "Cafe A";
+    await seedOrder(orderId, orderData);
+    await functionsModule.onNewOrder.run({
+      data: { ref: db.collection("orders").doc(orderId), data: () => orderData, exists: true },
+      params: { orderId },
+    });
+    assert.deepEqual(
+      (await db.collection("orders").doc(orderId).get()).data().cafes,
+      ["Cafe A"],
+    );
+
+    // Absent field + nothing derivable → tagged UNASSIGNED.
+    orderId = "bf-cafeless-1";
+    orderData = validOrderPayload({
+      orderId,
+      items: [{
+        foodItemId: "food_1",
+        title: "Rice & Beans",
+        price: 3000,
+        quantity: 1,
+        image: "",
+        selectedCafe: null,
+      }],
+    });
+    delete orderData.cafes;
+    await seedOrder(orderId, orderData);
+    await functionsModule.onNewOrder.run({
+      data: { ref: db.collection("orders").doc(orderId), data: () => orderData, exists: true },
+      params: { orderId },
+    });
+    assert.deepEqual(
+      (await db.collection("orders").doc(orderId).get()).data().cafes,
+      ["UNASSIGNED"],
+    );
+
+    // A valid non-empty list is left untouched (idempotent no-op).
+    orderId = "bf-valid-1";
+    orderData = validOrderPayload({ orderId });
+    await seedOrder(orderId, orderData);
+    await functionsModule.onNewOrder.run({
+      data: { ref: db.collection("orders").doc(orderId), data: () => orderData, exists: true },
+      params: { orderId },
+    });
+    assert.deepEqual(
+      (await db.collection("orders").doc(orderId).get()).data().cafes,
+      ["Cafe A"],
     );
   });
 });
