@@ -159,7 +159,7 @@ void main() {
       expect(callableSection, contains('activeSnapshot.size >= limit'));
       expect(callableSection, contains('code: "ACTIVE_ORDER_LIMIT"'));
       // Concurrency: the contention write serialises concurrent attempts.
-      expect(callableSection, contains('transaction.update(userRef,'));
+      expect(callableSection, contains('transaction.update(ctx.userRef,'));
       // Fail-safe (§18): never assume 0 active orders when verification fails.
       expect(callableSection, contains('Unable to verify your active orders'));
     });

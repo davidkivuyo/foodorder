@@ -251,8 +251,8 @@ void main() {
 
     test('onOrderStatusChanged processes COLLECTED and NO_SHOW (Tests 2-4)',
         () {
-      expect(fn, contains('processReliabilityEvent(event.data.after.ref, "COLLECTED")'));
-      expect(fn, contains('processReliabilityEvent(event.data.after.ref, "NO_SHOW")'));
+      expect(fn, contains('processReliabilityEvent(ref, "COLLECTED")'));
+      expect(fn, contains('processReliabilityEvent(ref, "NO_SHOW")'));
     });
 
     test('only genuine READY → terminal transitions count (never-READY orders '

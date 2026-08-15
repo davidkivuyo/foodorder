@@ -164,7 +164,7 @@ void main() {
     test('onOrderStatusChanged records authoritative readyAt + pickupDeadline '
         'on READY (Tests 1 & 2)', () {
       final statusFn = fn.substring(
-        fn.indexOf('exports.onOrderStatusChanged'),
+        fn.indexOf('// FUNCTION 2: onOrderStatusChanged'),
         fn.indexOf('exports.onNewOrder'),
       );
       expect(statusFn, contains('readyAt: now'));
@@ -175,64 +175,58 @@ void main() {
 
     test('onOrderStatusChanged records collectedAt on COLLECTED (Test 3)', () {
       final statusFn = fn.substring(
-        fn.indexOf('exports.onOrderStatusChanged'),
+        fn.indexOf('// FUNCTION 2: onOrderStatusChanged'),
         fn.indexOf('exports.onNewOrder'),
       );
       expect(statusFn, contains('status === "collected"'));
       expect(
         statusFn,
-        contains('collectedAt: admin.firestore.Timestamp.now()'),
+        contains('stampTerminalTimestamp(\n    ref,\n    afterData,\n    "collectedAt"'),
       );
+      expect(statusFn, contains('[fieldName]: admin.firestore.Timestamp.now()'));
     });
 
     test('the terminal timestamp is persisted before reliability processing '
         'so history uses the authoritative time', () {
-      final statusFn = fn.substring(
-        fn.indexOf('exports.onOrderStatusChanged'),
-        fn.indexOf('exports.onNewOrder'),
+      // COLLECTED: inside handleOrderCollected the collectedAt stamp (via
+      // stampTerminalTimestamp) must precede the reliability call.
+      final collectedBranch = fn.substring(
+        fn.indexOf('async function handleOrderCollected('),
+        fn.indexOf('async function handleOrderNoShow('),
       );
-      // COLLECTED: the collectedAt write must precede the reliability call.
-      final collectedBranch = statusFn.substring(
-        statusFn.indexOf('status === "collected"'),
-        statusFn.indexOf('status === "no_show"'),
-      );
-      final collectedWrite = collectedBranch.indexOf(
-        'collectedAt: admin.firestore.Timestamp.now()',
-      );
+      final collectedWrite = collectedBranch.indexOf('"collectedAt"');
       final collectedReliability = collectedBranch.indexOf(
-        'processReliabilityEvent(event.data.after.ref, "COLLECTED")',
+        'processReliabilityEvent(ref, "COLLECTED")',
       );
       expect(collectedWrite, greaterThan(-1));
       expect(collectedReliability, greaterThan(collectedWrite));
-      // NO_SHOW: the expiredAt write must precede the reliability call.
-      final noShowBranch = statusFn.substring(
-        statusFn.indexOf('status === "no_show"'),
+      // NO_SHOW: the expiredAt stamp must precede the reliability call.
+      final noShowBranch = fn.substring(
+        fn.indexOf('async function handleOrderNoShow('),
+        fn.indexOf('exports.onOrderStatusChanged'),
       );
-      final expiredWrite = noShowBranch.indexOf(
-        'expiredAt: admin.firestore.Timestamp.now()',
-      );
+      final expiredWrite = noShowBranch.indexOf('"expiredAt"');
       final noShowReliability = noShowBranch.indexOf(
-        'processReliabilityEvent(event.data.after.ref, "NO_SHOW")',
+        'processReliabilityEvent(ref, "NO_SHOW")',
       );
       expect(expiredWrite, greaterThan(-1));
       expect(noShowReliability, greaterThan(expiredWrite));
-      // A fresh-read guard stops a redelivered event from re-stamping the
-      // persisted terminal timestamp.
-      expect(statusFn, contains('freshSnapshot.data().collectedAt == null'));
-      expect(statusFn, contains('freshSnapshot.data().expiredAt == null'));
+      // A fresh-read guard in stampTerminalTimestamp stops a redelivered
+      // event from re-stamping the persisted terminal timestamp.
+      expect(fn, contains('freshSnapshot.data()[fieldName] == null'));
     });
 
     test('onOrderStatusChanged keeps manually marked NO_SHOW orders '
         'self-consistent', () {
       final statusFn = fn.substring(
-        fn.indexOf('exports.onOrderStatusChanged'),
+        fn.indexOf('// FUNCTION 2: onOrderStatusChanged'),
         fn.indexOf('exports.onNewOrder'),
       );
       expect(statusFn, contains('status === "no_show"'));
       expect(statusFn, contains('noShowProcessed: true'));
       expect(
         statusFn,
-        contains('expiredAt: admin.firestore.Timestamp.now()'),
+        contains('stampTerminalTimestamp(\n    ref,\n    afterData,\n    "expiredAt"'),
       );
     });
 

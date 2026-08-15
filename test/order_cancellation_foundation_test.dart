@@ -148,7 +148,7 @@ void main() {
         'authoritative deadline inside a transaction (Tests 2-4, 7, 8-12, 15)',
         () {
       final cancelFn = fn.substring(
-        fn.indexOf('exports.cancelOrder'),
+        fn.indexOf('function validateCancelRequest('),
         fn.indexOf('// ── Order foodIds backfill ─'),
       );
       expect(cancelFn, contains('exports.cancelOrder = onCall('));
@@ -238,7 +238,7 @@ void main() {
     test('normalizeOrderPricing holds the order instead of falling back to '
         'client prices, and validates before persisting', () {
       final pricingFn = fn.substring(
-        fn.indexOf('async function normalizeOrderPricing('),
+        fn.indexOf('async function resolveLineItemPrice('),
         fn.indexOf('// PHASE B.2 — PICKUP RELIABILITY ENGINE'),
       );
       // Missing food doc or failed lookup → hold (retriable throw).
