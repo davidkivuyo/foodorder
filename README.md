@@ -306,6 +306,7 @@ foodorder/
 │   │   └── pickup_extension_service.dart # One-tap +10 min pickup extension
 │   │
 │   ├── screens/                   # Full-page screens
+|   |   |-- welcome_screen.dart        #   Landing page with login/register buttons
 │   │   ├── home_screen.dart       #   Home feed, featured items, food detail view
 │   │   ├── category_screen.dart   #   Browse food by category
 │   │   ├── common_food.dart       #   Shared food listing used by category/section
@@ -341,7 +342,7 @@ foodorder/
 
 ---
 
-## Project Structure — Admin App(just to give an overview)- (ADMIN APP IS NOT PUBLISHED)
+## Project Structure — Admin App(just to give an overview)- ADMIN APP IS NOT PUBLISHED
 
 ```
 adminview/
@@ -353,6 +354,7 @@ adminview/
 │   │   ├── food_item.dart         # Shared FoodItem model
 │   │   └── order.dart             # Order model
 │   ├── screens/
+|   |   |-- home_screen.dart         # Admin dashboard home
 │   │   ├── auth_gate.dart         # Auth-gated entry
 │   │   ├── login_screen.dart      # Admin login
 │   │   ├── register_screen.dart   # Admin registration
@@ -423,171 +425,24 @@ Write your firebase.rules and deploy them. It is added in .gitignore by default 
 npx firebase-tools deploy --only functions
 ```
 
-To set Cloudinary secrets:
+Cloudinary api:
 
-```bash
-firebase functions:secrets:set CLOUDINARY_CLOUD_NAME
-firebase functions:secrets:set CLOUDINARY_API_KEY
-firebase functions:secrets:set CLOUDINARY_API_SECRET
-```
+Get the api keys on your cloudinary account or any other storage providers.
 
 ---
 
 ## Firestore Data Schema
 
-### `food_items/{docId}`
-
-| Field | Type | Description |
-|---|---|---|
-| `title` | string | Food item name |
-| `titleLower` | string | Lowercase title (for search) |
-| `subtitle` | string | Short description |
-| `description` | string | Full description |
-| `image` | string | Cloudinary image URL |
-| `price` | number | Price in TZS |
-| `rating` | number | Average rating (default 4.5) |
-| `category` | string | e.g. "Breakfast", "Lunch" |
-| `availableCafes` | array\<string\> | Cafes serving this item |
-| `section` | string | e.g. "campus_favourite" |
-| `time` | string | Preparation time |
-| `available` | boolean | Currently available for ordering |
-| `featured` | boolean | Show on home screen |
-| `quantity` | number | Stock quantity |
-| `dietaryTags` | array\<string\> | e.g. ["Spicy", "Vegan"] |
-| `keywords` | array\<string\> | Search keywords (auto-generated) |
-| `searchPrefixes` | array\<string\> | Prefix substrings (auto-generated) |
-| `createdAt` | timestamp | Creation date |
-| `updatedAt` | timestamp | Last update |
-
-### `orders/{docId}`
-
-| Field | Type | Description |
-|---|---|---|
-| `orderId` | string | Friendly generated order ID (e.g. `CB-1024`) |
-| `userId` | string | Student's UID |
-| `userName` | string | Student's display name |
-| `items` | array | List of ordered items (JSON representation of `CartItem`) |
-| `totalPrice` | number | Order total in TZS |
-| `status` | string | `pending` → `accepted` → `preparing` → `ready` → `collected` \| `no_show` |
-| `cafe` | string | Selected cafe name |
-| `cafeId` | string | Selected cafe ID |
-| `cafes` | array | Server-authoritative list of cafe names this order belongs to (derived from line-item `selectedCafe`; written by `placeOrder`/backfill, protected from client writes). Drives per-cafe admin scoping (`adminServesOrder()`) |
-| `cafeLocation` | geopoint | Geolocation coordinates of the cafe |
-| `distanceMeters` | number | Walking distance in meters calculated client-side |
-| `distanceCalculated` | boolean | True if walking distance was calculated at checkout |
-| `pickupWindowMinutes` | number | Dynamic pickup window in minutes (10, 15, 20, 25) |
-| `readyAt` | timestamp | Set by Cloud Function when status transitions to `ready` |
-| `pickupDeadline` | timestamp | `readyAt` + `pickupWindowMinutes` (set by Cloud Function) |
-| `deadlineStatus` | string | `NOT_READY`, `ACTIVE`, `COLLECTED`, `EXPIRED` |
-| `noShowProcessed` | boolean | True if the pickup-expiry function has marked this order no-show |
-| `expiredAt` | timestamp | Time when no-show was processed |
-| `deadlineExtended` | boolean | True if the student used the one-time pickup extension |
-| `extensionAt` | timestamp | Time the pickup deadline was extended |
-| `createdAt` | timestamp | When the order was placed |
-| `updatedAt` | timestamp | Last update timestamp |
-
-### `users/{userId}`
-
-| Field | Type | Description |
-|---|---|---|
-| `fullName` | string | Student's full name |
-| `email` | string | Email address |
-| `role` | string | Role of the user (`student` or `admin`) |
-| `strikeCount` | number | Legacy field, managed by the admin app's strike engine (0, 1, or 2). The customer backend never writes it |
-| `accountStatus` | string | Status of account (`ACTIVE` or `SUSPENDED`). Only the admin app changes it; a suspended account cannot place orders |
-| `lastPardonAt` | timestamp | Legacy field, timestamp of last strike pardon (admin app only) |
-| `createdAt` | timestamp | Registration date |
-| `updatedAt` | timestamp | Last document update timestamp |
-| `pickupReliability` | map | **Phase B.2** server-authoritative pickup reliability summary (see below) — students can read it but never write it |
-
-#### `pickupReliability` nested map (server-written only)
-
-| Field | Type | Description |
-|---|---|---|
-| `eligibleOrders` | number | Lifetime eligible pickup events (COLLECTED + NO_SHOW) |
-| `collectedOrders` | number | Lifetime orders collected on time |
-| `noShowOrders` | number | Lifetime no-show orders |
-| `collectionRate` | number | Lifetime collection rate 0–100 (100 for new users — never 0) |
-| `recentEligibleOrders` | number | Eligible events in the recent 10-order window |
-| `recentCollectedOrders` | number | Collected orders in the recent window |
-| `recentNoShowOrders` | number | No-shows in the recent window |
-| `recentCollectionRate` | number | Recent-window collection rate 0–100 |
-| `reliabilityScore` | number | Weighted score = 70% lifetime + 30% recent (0–100) |
-| `status` | string | `NEW` \| `INSUFFICIENT_HISTORY` \| `EXCELLENT` \| `GOOD` \| `NEEDS_IMPROVEMENT` \| `POOR` \| `CRITICAL` |
-| `updatedAt` | timestamp | Last reliability update |
-| `recentPickupHistory` | array | Last 10 `{orderId, outcome, timestamp}` entries (max 10, never duplicated) |
-
-### `users/{userId}/cart/{itemId}` (subcollection)
-
-| Field | Type | Description |
-|---|---|---|
-| `foodItemId` | string | Reference to food_items doc |
-| `quantity` | number | Number of this item in cart |
-| `cafe` | string | Selected cafe |
-
-### `users/{userId}/plans/{planId}` (subcollection)
-
-Stores the student's saved meal plans.
-
-| Field | Type | Description |
-|---|---|---|
-| `title` | string | Custom name of the plan (e.g., "Tuesday Breakfast") |
-| `note` | string | Optional student instructions or notes |
-| `totalAmount` | number | Pre-calculated estimated total price of all items in TZS |
-| `plannedDate` | timestamp | User-selected target date and time for the meal plan |
-| `createdAt` | timestamp | Server timestamp when the meal plan was saved |
-| `items` | array\<map\> | List of plan items (representing serialized `CartItem` elements) |
-
-#### Structure of `items` Map inside `plans`
-Each map in the `items` array contains:
-- `foodItemId` (string): ID of the food item.
-- `title` (string): Name of the food item.
-- `price` (number): Price of the food item in TZS.
-- `quantity` (number): Number of units requested.
-- `image` (string): Cloudinary image URL.
-- `selectedCafe` (string): Selected cafe name.
-- `category` (string): Food category name.
-- `displayCafe` (string): Display name of the cafe.
-
-
-### `notifications/{docId}`
-
-| Field | Type | Description |
-|---|---|---|
-| `recipientId` | string | UID of target recipient |
-| `recipientRole` | string | Role of target recipient (`student` or `admin`) |
-| `type` | string | Type of notification enum (`ORDER_ACCEPTED`, `ORDER_PREPARING`, `ORDER_READY`, `PICKUP_REMINDER`, `ORDER_NO_SHOW`, `ACCOUNT_SUSPENDED`, `ACCOUNT_REACTIVATED`, `NEW_ORDER`). Strike notifications from the admin app's engine are rendered as a generic notice in the student app |
-| `title` | string | Human-readable short title |
-| `message` | string | Human-readable notification body |
-| `orderId` | string | Optional. Associated order ID (null if not applicable) |
-| `eventId` | string | Unique business event ID (e.g. `ORDER_READY_order123`), used for duplicate prevention |
-| `deepLink` | string | Target route path for in-app navigation (e.g., `/orders/{orderId}`) |
-| `metadata` | map | Optional key-value metadata object |
-| `read` | boolean | Read status flag (default `false`) |
-| `readAt` | timestamp | Timestamp when marked read (null if unread) |
-| `deleted` | boolean | Soft delete status flag (default `false`) |
-| `deletedAt` | timestamp | Timestamp when soft deleted (null if not deleted) |
-| `createdAt` | timestamp | Server timestamp when notification was created |
-| `createdBy` | string | Entity that created the notification (`system`, `admin`) |
-
-### `audit_logs/{docId}`
-
-| Field | Type | Description |
-|---|---|---|
-| `action` | string | Action performed (`automatic_no_show`, `pardon`, `reset`, `reactivate`, `cloudinary_image_deleted`) |
-| `studentId` | string | Student UID involved in the strike action |
-| `orderId` | string | Associated order ID (if any) |
-| `adminId` | string | Admin UID who performed the action (or `'system'` for automated engine) |
-| `previousStrikeCount` | number | Student strike count prior to action |
-| `newStrikeCount` | number | Student strike count after action |
-| `previousStrike` | number | Student strike percentage prior to action (legacy support) |
-| `newStrike` | number | Student strike percentage after action (legacy support) |
-| `reason` | string | Reason provided for the action |
-| `timestamp` | timestamp | Server timestamp of the log entry |
-
-### Other Collections
+## Collections
 
 - **`categories`** — `{ name, order }`
+- **`food_items`** — `{ title, subtitle, description, image, price, rating, category, availableCafes, section, time, available, featured, quantity, dietaryTags, keywords, searchPrefixes, createdAt, updatedAt }`
+- **`orders`** — `{ orderId, userId, userName, items, totalPrice, status, cafe, cafeId, cafes, cafeLocation, distanceMeters, distanceCalculated, pickupWindowMinutes, readyAt, pickupDeadline, deadlineStatus, noShowProcessed, expiredAt, deadlineExtended, extensionAt, createdAt, updatedAt }`
+- **`users`** — `{ fullName, email, role, strikeCount, accountStatus, lastPardonAt, createdAt, updatedAt, pickupReliability }`
+- **`users/{userId}/cart`** — `{ foodItemId, quantity, cafe }`
+- **`users/{userId}/plans`** — `{ title, note, totalAmount, plannedDate, createdAt, items }`
+- **`notifications`** — `{ recipientId, recipientRole, type, title, message, orderId, eventId, deepLink, metadata, read, readAt, deleted, deletedAt, createdAt, createdBy }`
+- **`audit_logs`** -- `{action, studentId, orderId, adminId, previousStrikeCount, newStrikeCount, previousStrike, newStrike, reason, timestamp}`
 - **`cafes`** — `{ name, location, geopoint }`
 - **`section`** — `{ name }`
 - **`reviews`** — `{ userId, text, rating, ... }`
