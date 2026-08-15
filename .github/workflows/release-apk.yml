@@ -42,7 +42,7 @@ jobs:
             ${{ runner.os }}-pub-
 
       - name: Install Dependencies
-        run: flutter pub get
+        run: flutter pub get --enforce-lockfile
 
       - name: Run Security & Unit Tests
         run: flutter test
