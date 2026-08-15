@@ -59,7 +59,7 @@ jobs:
             exit 1
           fi
           ./gradlew --no-daemon :app:dependencies > /dev/null
-        working-directory: android
+        working-directory: android/app
 
       - name: Decode Android Keystore
         env:
