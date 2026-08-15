@@ -54,12 +54,12 @@ jobs:
         # missing or stale instead of failing later during the APK build with
         # an opaque resolution error.
         run: |
-          if [ ! -f android/app/gradle.lockfile ]; then
-            echo "::error::android/app/gradle.lockfile is missing. Commit it (regenerate with ./gradlew :app:dependencies --write-locks)."
+          if [ ! -f app/gradle.lockfile ]; then
+            echo "::error::app/gradle.lockfile is missing. Commit it (regenerate with ./gradlew :app:dependencies --write-locks)."
             exit 1
           fi
           ./gradlew --no-daemon :app:dependencies > /dev/null
-        working-directory: android/app
+        working-directory: android
 
       - name: Decode Android Keystore
         env:
