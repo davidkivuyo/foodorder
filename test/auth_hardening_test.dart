@@ -173,30 +173,34 @@ void main() {
         },
       );
 
-      test('audit_logs are admin-append-only (Part 20)', () {
+      test('audit_logs are backend-only — no client create (Part 20)', () {
         final auditBlock = rules.substring(
           rules.indexOf('match /audit_logs/{docId}'),
           rules.indexOf('match /users/{userId}'),
         );
-        expect(auditBlock, contains('allow create: if isAdmin()'));
-        expect(auditBlock, contains('validAuditLogCreate()'));
+        // Phase 18 — audit records are written only by trusted Cloud
+        // Functions (Admin SDK), which derive actor identity and timestamp
+        // server-side; direct client creates/updates/deletes are denied so
+        // no client can forge, skip, or tamper with the append-only trail.
+        expect(auditBlock, isNot(contains('allow create')));
         expect(auditBlock, contains('allow update: if false;'));
         expect(auditBlock, contains('allow delete: if false;'));
-        // Admins may only log actions as themself — no spoofing another admin
-        // or the automation engine ("system").
+        // Reads are cafe-scoped (Part 20): an audit record carrying a
+        // cafeId is readable only by an admin of that cafe; cafeless
+        // records remain readable by any admin. Cross-cafe reads are denied
+        // (covered behaviourally by the emulator suite).
+        expect(
+          auditBlock,
+          contains('allow read: if isAdmin() && adminCanReadAudit()'),
+        );
         final auditFn = rules.substring(
-          rules.indexOf('function validAuditLogCreate()'),
-          rules.indexOf('// ── Rules ─'),
+          rules.indexOf('function adminCanReadAudit()'),
+          rules.indexOf('function callerDoc()'),
         );
-        expect(auditFn, contains('request.auth.uid'));
-        expect(
-          auditFn,
-          contains("request.resource.data.adminId == request.auth.uid"),
-        );
-        expect(
-          auditFn,
-          contains("request.resource.data.performedBy == request.auth.uid"),
-        );
+        expect(auditFn, contains("'cafeId'"));
+        expect(auditFn, contains('callerDoc().data.cafeName'));
+        // The client-side create helper is gone.
+        expect(rules, isNot(contains('function validAuditLogCreate()')));
       });
 
       test('orders are owner-scoped and admin-gated (Part 10)', () {

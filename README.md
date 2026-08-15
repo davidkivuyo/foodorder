@@ -209,9 +209,6 @@ Create these collections manually in the Firestore Console (or through the admin
 | `cafes` | `{ name: "Main Cafeteria", location: "Building A" }` |
 | `section` | `{ name: "campus_favourite" }` |
 
-#### f) Create the First Admin User
-1. this is created in the admin app but consider doing manually in firestore database.
-
 ### 3. Install Dependencies
 
 ```bash
@@ -264,6 +261,7 @@ foodorder/
 │   │   └── pickup_extension_service.dart # One-tap +10 min pickup extension
 │   │
 │   ├── screens/                   # Full-page screens
+|   |   |-- welcome_screen.dart        #   Landing page with login/register buttons
 │   │   ├── home_screen.dart       #   Home feed, featured items, food detail view
 │   │   ├── category_screen.dart   #   Browse food by category
 │   │   ├── common_food.dart       #   Shared food listing used by category/section
@@ -299,7 +297,7 @@ foodorder/
 
 ---
 
-## Project Structure — Admin App(just to give an overview)- (ADMIN APP IS NOT PUBLISHED)
+## Project Structure — Admin App(just to give an overview)- ADMIN APP IS NOT PUBLISHED
 
 ```
 adminview/
@@ -311,6 +309,7 @@ adminview/
 │   │   ├── food_item.dart         # Shared FoodItem model
 │   │   └── order.dart             # Order model
 │   ├── screens/
+|   |   |-- home_screen.dart         # Admin dashboard home
 │   │   ├── auth_gate.dart         # Auth-gated entry
 │   │   ├── login_screen.dart      # Admin login
 │   │   ├── register_screen.dart   # Admin registration
@@ -373,6 +372,25 @@ Student-facing callable that extends an order's pickup deadline by **10 minutes*
 
 The customer app surfaces this as the one-tap **"Extend pickup by 10 min"** button on ready orders.
 
+### 5. `excuseNoShow` (Callable — Phase G admin intervention)
+
+Admin-only callable that excuses a specific NO_SHOW order. Enforced server-side:
+- The caller must be an authenticated, **ACTIVE** admin whose `cafeName` is in the order's `cafes` list (cross-cafe denied); a cafeless order (absent/empty `cafes`, or tagged `UNASSIGNED`) is excusable by any active admin.
+- The order must be `NO_SHOW` with a recorded `noShowAt`, not already excused.
+- The reason must be one of the predefined reasons; the note is optional, ≤ 200 chars, no URLs/HTML.
+- Atomically marks the order `noShowExcused`, corrects the student's reliability summary (event excluded from failure counts, restriction recomputed), and writes an immutable `audit_logs/NO_SHOW_EXCUSED_{orderId}` record.
+- Commits the order state, reliability correction, audit record, and the `NO_SHOW_EXCUSED_{orderId}` notification outbox event in one transaction; FCM push is delivered by the post-commit `onNewNotification` trigger (eventId-deduped).
+
+### 6. `reactivateStudent` (Callable — admin account action)
+
+Admin-only callable that reactivates a genuinely SUSPENDED student account:
+- The caller must be an authenticated, **ACTIVE** admin.
+- The target must exist and be exactly `accountStatus: "SUSPENDED"` (checked inside the transaction, atomic with the ACTIVE flip).
+- The account-status flip and the immutable `audit_logs` REACTIVATE record commit in **one Firestore transaction**; actor identity (`adminId`) and `timestamp` are derived server-side from the authenticated caller.
+- Creates exactly one `ACCOUNT_REACTIVATED` student notification after commit (eventId-deduped).
+
+`firestore.rules` grants **no** client create/update/delete on `audit_logs` — audit records are backend-only (AGENTS.md §23).
+
 ### Deploying Functions
 
 Write your firebase.rules and deploy them. It is added in .gitignore by default so consider that.
@@ -381,170 +399,24 @@ Write your firebase.rules and deploy them. It is added in .gitignore by default 
 npx firebase-tools deploy --only functions
 ```
 
-To set Cloudinary secrets:
+Cloudinary api:
 
-```bash
-firebase functions:secrets:set CLOUDINARY_CLOUD_NAME
-firebase functions:secrets:set CLOUDINARY_API_KEY
-firebase functions:secrets:set CLOUDINARY_API_SECRET
-```
+Get the api keys on your cloudinary account or any other storage providers.
 
 ---
 
 ## Firestore Data Schema
 
-### `food_items/{docId}`
-
-| Field | Type | Description |
-|---|---|---|
-| `title` | string | Food item name |
-| `titleLower` | string | Lowercase title (for search) |
-| `subtitle` | string | Short description |
-| `description` | string | Full description |
-| `image` | string | Cloudinary image URL |
-| `price` | number | Price in TZS |
-| `rating` | number | Average rating (default 4.5) |
-| `category` | string | e.g. "Breakfast", "Lunch" |
-| `availableCafes` | array\<string\> | Cafes serving this item |
-| `section` | string | e.g. "campus_favourite" |
-| `time` | string | Preparation time |
-| `available` | boolean | Currently available for ordering |
-| `featured` | boolean | Show on home screen |
-| `quantity` | number | Stock quantity |
-| `dietaryTags` | array\<string\> | e.g. ["Spicy", "Vegan"] |
-| `keywords` | array\<string\> | Search keywords (auto-generated) |
-| `searchPrefixes` | array\<string\> | Prefix substrings (auto-generated) |
-| `createdAt` | timestamp | Creation date |
-| `updatedAt` | timestamp | Last update |
-
-### `orders/{docId}`
-
-| Field | Type | Description |
-|---|---|---|
-| `orderId` | string | Friendly generated order ID (e.g. `CB-1024`) |
-| `userId` | string | Student's UID |
-| `userName` | string | Student's display name |
-| `items` | array | List of ordered items (JSON representation of `CartItem`) |
-| `totalPrice` | number | Order total in TZS |
-| `status` | string | `pending` → `accepted` → `preparing` → `ready` → `collected` \| `no_show` |
-| `cafe` | string | Selected cafe name |
-| `cafeId` | string | Selected cafe ID |
-| `cafeLocation` | geopoint | Geolocation coordinates of the cafe |
-| `distanceMeters` | number | Walking distance in meters calculated client-side |
-| `distanceCalculated` | boolean | True if walking distance was calculated at checkout |
-| `pickupWindowMinutes` | number | Dynamic pickup window in minutes (10, 15, 20, 25) |
-| `readyAt` | timestamp | Set by Cloud Function when status transitions to `ready` |
-| `pickupDeadline` | timestamp | `readyAt` + `pickupWindowMinutes` (set by Cloud Function) |
-| `deadlineStatus` | string | `NOT_READY`, `ACTIVE`, `COLLECTED`, `EXPIRED` |
-| `noShowProcessed` | boolean | True if the pickup-expiry function has marked this order no-show |
-| `expiredAt` | timestamp | Time when no-show was processed |
-| `deadlineExtended` | boolean | True if the student used the one-time pickup extension |
-| `extensionAt` | timestamp | Time the pickup deadline was extended |
-| `createdAt` | timestamp | When the order was placed |
-| `updatedAt` | timestamp | Last update timestamp |
-
-### `users/{userId}`
-
-| Field | Type | Description |
-|---|---|---|
-| `fullName` | string | Student's full name |
-| `email` | string | Email address |
-| `role` | string | Role of the user (`student` or `admin`) |
-| `strikeCount` | number | Legacy field, managed by the admin app's strike engine (0, 1, or 2). The customer backend never writes it |
-| `accountStatus` | string | Status of account (`ACTIVE` or `SUSPENDED`). Only the admin app changes it; a suspended account cannot place orders |
-| `lastPardonAt` | timestamp | Legacy field, timestamp of last strike pardon (admin app only) |
-| `createdAt` | timestamp | Registration date |
-| `updatedAt` | timestamp | Last document update timestamp |
-| `pickupReliability` | map | **Phase B.2** server-authoritative pickup reliability summary (see below) — students can read it but never write it |
-
-#### `pickupReliability` nested map (server-written only)
-
-| Field | Type | Description |
-|---|---|---|
-| `eligibleOrders` | number | Lifetime eligible pickup events (COLLECTED + NO_SHOW) |
-| `collectedOrders` | number | Lifetime orders collected on time |
-| `noShowOrders` | number | Lifetime no-show orders |
-| `collectionRate` | number | Lifetime collection rate 0–100 (100 for new users — never 0) |
-| `recentEligibleOrders` | number | Eligible events in the recent 10-order window |
-| `recentCollectedOrders` | number | Collected orders in the recent window |
-| `recentNoShowOrders` | number | No-shows in the recent window |
-| `recentCollectionRate` | number | Recent-window collection rate 0–100 |
-| `reliabilityScore` | number | Weighted score = 70% lifetime + 30% recent (0–100) |
-| `status` | string | `NEW` \| `INSUFFICIENT_HISTORY` \| `EXCELLENT` \| `GOOD` \| `NEEDS_IMPROVEMENT` \| `POOR` \| `CRITICAL` |
-| `updatedAt` | timestamp | Last reliability update |
-| `recentPickupHistory` | array | Last 10 `{orderId, outcome, timestamp}` entries (max 10, never duplicated) |
-
-### `users/{userId}/cart/{itemId}` (subcollection)
-
-| Field | Type | Description |
-|---|---|---|
-| `foodItemId` | string | Reference to food_items doc |
-| `quantity` | number | Number of this item in cart |
-| `cafe` | string | Selected cafe |
-
-### `users/{userId}/plans/{planId}` (subcollection)
-
-Stores the student's saved meal plans.
-
-| Field | Type | Description |
-|---|---|---|
-| `title` | string | Custom name of the plan (e.g., "Tuesday Breakfast") |
-| `note` | string | Optional student instructions or notes |
-| `totalAmount` | number | Pre-calculated estimated total price of all items in TZS |
-| `plannedDate` | timestamp | User-selected target date and time for the meal plan |
-| `createdAt` | timestamp | Server timestamp when the meal plan was saved |
-| `items` | array\<map\> | List of plan items (representing serialized `CartItem` elements) |
-
-#### Structure of `items` Map inside `plans`
-Each map in the `items` array contains:
-- `foodItemId` (string): ID of the food item.
-- `title` (string): Name of the food item.
-- `price` (number): Price of the food item in TZS.
-- `quantity` (number): Number of units requested.
-- `image` (string): Cloudinary image URL.
-- `selectedCafe` (string): Selected cafe name.
-- `category` (string): Food category name.
-- `displayCafe` (string): Display name of the cafe.
-
-
-### `notifications/{docId}`
-
-| Field | Type | Description |
-|---|---|---|
-| `recipientId` | string | UID of target recipient |
-| `recipientRole` | string | Role of target recipient (`student` or `admin`) |
-| `type` | string | Type of notification enum (`ORDER_ACCEPTED`, `ORDER_PREPARING`, `ORDER_READY`, `PICKUP_REMINDER`, `ORDER_NO_SHOW`, `ACCOUNT_SUSPENDED`, `ACCOUNT_REACTIVATED`, `NEW_ORDER`). Strike notifications from the admin app's engine are rendered as a generic notice in the student app |
-| `title` | string | Human-readable short title |
-| `message` | string | Human-readable notification body |
-| `orderId` | string | Optional. Associated order ID (null if not applicable) |
-| `eventId` | string | Unique business event ID (e.g. `ORDER_READY_order123`), used for duplicate prevention |
-| `deepLink` | string | Target route path for in-app navigation (e.g., `/orders/{orderId}`) |
-| `metadata` | map | Optional key-value metadata object |
-| `read` | boolean | Read status flag (default `false`) |
-| `readAt` | timestamp | Timestamp when marked read (null if unread) |
-| `deleted` | boolean | Soft delete status flag (default `false`) |
-| `deletedAt` | timestamp | Timestamp when soft deleted (null if not deleted) |
-| `createdAt` | timestamp | Server timestamp when notification was created |
-| `createdBy` | string | Entity that created the notification (`system`, `admin`) |
-
-### `audit_logs/{docId}`
-
-| Field | Type | Description |
-|---|---|---|
-| `action` | string | Action performed (`automatic_no_show`, `pardon`, `reset`, `reactivate`, `cloudinary_image_deleted`) |
-| `studentId` | string | Student UID involved in the strike action |
-| `orderId` | string | Associated order ID (if any) |
-| `adminId` | string | Admin UID who performed the action (or `'system'` for automated engine) |
-| `previousStrikeCount` | number | Student strike count prior to action |
-| `newStrikeCount` | number | Student strike count after action |
-| `previousStrike` | number | Student strike percentage prior to action (legacy support) |
-| `newStrike` | number | Student strike percentage after action (legacy support) |
-| `reason` | string | Reason provided for the action |
-| `timestamp` | timestamp | Server timestamp of the log entry |
-
-### Other Collections
+## Collections
 
 - **`categories`** — `{ name, order }`
+- **`food_items`** — `{ title, subtitle, description, image, price, rating, category, availableCafes, section, time, available, featured, quantity, dietaryTags, keywords, searchPrefixes, createdAt, updatedAt }`
+- **`orders`** — `{ orderId, userId, userName, items, totalPrice, status, cafe, cafeId, cafes, cafeLocation, distanceMeters, distanceCalculated, pickupWindowMinutes, readyAt, pickupDeadline, deadlineStatus, noShowProcessed, noShowAt, noShowExcused, excusedAt, excusedBy, excuseReason, excuseNote, expiredAt, deadlineExtended, extensionAt, createdAt, updatedAt }`
+- **`users`** — `{ fullName, email, role, strikeCount, accountStatus, lastPardonAt, createdAt, updatedAt, pickupReliability }`
+- **`users/{userId}/cart`** — `{ foodItemId, quantity, cafe }`
+- **`users/{userId}/plans`** — `{ title, note, totalAmount, plannedDate, createdAt, items }`
+- **`notifications`** — `{ recipientId, recipientRole, type, title, message, orderId, eventId, deepLink, metadata, read, readAt, deleted, deletedAt, createdAt, createdBy }`
+- **`audit_logs`** -- `{action, studentId, orderId, adminId, cafeId, previousStrikeCount, newStrikeCount, previousStrike, newStrike, reason, note, timestamp}`
 - **`cafes`** — `{ name, location, geopoint }`
 - **`section`** — `{ name }`
 - **`reviews`** — `{ userId, text, rating, ... }`
@@ -556,6 +428,10 @@ Each map in the `items` array contains:
 Read and write your own firestore rules. follow best practices in the official documentations.
 
 **Order creation is server-exclusive:** `firestore.rules` exposes **no** client `create` on `/orders` (the old `validOrderCreateRequest()` helper was removed). Orders are created only by the `placeOrder` Cloud Function callable — the client invokes it via `OrderPlacementService` (wired through `CartService.placeOrder`) — so the Phase E active-order limit cannot be bypassed by writing an order document directly, and server-owned fields (`createdAt`, `cancellationDeadline`, `readyAt`, `pickupDeadline`, `collectedAt`, `expiredAt`, `noShowProcessed`, ...) cannot be forged on create. App builds older than Phase E that placed orders with a direct client write must be updated before the new rules are deployed.
+
+**Per-cafe admin scoping:** admins can read/update/delete only orders belonging to their own cafe. Each order carries a server-authoritative `cafes` array (cafe names derived from the validated line items' `selectedCafe`); the `adminServesOrder()` helper requires the admin's `users/{uid}.cafeName` to appear in that array, and `cafes` is in `adminNotModifyingProtectedOrderFields()` so no client (admin included) can forge it. The admin app queries orders with `where('cafes', 'array-contains', cafeName)` — the matching Firestore composite index (`cafes` CONTAINS + `createdAt` DESC) is declared in `firestore.indexes.json`.
+
+**Cafeless orders (UNASSIGNED):** a genuinely cafeless order — one whose line items have no resolvable `selectedCafe` (e.g. off-campus listings) — is tagged by `placeOrder`/`backfillOrderCafes` with the sentinel `cafes: ['UNASSIGNED']` instead of omitting the field. `adminServesOrder()` grants every active admin read/update/delete on such orders, so an admin who receives a NEW_ORDER notification can always open and process the order — mirroring the notification fallback that delivers cafeless orders to every admin. A legacy order whose `cafes` is still absent/empty/malformed is **unreadable by every admin** until the backfill normalizes it — no client can access unscoped data. `backfillOrderCafes` (used by `onNewOrder`/`onOrderStatusChanged` and the scheduled `migrateLegacyOrderCafes`) repairs absent/empty/malformed `cafes` values to the derived cafe list, or to `UNASSIGNED` when nothing is derivable; valid non-empty lists are never clobbered.
 
 ---
 
@@ -612,7 +488,7 @@ The student app uses `go_router` with authentication-aware redirects:
 - **New Order Alerts** — Automatic notification of incoming student orders in real time.
 - **Order Flow Manager** — Control order stages from pending, accepted, preparing, to ready for collection.
 - **No-Show Tracking** — Missed pickups are automatically marked `no_show` and logged to `audit_logs`; no strikes are issued by the customer backend.
-- **Strike & Suspension Management** — The admin app retains the strike engine: pardon strikes, reset counts, reactivate suspended accounts, fully logged via audit trails.
+- **Account Management** — Reactivate a genuinely suspended student account via the backend `reactivateStudent` callable: the ACTIVE flip and the immutable `audit_logs` REACTIVATE record are written server-side (audit_logs are backend-only — no client create/update/delete).
 
 ---
 
@@ -799,6 +675,18 @@ Recovery is automatic — no admin approval, student request, or manual reset:
 - **UI:** the reliability card shows positive reinforcement ("Keep it up — your ordering limits are relaxing…") when a restricted student has a fully collected recent window, and the ordering-limit notice uses forward-looking recovery language — no punishment, strikes, bans, or penalties.
 - **Cost:** recovery adds zero new Firestore operations — it reuses the one event-driven reliability transaction and the existing `users/{uid}` listener (no order-history scans, no client polling, no per-minute recalculations).
 
+### 3f. Admin Intervention — Excuse No-Show (Phase G)
+Authorized cafe admins can correct a legitimate exceptional NO_SHOW without recreating the old strike/pardon system. The reliability engine stays authoritative — the only intervention is **Excuse No-Show**, a correction to a specific event:
+- **Eligibility:** only orders with `status == NO_SHOW` and a recorded `noShowAt` that have **not** already been excused. PENDING/ACCEPTED/PREPARING/READY/COLLECTED/CANCELLED orders are rejected (`failed-precondition`).
+- **Backend (`excuseNoShow` callable):** enforces authentication, the `admin` role, an `ACTIVE` account, and **per-cafe authorization** — the caller's `users/{uid}.cafeName` must appear in the order's server-authoritative `cafes` list (cross-cafe excuses are `permission-denied`). The student ID is derived from the order, never accepted from the client. Predefined reasons only ("Student reported emergency", "Cafe unable to fulfill order", "System/application issue", "Pickup information was incorrect", "Admin-approved exception", "Other"), optional note ≤ 200 chars with URLs/HTML rejected — except that a **non-empty note is required when the reason is "Other"** (the catch-all needs an explanation for the audit trail); the admin UI enforces this before submitting.
+- **Data model:** the order **stays NO_SHOW** with the original `noShowAt` intact; the excuse is additive — `noShowExcused: true`, `excusedAt`, `excusedBy`, `excuseReason`, `excuseNote`. No field is rewritten, and `NO_SHOW → COLLECTED` is never produced.
+- **Reliability correction:** the excused event is removed from `recentPickupHistory` (omission — it counts as neither success nor failure), `eligibleOrders`/`noShowOrders` are decremented by one, and the Phase B formulas recompute `reliabilityScore`, `status`, and the Phase E `restrictionLevel` — so a LIMITED student can recover to NORMAL automatically. The correction runs only when the no-show was actually counted (`reliabilityProcessed === true` && `reliabilityOutcome === "NO_SHOW"`); an uncounted event never corrupts the summary.
+- **Atomicity & idempotency:** the eligibility check, excuse fields, summary correction, the immutable `audit_logs/NO_SHOW_EXCUSED_{orderId}` record, and the deterministic `notifications/NO_SHOW_EXCUSED_{orderId}` outbox event commit in **one Firestore transaction** — a transaction failure commits none of them. A concurrent or duplicate excuse is rejected (`failed-precondition` — already excused) with no duplicate audit record or outbox event.
+- **Student notification:** one `NO_SHOW_EXCUSED` notification ("An administrator reviewed Order #CB-1234 and excused the missed pickup…") is written **inside the same transaction** as the intervention; FCM push is delivered exclusively by the post-commit `onNewNotification` trigger, so a failed intervention never notifies and retries never duplicate.
+- **Student visibility:** the order card/sheet show "No-show recorded · Excused" / a green "No-show excused" notice — the order was not collected, but it is excluded from reliability. Admin UID and private notes are never exposed.
+- **Security rules:** `noShowExcused`/`excusedAt`/`excusedBy`/`excuseReason`/`excuseNote` are added to `adminNotModifyingProtectedOrderFields()` (server-written only), `NO_SHOW_EXCUSED` joins the notification allowed types, and audit logs remain append-only.
+- **Admin UI:** on the admin order screen, eligible NO_SHOW orders show an **Excuse No-Show** action → reason selection sheet → confirmation dialog ("Excuse this no-show? … The original order history will remain unchanged."). Already-excused orders render an "Excused" badge with the reason and no action.
+
 ### 4. Suspension Enforcement
 Account suspension is still honoured when ordering: if `accountStatus == "SUSPENDED"` (managed by the admin app), `CartService.isAccountSuspended()` blocks the student from placing new orders or adding items to the cart.
 
@@ -934,7 +822,9 @@ flutter analyze
 
 ---
 
-## Contributing (contributions are restricted to maintainers only)
+## Contributing
+
+* Push access are restricted to maintainers only
 
 ### Branch Workflow
 

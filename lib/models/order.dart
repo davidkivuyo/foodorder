@@ -149,6 +149,12 @@ class FoodOrder {
   final String? cancelledBy;
   final String? cancellationReason;
 
+  // Phase G: admin intervention — the no-show was excused (server-written
+  // by the excuseNoShow callable; the order itself stays NO_SHOW)
+  final bool noShowExcused;
+  final DateTime? excusedAt;
+  final String? excuseReason;
+
   /// Calculated server-authoritative hard cutoff time for pickup eligibility.
   DateTime? get noShowEligibleAt => pickupDeadline?.add(
       const Duration(minutes: PickupDeadlineService.defaultGracePeriodMinutes));
@@ -181,6 +187,9 @@ class FoodOrder {
     this.cancelledAt,
     this.cancelledBy,
     this.cancellationReason,
+    this.noShowExcused = false,
+    this.excusedAt,
+    this.excuseReason,
   });
 
   /// Build a [FoodOrder] from a Firestore document snapshot.
@@ -274,6 +283,9 @@ class FoodOrder {
       cancelledAt: parseTimestamp(data['cancelledAt']),
       cancelledBy: data['cancelledBy'] as String?,
       cancellationReason: data['cancellationReason'] as String?,
+      noShowExcused: data['noShowExcused'] as bool? ?? false,
+      excusedAt: parseTimestamp(data['excusedAt']),
+      excuseReason: data['excuseReason'] as String?,
     );
   }
 

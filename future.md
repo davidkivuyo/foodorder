@@ -3,6 +3,8 @@
 # TODOS
 1. apply ai to view and monitor images uploaded to be for food only no harm or dangerous materials
 
+2. look for any problem with the notification system
+
 2. make sure there is consistency in edite review and write a review
 
 2. Making sure that order can be extended only once by a user

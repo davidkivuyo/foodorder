@@ -25,6 +25,40 @@ service cloud.firestore {
       return isAuth()
         && get(/databases/$(database)/documents/users/$(userId)).data.role == "student";
     }
+
+    // Per-cafe admin scoping (Phase 18): an admin may read/update/delete an
+    // order only when the order carries a valid, non-empty
+    // server-authoritative `cafes` list (written by placeOrder / the
+    // backfill helpers, protected from all client writes) and their own
+    // `cafeName` appears in it.
+    //
+    // An order tagged with the UNASSIGNED sentinel (a genuinely cafeless
+    // order — no derivable cafe) is served by any active admin, mirroring
+    // the NEW_ORDER notification fallback that delivers cafeless orders to
+    // every admin. A legacy order whose `cafes` is absent/empty/malformed
+    // and not yet backfilled is NOT served by any admin: no client can read
+    // unscoped data until the backend normalizes it.
+    // (backfillOrderCafes, migrateLegacyOrderCafes) writes an explicit
+    // `cafes` value as soon as such orders are visited.
+    function adminServesOrder() {
+      return isAdmin()
+        && ('cafes' in resource.data)
+        && (resource.data.cafes.hasAny(['UNASSIGNED'])
+            || ('cafeName' in callerDoc().data
+                && callerDoc().data.cafeName is string
+                && resource.data.cafes.hasAny([callerDoc().data.cafeName])));
+    }
+    function adminCanReadAudit() {
+      // Per-cafe scoping for audit reads (mirrors adminServesOrder()): an
+      // audit record that carries a `cafeId` (e.g. NO_SHOW_EXCUSED — the
+      // excusing admin's cafe name) is readable only by an admin of that
+      // cafe; cafeless records (global actions such as CREATE_ADMIN /
+      // REACTIVATE) remain readable by any admin. No higher-level role
+      // exists yet — add an explicit branch for one when it is introduced.
+      return !('cafeId' in resource.data)
+        || resource.data.cafeId.size() == 0
+        || resource.data.cafeId == callerDoc().data.cafeName;
+    }
     function callerDoc() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid));
     }
@@ -88,6 +122,21 @@ service cloud.firestore {
             && request.resource.data.specialInstructions.size() < 300));
     }
 
+    // The cart serialization lock document (`_cart_lock_`) is a
+    // synchronization point written inside every cart-add transaction (and
+    // synced on removals) — see CartService._cartLockDocId. It is NOT a cart
+    // item: it carries only the cart's effective cafe marker plus a server
+    // timestamp, so it must bypass validCartItemWrite. Fields are strictly
+    // restricted and typed; `cafe` is a short string ('' for a cafeless
+    // cart) and `lockedAt` is a timestamp. The ID deliberately avoids
+    // double-underscore boundaries (reserved by Firestore).
+    function validCartLockWrite() {
+      return request.resource.data.keys().hasOnly(['cafe', 'lockedAt'])
+        && request.resource.data.cafe is string
+        && request.resource.data.cafe.size() <= 100
+        && request.resource.data.lockedAt is timestamp;
+    }
+
     // ── Order validation ────────────────────────────────────────────────
     //
     // Order creation is exclusively server-authoritative through the
@@ -98,7 +147,11 @@ service cloud.firestore {
 
     function adminNotModifyingProtectedOrderFields() {
       let changed = request.resource.data.diff(resource.data).affectedKeys();
-      return !('pickupWindowMinutes' in changed)
+      // `cafes` is the server-authoritative per-cafe scoping list written by
+      // placeOrder / the backfill helpers; no client (admin included) may
+      // forge or alter it.
+      return !('cafes' in changed)
+        && !('pickupWindowMinutes' in changed)
         && !('distanceCalculated' in changed)
         && !('distanceMeters' in changed)
         && !('cafeLocation' in changed)
@@ -133,7 +186,16 @@ service cloud.firestore {
         // Server-written collection timestamp — the onOrderStatusChanged
         // Cloud Function records it with the Admin SDK when an order is
         // collected; no client or admin app write may forge it.
-        && !('collectedAt' in changed);
+        && !('collectedAt' in changed)
+        // Phase G — no-show excuse fields are written ONLY by the
+        // excuseNoShow callable (Admin SDK). Neither student nor admin
+        // client may forge them: excusing is a backend-enforced
+        // intervention, and noShowExcused guards the idempotency marker.
+        && !('noShowExcused' in changed)
+        && !('excusedAt' in changed)
+        && !('excusedBy' in changed)
+        && !('excuseReason' in changed)
+        && !('excuseNote' in changed);
     }
 
     // Normalise legacy order status spellings to the app's canonical casing.
@@ -600,7 +662,8 @@ service cloud.firestore {
         'read', 'readAt', 'deleted', 'deletedAt', 'createdAt', 'createdBy'];
       let allowedTypes = ['ORDER_ACCEPTED', 'ORDER_PREPARING', 'ORDER_READY',
         'PICKUP_REMINDER', 'ORDER_NO_SHOW', 'STRIKE_ISSUED', 'STRIKE_REMOVED',
-        'ACCOUNT_SUSPENDED', 'ACCOUNT_REACTIVATED', 'NEW_ORDER'];
+        'ACCOUNT_SUSPENDED', 'ACCOUNT_REACTIVATED', 'NEW_ORDER',
+        'NO_SHOW_EXCUSED'];
       return request.resource.data.keys().hasOnly(allowed)
         && request.resource.data.recipientId is string
         && request.resource.data.recipientId.size() > 0
@@ -618,28 +681,10 @@ service cloud.firestore {
         'deepLink', 'metadata', 'read', 'readAt', 'deleted', 'deletedAt'];
       let allowedTypes = ['ORDER_ACCEPTED', 'ORDER_PREPARING', 'ORDER_READY',
         'PICKUP_REMINDER', 'ORDER_NO_SHOW', 'STRIKE_ISSUED', 'STRIKE_REMOVED',
-        'ACCOUNT_SUSPENDED', 'ACCOUNT_REACTIVATED', 'NEW_ORDER'];
+        'ACCOUNT_SUSPENDED', 'ACCOUNT_REACTIVATED', 'NEW_ORDER',
+        'NO_SHOW_EXCUSED'];
       return changed.hasOnly(allowed)
         && (!('type' in changed) || request.resource.data.type in allowedTypes);
-    }
-
-    function validAuditLogCreate() {
-      let allowed = ['studentId', 'adminId', 'action', 'previousStrike', 'newStrike',
-        'reason', 'timestamp',
-        'orderId', 'previousStrikeCount', 'newStrikeCount', 'performedBy'];      let allowedActions = ['ISSUE_STRIKE', 'PARDON', 'RESET', 'SUSPEND', 'REACTIVATE',
-        'automatic_no_show'];
-      return request.resource.data.keys().hasOnly(allowed)
-        && request.resource.data.action in allowedActions
-        && request.resource.data.reason is string
-        && request.resource.data.reason.size() < 500
-        // Phase 15 — an admin may only log actions as themself. Attributing a
-        // log entry to another admin or to the automation engine ("system") is
-        // forbidden; server-side automation writes via Admin SDK and is
-        // exempt from these rules.
-        && (!('adminId' in request.resource.data)
-          || request.resource.data.adminId == request.auth.uid)
-        && (!('performedBy' in request.resource.data)
-          || request.resource.data.performedBy == request.auth.uid);
     }
 
     // ── Rules ───────────────────────────────────────────────────────────
@@ -674,15 +719,20 @@ service cloud.firestore {
       allow read: if isOwner(
         ('studentId' in resource.data
           ? resource.data.studentId
-          : resource.data.userId))
-        || isAdmin();
+          : ('userId' in resource.data ? resource.data.userId : '')))
+        || adminServesOrder();
       // No client-side create: orders are created exclusively by the
       // placeOrder callable (Phase E), so Firestore Rules cannot be used to
       // bypass the active-order limit or forge server-owned fields.
-      allow update: if isAdmin()
+      // Per-cafe scoping: only an admin whose cafeName is in the order's
+      // server-authoritative `cafes` list may update or delete it. Only an
+      // order tagged with the UNASSIGNED sentinel (genuinely cafeless) is
+      // manageable by any active admin; absent/empty `cafes` is unreadable
+      // until the backend backfill normalizes it.
+      allow update: if adminServesOrder()
         && adminNotModifyingProtectedOrderFields()
         && validOrderStatusTransition();
-      allow delete: if isAdmin();
+      allow delete: if adminServesOrder();
     }
 
     // Sections
@@ -695,7 +745,15 @@ service cloud.firestore {
 
     // Reviews
     match /reviews/{docId} {
-      allow read: if isAuth();
+      // Reviews are public to authenticated users, except soft-deleted ones:
+      // a deleted review is visible only to its author (who may still revive
+      // it via the composite-key read) and to admins (moderation). This
+      // prevents a malicious client from reading content the author removed.
+      allow read: if isAuth()
+        && (!('deleted' in resource.data)
+          || resource.data.deleted != true
+          || resource.data.userId == request.auth.uid
+          || isAdmin());
       // Create requires the deterministic composite doc ID (guarantees one
       // review per user+order+food) AND a verified COLLECTED order that
       // belongs to the caller and contains this food item.
@@ -750,13 +808,14 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    // Audit logs — Phase 15: only role-verified admins may append logs.
-    // The custom-claims backdoor (request.auth.token.admin) is removed:
-    // the users/{uid}.role field is the single source of truth for
-    // authorization, mirroring every other privileged collection.
+    // Audit logs — Phase 18: backend-only creation. Audit records are
+    // written exclusively by trusted Cloud Functions (Admin SDK), which
+    // derive the actor identity and timestamp server-side; direct client
+    // creates/updates/deletes are denied so no client can forge, skip, or
+    // tamper with the append-only trail. Reads are cafe-scoped (see
+    // adminCanReadAudit()).
     match /audit_logs/{docId} {
-      allow read: if isAdmin();
-      allow create: if isAdmin() && validAuditLogCreate();
+      allow read: if isAdmin() && adminCanReadAudit();
       allow update: if false;
       allow delete: if false;
     }
@@ -779,6 +838,16 @@ service cloud.firestore {
         allow read: if isOwner(userId);
         allow create: if isOwner(userId) && validCartItemWrite();
         allow update: if isOwner(userId) && validCartItemWrite();
+        allow delete: if isOwner(userId);
+      }
+
+      // The serialization lock document (literal ID) is not a cart item —
+      // it carries {cafe, lockedAt} only. The literal match is more specific
+      // than the {itemId} wildcard above, so the lock payload is validated
+      // here while the wildcard still rejects it as an item write.
+      match /cart/_cart_lock_ {
+        allow read: if isOwner(userId);
+        allow create, update: if isOwner(userId) && validCartLockWrite();
         allow delete: if isOwner(userId);
       }
 

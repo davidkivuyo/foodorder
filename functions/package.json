@@ -21,6 +21,8 @@
     "test:no-show:integration": "cd .. && firebase emulators:exec --only firestore --project demo-foodorder \"node --test functions/test/no_show_integration.test.js\"",
     "test:cancellation:integration": "cd .. && firebase emulators:exec --only firestore --project demo-foodorder \"node --test functions/test/order_cancellation_integration.test.js\"",
     "test:reliability:integration": "cd .. && firebase emulators:exec --only firestore --project demo-foodorder \"node --test functions/test/pickup_reliability_integration.test.js\"",
-    "test:phase-e:integration": "cd .. && firebase emulators:exec --only firestore --project demo-foodorder \"node --test functions/test/phase_e_restriction_integration.test.js\""
+    "test:phase-e:integration": "cd .. && firebase emulators:exec --only firestore --project demo-foodorder \"node --test functions/test/phase_e_restriction_integration.test.js\"",
+    "test:cafe-scoping:integration": "cd .. && firebase emulators:exec --only firestore --project demo-foodorder \"node --test functions/test/order_cafe_scoping_integration.test.js\"",
+    "test:excuse:integration": "cd .. && firebase emulators:exec --only firestore --project demo-foodorder \"node --test functions/test/excuse_no_show_integration.test.js\""
   }
 }

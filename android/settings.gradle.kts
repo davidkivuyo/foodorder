@@ -29,3 +29,5 @@ plugins {
 }
 
 include(":app")
+
+rootProject.name = "campusbite"

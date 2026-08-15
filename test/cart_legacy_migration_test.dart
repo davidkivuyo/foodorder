@@ -55,6 +55,18 @@ void main() {
       );
     });
 
+    /// Cart item documents, excluding the serialization lock doc (no foodItemId).
+    Future<List<dynamic>> cartItemDocs() async {
+      final snapshot = await fakeFirestore
+          .collection('users')
+          .doc(userId)
+          .collection('cart')
+          .get();
+      return snapshot.docs
+          .where((d) => d.data()['foodItemId'] != null)
+          .toList();
+    }
+
     testWidgets('seeded legacy doc is migrated to composite doc on add',
         (WidgetTester tester) async {
       final item = _testItem();
@@ -75,8 +87,8 @@ void main() {
       expect(legacyDocId.isNotEmpty, isTrue);
 
       // Verify that ONLY the legacy document exists before migration.
-      var docs = await cartCollection.get();
-      expect(docs.docs.length, 1,
+      var docs = await cartItemDocs();
+      expect(docs.length, 1,
           reason: 'Only the seeded legacy doc should exist');
 
       // ── 2. Call the production addToCart migration path ──────────────
@@ -88,12 +100,13 @@ void main() {
       expect(success, isTrue, reason: 'addToCart should succeed');
 
       // ── 3. Verify only one document remains with correct data ────────
-      docs = await cartCollection.get();
-      expect(docs.docs.length, 1,
+      // (the serialization lock doc carries no foodItemId and is ignored)
+      docs = await cartItemDocs();
+      expect(docs.length, 1,
           reason: 'Only one document should remain after migration');
 
       final compositeKey = '${item.id}_$selectedCafe';
-      final remainingDoc = docs.docs.first;
+      final remainingDoc = docs.first;
       expect(remainingDoc.id, compositeKey,
           reason: 'The remaining document should use the composite key');
 
@@ -110,14 +123,10 @@ void main() {
       const incomingQuantity = 5;
 
       final compositeKey = '${item.id}_$selectedCafe';
-      final cartCollection = fakeFirestore
-          .collection('users')
-          .doc(userId)
-          .collection('cart');
 
       // Verify no documents exist before.
-      var docs = await cartCollection.get();
-      expect(docs.docs.length, 0);
+      var docs = await cartItemDocs();
+      expect(docs.length, 0);
 
       // ── Call the production addToCart (normal path) ──────────────────
       final success = await cartService.addToCart(
@@ -127,12 +136,12 @@ void main() {
       );
       expect(success, isTrue, reason: 'addToCart should succeed');
 
-      // Verify only the composite document exists.
-      docs = await cartCollection.get();
-      expect(docs.docs.length, 1);
-      expect(docs.docs.first.id, compositeKey);
+      // Verify only the composite document exists (lock doc ignored).
+      docs = await cartItemDocs();
+      expect(docs.length, 1);
+      expect(docs.first.id, compositeKey);
 
-      final data = docs.docs.first.data();
+      final data = docs.first.data();
       expect(data['quantity'], incomingQuantity);
     });
 
@@ -164,9 +173,9 @@ void main() {
         'selectedCafe': selectedCafe,
       });
 
-      // Verify two documents exist before migration.
-      var docs = await cartCollection.get();
-      expect(docs.docs.length, 2);
+      // Verify two documents exist before migration (lock doc ignored).
+      var docs = await cartItemDocs();
+      expect(docs.length, 2);
 
       // ── 3. Call addToCart again to trigger migration ────────────────
       success = await cartService.addToCart(
@@ -177,11 +186,11 @@ void main() {
       expect(success, isTrue, reason: 'addToCart should succeed');
 
       // Verify only one document remains with combined quantity.
-      docs = await cartCollection.get();
-      expect(docs.docs.length, 1);
-      expect(docs.docs.first.id, compositeKey);
+      docs = await cartItemDocs();
+      expect(docs.length, 1);
+      expect(docs.first.id, compositeKey);
 
-      final data = docs.docs.first.data();
+      final data = docs.first.data();
       // Note: fake_cloud_firestore does not correctly handle
       // FieldValue.increment inside a Transaction.set with
       // SetOptions(merge: true), so the pre-existing composite

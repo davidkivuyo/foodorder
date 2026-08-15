@@ -28,6 +28,16 @@ import 'order_placement_service.dart';
 import 'performance_service.dart';
 import 'sync_queue_service.dart';
 
+/// Thrown inside the add transaction when the cart holds no item documents
+/// but its serialization-lock marker conflicts with the incoming cafe. The
+/// state is ambiguous — a stale marker left behind by a failed lock sync on
+/// an empty cart, or a concurrent add that committed after the outer query
+/// snapshot — so the add path retries with a fresh snapshot instead of
+/// rejecting outright.
+class _AmbiguousCartLockMarkerRetry implements Exception {
+  const _AmbiguousCartLockMarkerRetry();
+}
+
 class CartService extends ChangeNotifier {
   // Singleton pattern to share state across screens
   static final CartService _instance = CartService._internal();
@@ -75,6 +85,18 @@ class CartService extends ChangeNotifier {
 
   final List<CartItem> _cartItems = [];
   final Map<String, FoodItem> _foodItemsCache = {};
+
+  /// Deterministic document ID of the cart serialization lock. Every cart
+  /// add writes this document inside its transaction so concurrent adds from
+  /// different cafes conflict on it (Firestore only aborts on overlapping
+  /// writes) instead of committing a mixed-cafe cart. It carries no
+  /// foodItemId (so the cart stream and persisted-cafe checks ignore it, and
+  /// clearCart removes it naturally) plus a `cafe` marker — the cart's
+  /// effective cafe, written transactionally with every add — so the one-cafe
+  /// check inside an add transaction sees the cafe of any concurrent add that
+  /// committed after the outer query snapshot. NOTE: the ID must NOT begin or
+  /// end with a double underscore (reserved by Firestore — INVALID_ARGUMENT).
+  static const String _cartLockDocId = '_cart_lock_';
 
   StreamSubscription<User?>? _authSubscription;
   StreamSubscription<QuerySnapshot>? _cartSubscription;
@@ -289,17 +311,111 @@ class CartService extends ChangeNotifier {
     // Skip deleted or out-of-stock items gracefully.
     if (foodItem == null || !foodItem.available) return true;
 
+    // One cafe per order against the PERSISTED cart: a queued op whose cafe
+    // conflicts with the cart's current cafe is stale and can never be
+    // applied — drop it rather than retrying forever.
+    final incomingCafe = _resolveCafe(selectedCafe, foodItem) ?? '';
+    final ownerUserId = op.ownerUserId;
+    if (ownerUserId != null &&
+        await _persistedCartConflict(ownerUserId, incomingCafe) != null) {
+      AppLog.d(
+        '[CartService] Dropping queued cart_add ${op.id}: persisted cart '
+        'holds a different cafe (one cafe per order)',
+      );
+      return true;
+    }
+
     return await _directAddToCart(foodItem, selectedCafe: selectedCafe, quantity: qty);
   }
 
   // ---------- Cart Operations ----------
+
+  /// Returns the name of a cafe already represented in the cart that would
+  /// conflict with adding [item], or null when the add is allowed.
+  ///
+  /// One cafe per order: a cart may only hold items from a single cafe. The
+  /// effective cafe is resolved exactly like the add path ([_resolveCafe] →
+  /// [_persistedCafeOf]/[_conflictInDocs]): a single-cafe item without an
+  /// explicit selection is its canonical cafe, while a multi-cafe item
+  /// without a selection is cafeless ('' — never its joined displayCafe
+  /// list). An empty cart never conflicts.
+  String? cafeConflictWithCart(String? selectedCafe, FoodItem item) {
+    if (_cartItems.isEmpty) return null;
+    final incomingCafe = _resolveCafe(selectedCafe, item) ?? '';
+    for (final cartItem in _cartItems) {
+      // Mirror the persisted classification (_persistedCafeOf): the stored
+      // selectedCafe is the item's effective cafe, '' when cafeless.
+      final cartCafe = cartItem.selectedCafe?.trim() ?? '';
+      if (cartCafe != incomingCafe) {
+        return cartCafe;
+      }
+    }
+    return null;
+  }
+
+  /// Effective cafe of a persisted cart document's data; '' for cafeless
+  /// items. Mirrors [CartItem.displayCafe] for the fields actually persisted
+  /// (items are stored with a resolved selectedCafe).
+  String _persistedCafeOf(Map<String, dynamic> data) =>
+      (data['selectedCafe'] as String? ?? '').trim();
+
+  /// Resolve a cart item's effective cafe ONCE so the offline cart item, the
+  /// queued op and the persisted document all agree. A null/empty selection
+  /// falls back to the item's single canonical cafe (e.g. 'Cafe A'); a
+  /// genuinely cafeless item — or one with no single canonical cafe — keeps
+  /// null so it is stored and classified as cafeless.
+  String? _resolveCafe(String? selectedCafe, FoodItem item) {
+    final stored = selectedCafe;
+    if (stored != null && stored.trim().isNotEmpty) return stored.trim();
+    if (item.availableCafes.length == 1) return item.availableCafes.first;
+    return null;
+  }
+
+  /// Returns the effective cafe of the first persisted cart document that
+  /// conflicts with [incomingCafe] ('' for a cafeless conflict), or null
+  /// when none does. Non-item documents (e.g. the serialization lock, which
+  /// has no foodItemId) are ignored.
+  String? _conflictInDocs(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+    String incomingCafe,
+  ) {
+    for (final doc in docs) {
+      final data = doc.data();
+      if (data['foodItemId'] == null) continue;
+      final cafe = _persistedCafeOf(data);
+      if (cafe != incomingCafe) return cafe;
+    }
+    return null;
+  }
+
+  /// One-cafe-per-order check against the PERSISTED cart (not the local
+  /// [_cartItems], which may be stale or empty on the queue-replay path).
+  /// Returns the conflicting cafe, or null when the persisted cart holds no
+  /// conflicting item. A read failure returns null — the write path re-checks
+  /// inside its own retry loop.
+  Future<String?> _persistedCartConflict(
+    String userId,
+    String incomingCafe,
+  ) async {
+    try {
+      final snapshot = await _firestore
+          .collection('users')
+          .doc(userId)
+          .collection('cart')
+          .get();
+      return _conflictInDocs(snapshot.docs, incomingCafe);
+    } on Exception {
+      return null;
+    }
+  }
 
   /// Add an item to the cart.
   ///
   /// Validates that [quantity] is positive (> 0) before writing to Firestore.
   /// Returns `true` on success, `false` when the user is not authenticated,
   /// the item ID is empty, the item is unavailable, [quantity] is invalid,
-  /// or a Firestore write error occurs.
+  /// the item is from a different cafe than the items already in the cart
+  /// (one cafe per order), or a Firestore write error occurs.
   Future<bool> addToCart(FoodItem item, {String? selectedCafe, int quantity = 1}) async {
     // ── Guard: unauthenticated / invalid item ──────────────────────────
     final userId = _currentUserId;
@@ -317,19 +433,40 @@ class CartService extends ChangeNotifier {
       return false;
     }
 
+    // Resolve the effective cafe ONCE so the offline cart item, the queued
+    // op and the persisted document all store the same value: a single-cafe
+    // item added without an explicit selection is stored under its canonical
+    // cafe, never as null.
+    final resolvedCafe = _resolveCafe(selectedCafe, item);
+
+    // ── Guard: one cafe per order ──────────────────────────────────────
+    // Blocks mixing cafes in a single order (online and offline paths both
+    // pass through this guard). The backend placeOrder callable re-validates
+    // the same rule server-side.
+    final conflictingCafe = cafeConflictWithCart(resolvedCafe, item);
+    if (conflictingCafe != null) {
+      AppLog.d(
+        '[CartService] Cannot add ${item.title}: cart already has items '
+        'from $conflictingCafe (one cafe per order)',
+      );
+      return false;
+    }
+
     if (!ConnectivityService().isOnline) {
       final existingIndex = _cartItems.indexWhere(
-        (element) => element.foodItem.id == item.id && element.selectedCafe == selectedCafe,
+        (element) =>
+            element.foodItem.id == item.id &&
+            element.selectedCafe == resolvedCafe,
       );
       if (existingIndex >= 0) {
         _cartItems[existingIndex].quantity += quantity;
       } else {
         _cartItems.add(
           CartItem(
-            id: '${item.id}_${selectedCafe ?? ''}',
+            id: '${item.id}_${resolvedCafe ?? ''}',
             foodItem: item,
             quantity: quantity,
-            selectedCafe: selectedCafe,
+            selectedCafe: resolvedCafe,
           ),
         );
       }
@@ -343,7 +480,7 @@ class CartService extends ChangeNotifier {
           payload: {
             'foodItemId': item.id,
             'quantity': quantity,
-            'selectedCafe': selectedCafe,
+            'selectedCafe': resolvedCafe,
           },
           timestamp: DateTime.now().millisecondsSinceEpoch,
         ),
@@ -359,7 +496,7 @@ class CartService extends ChangeNotifier {
     // sync-queue replay path (_directAddToCart) must not double-count.
     final added = await _directAddToCart(
       item,
-      selectedCafe: selectedCafe,
+      selectedCafe: resolvedCafe,
       quantity: quantity,
     );
     if (added) {
@@ -380,54 +517,157 @@ class CartService extends ChangeNotifier {
         .doc(userId)
         .collection('cart');
 
-    final compositeKey = '${item.id}_${selectedCafe ?? ''}';
+    // Resolve the effective cafe once (see _resolveCafe) so the composite
+    // key, legacy-document matching and the persisted selectedCafe all agree
+    // with the one-cafe classification (_persistedCafeOf/_conflictInDocs
+    // observe the same value on subsequent adds).
+    final resolvedCafe = _resolveCafe(selectedCafe, item);
+    final compositeKey = '${item.id}_${resolvedCafe ?? ''}';
     final compositeDocRef = cartCollection.doc(compositeKey);
+    final lockDocRef = cartCollection.doc(_cartLockDocId);
+    final incomingCafe = resolvedCafe ?? '';
 
     try {
-      // ── Look for a legacy document (auto-generated ID) for this (item, cafe) ──
-      // Any document whose ID differs from compositeKey is a legacy doc.
-      final docs = await cartCollection
-          .where('foodItemId', isEqualTo: item.id)
-          .where('selectedCafe', isEqualTo: selectedCafe)
-          .get();
+      // Bounded retries: a concurrent add that commits between our read and
+      // our transaction forces a write conflict on the shared lock document
+      // (every add writes it), aborting the transaction. maxAttempts: 1
+      // keeps the SDK from re-committing blindly on retry — we own the retry
+      // loop so the transaction-fresh one-cafe check re-runs.
+      for (int attempt = 0; attempt < 3; attempt++) {
+        // Outer snapshot: used only to discover the legacy document and the
+        // set of cart documents to re-read transaction-fresh. The one-cafe
+        // decision itself happens INSIDE the transaction (see below) — this
+        // snapshot may already be stale by the time the transaction runs.
+        final snapshot = await cartCollection.get();
 
-      final legacyDoc = docs.docs.where((d) => d.id != compositeKey).firstOrNull;
+        // ── Legacy document (auto-generated ID) for this (item, cafe) ──
+        // Any document whose ID differs from compositeKey is a legacy doc.
+        final legacyDoc = snapshot.docs.where((d) =>
+            d.id != compositeKey &&
+            d.data()['foodItemId'] == item.id &&
+            d.data()['selectedCafe'] == resolvedCafe).firstOrNull;
 
-      if (legacyDoc != null) {
-        // Migration path: use a transaction so the legacy-document read is
-        // guarded by optimistic concurrency control — two concurrent calls
-        // cannot both apply the legacy quantity.
-        await _firestore.runTransaction((txn) async {
-          final legacySnapshot = await txn.get(legacyDoc.reference);
-          if (!legacySnapshot.exists) {
-            // Already migrated by another concurrent call — just apply
-            // the incoming quantity to the composite document.
-            txn.set(compositeDocRef, {
-              'foodItemId': item.id,
-              'quantity': FieldValue.increment(quantity),
-              'selectedCafe': selectedCafe,
-            }, SetOptions(merge: true));
-            return;
-          }
-          final legacyQty =
-              (legacySnapshot.data()!['quantity'] as num?)?.toInt() ?? 0;
-          txn.set(compositeDocRef, {
-            'foodItemId': item.id,
-            'quantity': FieldValue.increment(legacyQty + quantity),
-            'selectedCafe': selectedCafe,
-          }, SetOptions(merge: true));
-          txn.delete(legacyDoc.reference);
-        });
-      } else {
-        // Normal path: write to the canonical composite document.
-        // FieldValue.increment makes the write atomic regardless of write ordering.
-        await compositeDocRef.set({
-          'foodItemId': item.id,
-          'quantity': FieldValue.increment(quantity),
-          'selectedCafe': selectedCafe,
-        }, SetOptions(merge: true));
+        try {
+          return await _firestore.runTransaction(
+            (txn) async {
+              // All reads must precede all writes (Firestore requirement).
+              //
+              // One cafe per order — validated from TRANSACTION-FRESH reads,
+              // not the stale outer snapshot. A concurrent add that commits
+              // between the outer query and this transaction would otherwise
+              // be invisible to the check (and with an empty read set the
+              // transaction would not abort), letting a mixed-cafe cart
+              // through. Re-reading every known cart document makes any
+              // concurrent change to them abort this transaction (→ retry),
+              // and the lock document's cafe marker represents adds that
+              // committed after the outer query entirely.
+              final lockSnap = await txn.get(lockDocRef);
+              final freshCafes = <String>{};
+              for (final doc in snapshot.docs) {
+                if (doc.id == _cartLockDocId) continue;
+                final fresh = await txn.get(doc.reference);
+                if (!fresh.exists) continue; // removed concurrently
+                final data = fresh.data();
+                if (data == null || data['foodItemId'] == null) continue;
+                freshCafes.add((data['selectedCafe'] as String? ?? '').trim());
+              }
+              final markerCafe = lockSnap.exists
+                  ? (lockSnap.data()?['cafe'] as String? ?? '').trim()
+                  : null;
+              final markerConflicts =
+                  markerCafe != null && markerCafe != incomingCafe;
+              if (freshCafes.isNotEmpty) {
+                final conflictingCafe = freshCafes
+                    .where((c) => c != incomingCafe)
+                    .firstOrNull;
+                if (conflictingCafe != null) {
+                  // A persisted item from another cafe is a definite conflict.
+                  AppLog.d(
+                    '[CartService] Refused add of ${item.title}: persisted '
+                    'cart holds $conflictingCafe (one cafe per order)',
+                  );
+                  return false; // rejected — no writes, no retry needed
+                }
+                if (markerConflicts) {
+                  // Every visible item matches the incoming cafe, yet the lock
+                  // marker reflects a different cafe — a concurrent add that
+                  // committed after the outer query snapshot but is not in our
+                  // transaction-fresh re-read set. Reject rather than risk a
+                  // mixed-cafe cart.
+                  AppLog.d(
+                    '[CartService] Refused add of ${item.title}: lock marker '
+                    'holds $markerCafe (concurrent add, one cafe per order)',
+                  );
+                  return false;
+                }
+              } else if (markerConflicts) {
+                // No item docs in the transaction-fresh re-read set and the
+                // marker disagrees with the incoming cafe. The state is
+                // ambiguous: a stale marker left behind by a failed lock sync
+                // on a genuinely empty cart, or a concurrent add committed
+                // after this snapshot. On an early attempt, retry with a fresh
+                // snapshot (the attempt loop re-queries); on the last attempt,
+                // treat the cart as empty — the lock write below overwrites
+                // the stale marker and stays the serialization point.
+                if (attempt < 2) {
+                  throw const _AmbiguousCartLockMarkerRetry();
+                }
+                AppLog.d(
+                  '[CartService] Cart is empty; clearing stale cart lock '
+                  'marker "$markerCafe" before adding ${item.title} '
+                  'from "$incomingCafe"',
+                );
+              }
+
+              bool migrateLegacy = false;
+              int legacyQty = 0;
+              if (legacyDoc != null) {
+                final legacySnapshot = await txn.get(legacyDoc.reference);
+                if (legacySnapshot.exists) {
+                  migrateLegacy = true;
+                  legacyQty =
+                      (legacySnapshot.data()!['quantity'] as num?)?.toInt() ?? 0;
+                }
+                // Missing legacy doc → already migrated by a concurrent
+                // call; just apply the incoming quantity below.
+              }
+
+              // Serialization point: every add writes the same lock
+              // document (with the cart's effective cafe), so concurrent
+              // adds from different cafes conflict here instead of
+              // committing a mixed-cafe cart.
+              txn.set(lockDocRef, {
+                'cafe': incomingCafe,
+                'lockedAt': FieldValue.serverTimestamp(),
+              });
+
+              txn.set(compositeDocRef, {
+                'foodItemId': item.id,
+                'quantity': FieldValue.increment(
+                  migrateLegacy ? legacyQty + quantity : quantity,
+                ),
+                'selectedCafe': resolvedCafe,
+              }, SetOptions(merge: true));
+
+              if (migrateLegacy) {
+                txn.delete(legacyDoc!.reference);
+              }
+              return true;
+            },
+            maxAttempts: 1,
+          );
+        } on Exception {
+          // Transaction conflict (a concurrent add won the lock or modified
+          // a document we read) or an ambiguous stale/absent lock marker
+          // (_AmbiguousCartLockMarkerRetry) — re-read the persisted cart with
+          // a fresh snapshot and re-run the transaction-fresh check before
+          // retrying.
+          if (attempt >= 2) rethrow;
+        }
       }
-      return true;
+      // Unreachable: the loop returns on success or rethrows on the last
+      // attempt (kept for Dart's flow analysis).
+      return false;
     } on Exception catch (e) {
       AppLog.e('[CartService] Error adding to cart', e);
       return false;
@@ -443,10 +683,14 @@ class CartService extends ChangeNotifier {
         .doc(userId)
         .collection('cart');
 
+    // Resolve the effective cafe the same way addToCart does, so removing
+    // without an explicit selection finds a single-cafe item stored under
+    // its canonical cafe (consistent implicit-cafe resolution).
+    final resolvedCafe = _resolveCafe(selectedCafe, item);
     final existingIndex = _cartItems.indexWhere(
       (element) =>
           element.foodItem.id == item.id &&
-          element.selectedCafe == selectedCafe,
+          element.selectedCafe == resolvedCafe,
     );
 
     try {
@@ -456,14 +700,31 @@ class CartService extends ChangeNotifier {
           await cartCollection.doc(existingItem.id).update({
             'quantity': existingItem.quantity - 1,
           });
+          // Optimistic local update (mirrors the offline add path); the cart
+          // stream re-syncs from Firestore and stays consistent. Re-locate
+          // by predicate so a concurrent stream sync can't leave a stale
+          // index.
+          final current = _cartItems.indexWhere(
+            (element) =>
+                element.foodItem.id == item.id &&
+                element.selectedCafe == resolvedCafe,
+          );
+          if (current >= 0) _cartItems[current].quantity -= 1;
         } else {
           await cartCollection.doc(existingItem.id).delete();
+          _cartItems.removeWhere(
+            (element) =>
+                element.foodItem.id == item.id &&
+                element.selectedCafe == resolvedCafe,
+          );
         }
         AnalyticsService.instance.logEvent(AnalyticsEvent.removedFromCart);
+        notifyListeners();
       }
     } on Exception catch (e) {
       AppLog.e('[CartService] Error removing from cart', e);
     }
+    await _syncCartLockMarker();
   }
 
   Future<void> deleteFromCart(FoodItem item, {String? selectedCafe}) async {
@@ -475,19 +736,69 @@ class CartService extends ChangeNotifier {
         .doc(userId)
         .collection('cart');
 
+    // Resolve the effective cafe the same way addToCart does (see
+    // removeFromCart for the rationale — consistent implicit-cafe
+    // resolution).
+    final resolvedCafe = _resolveCafe(selectedCafe, item);
     final existingIndex = _cartItems.indexWhere(
       (element) =>
           element.foodItem.id == item.id &&
-          element.selectedCafe == selectedCafe,
+          element.selectedCafe == resolvedCafe,
     );
 
     try {
       if (existingIndex >= 0) {
         final existingItem = _cartItems[existingIndex];
         await cartCollection.doc(existingItem.id).delete();
+        // Optimistic local update (mirrors the offline add path); the cart
+        // stream re-syncs from Firestore and stays consistent. Re-locate by
+        // predicate so a concurrent stream sync can't leave a stale index.
+        _cartItems.removeWhere(
+          (element) =>
+              element.foodItem.id == item.id &&
+              element.selectedCafe == resolvedCafe,
+        );
+        AnalyticsService.instance.logEvent(AnalyticsEvent.removedFromCart);
+        notifyListeners();
       }
     } on Exception catch (e) {
       AppLog.e('[CartService] Error deleting from cart', e);
+    }
+    await _syncCartLockMarker();
+  }
+
+  /// Keep the serialization lock's cafe marker consistent with the cart's
+  /// remaining items after a removal. The marker is written transactionally
+  /// by every add; without this sync, emptying a cart would leave a stale
+  /// marker that wrongly blocks a later add of a different cafe.
+  Future<void> _syncCartLockMarker() async {
+    final userId = _currentUserId;
+    if (userId == null) return;
+    final cartCollection = _firestore
+        .collection('users')
+        .doc(userId)
+        .collection('cart');
+    try {
+      final snapshot = await cartCollection.get();
+      final itemCafes = <String>{};
+      for (final doc in snapshot.docs) {
+        if (doc.id == _cartLockDocId) continue;
+        final data = doc.data();
+        if (data['foodItemId'] == null) continue;
+        itemCafes.add((data['selectedCafe'] as String? ?? '').trim());
+      }
+      final lockRef = cartCollection.doc(_cartLockDocId);
+      if (itemCafes.isEmpty) {
+        await lockRef.delete();
+      } else {
+        // Invariant: all remaining items share one effective cafe.
+        await lockRef.set({
+          'cafe': itemCafes.first,
+          'lockedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      }
+    } on Exception catch (e) {
+      AppLog.e('[CartService] Error syncing cart lock marker', e);
     }
   }
 

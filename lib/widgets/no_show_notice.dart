@@ -17,43 +17,63 @@ import 'package:flutter/material.dart';
 /// Phase D §12 — non-punitive no-show explanation shown in the order details
 /// sheet. Mirrors the ORDER_NO_SHOW notification the student received; the
 /// wording is informational and never threatening.
+///
+/// Phase G — when [excused] is true (an administrator excused the missed
+/// pickup), the notice explains that the order itself was not collected but
+/// is excluded from the student's pickup reliability calculation. No admin
+/// UID or private note is ever exposed.
 class NoShowNotice extends StatelessWidget {
-  const NoShowNotice({super.key});
+  final bool excused;
+
+  const NoShowNotice({super.key, this.excused = false});
 
   @override
   Widget build(BuildContext context) {
+    final Color accent = excused ? const Color(0xFF2E7D32) : const Color(0xFFC62828);
+    final Color bg = excused ? Colors.green.shade50 : Colors.red.shade50;
+    final Color border = excused ? Colors.green.shade200 : Colors.red.shade200;
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.red.shade50,
+        color: bg,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.red.shade200),
+        border: Border.all(color: border),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.cancel_outlined, size: 20, color: Color(0xFFC62828)),
+          Icon(
+            excused ? Icons.verified_outlined : Icons.cancel_outlined,
+            size: 20,
+            color: accent,
+          ),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'No-show recorded',
+                  excused ? 'No-show excused' : 'No-show recorded',
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.bold,
-                    color: Colors.red.shade900,
+                    color: excused ? Colors.green.shade900 : Colors.red.shade900,
                   ),
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  'The pickup window and grace period ended before the order '
-                  'was collected. An "Order Missed" notification was sent to you.',
+                  excused
+                      ? 'An administrator reviewed this order and excused '
+                          'the missed pickup. It will not affect your pickup '
+                          'reliability.'
+                      : 'The pickup window and grace period ended before the order '
+                          'was collected. An "Order Missed" notification was sent '
+                          'to you.',
                   style: TextStyle(
                     fontSize: 12,
-                    color: Colors.red.shade800,
+                    color: excused ? Colors.green.shade800 : Colors.red.shade800,
                     height: 1.4,
                   ),
                 ),

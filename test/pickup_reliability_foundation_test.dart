@@ -439,7 +439,10 @@ void main() {
         ),
       );
       expect(noticeSrc.toLowerCase(), isNot(contains('strike')));
-      expect(orderScreenSrc, contains('NoShowNotice()'));
+      // Phase G — the notice is rendered with the excused flag so an
+      // excused no-show gets the excused variant while keeping the widget
+      // the single source of the notice copy.
+      expect(orderScreenSrc, contains('NoShowNotice('));
       expect(orderScreenSrc, isNot(contains('_NoShowNotice')));
     });
 

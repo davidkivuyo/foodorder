@@ -106,29 +106,51 @@ Future<void> addToCartWithCafeCheck(BuildContext context, FoodItem item, {int qu
     return;
   }
 
-  bool success = false;
-
+  // Resolve the cafe to order from (forced when the item is sold at
+  // multiple cafes).
+  String? selectedCafe;
   if (item.availableCafes.length > 1) {
-    final selectedCafe = await showCafeSelectionSheet(
+    selectedCafe = await showCafeSelectionSheet(
       context,
       availableCafes: item.availableCafes,
       itemName: item.title,
     );
     if (selectedCafe == null) return;
-    success = await cartService.addToCart(
-      item,
-      selectedCafe: selectedCafe,
-      quantity: quantity,
-    );
   } else if (item.availableCafes.length == 1) {
-    success = await cartService.addToCart(
-      item,
-      selectedCafe: item.availableCafes.first,
-      quantity: quantity,
-    );
-  } else {
-    success = await cartService.addToCart(item, quantity: quantity);
+    selectedCafe = item.availableCafes.first;
   }
+
+  // One cafe per order: block adding items from a different cafe than the
+  // items already in the cart.
+  if (context.mounted) {
+    final conflictingCafe = cartService.cafeConflictWithCart(selectedCafe, item);
+    if (conflictingCafe != null) {
+      // A cafeless conflicting cart item reports '' — keep the message
+      // readable.
+      final conflictLabel = conflictingCafe.trim().isEmpty
+          ? 'a different cafe'
+          : conflictingCafe;
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'You can only order from one cafe per order. Your cart already '
+            'has items from $conflictLabel. Clear the cart or place a '
+            'separate order.',
+          ),
+          duration: const Duration(seconds: 3),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+  }
+
+  final success = await cartService.addToCart(
+    item,
+    selectedCafe: selectedCafe,
+    quantity: quantity,
+  );
 
   if (context.mounted) {
     ScaffoldMessenger.of(context).hideCurrentSnackBar();

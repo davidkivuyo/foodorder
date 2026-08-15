@@ -42,10 +42,23 @@ jobs:
             ${{ runner.os }}-pub-
 
       - name: Install Dependencies
-        run: flutter pub get
+        run: flutter pub get --enforce-lockfile
 
       - name: Run Security & Unit Tests
         run: flutter test
+
+      - name: Verify Gradle Dependency Lockfile
+        # The Android build runs with dependency locking in strict mode
+        # (lockAllConfigurations). Fail fast here: abort when the lockfile is
+        # missing or stale instead of failing later during the APK build with
+        # an opaque resolution error.
+        run: |
+          if [ ! -f android/app/gradle.lockfile ]; then
+            echo "::error::android/app/gradle.lockfile is missing. Commit it (regenerate with ./gradlew :app:dependencies --write-locks)."
+            exit 1
+          fi
+          ./gradlew --no-daemon :app:dependencies > /dev/null
+        working-directory: android
 
       - name: Decode Android Keystore
         env:

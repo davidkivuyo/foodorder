@@ -78,6 +78,10 @@ function validOrderPayload(overrides = {}) {
     pickupWindowMinutes: 20,
     cafeId: "cafe1",
     cafeLocation: "Main Campus",
+    // Per-cafe admin scoping: fixtures carry the server-authoritative cafes
+    // list (matching admin1's cafeName) so admin-rule tests exercise the
+    // scoped path rather than the (removed) absent-field fallback.
+    cafes: ["Cafe A"],
     ...overrides,
   };
 }
@@ -130,6 +134,7 @@ async function seedUsers() {
       fullName: "Admin One",
       email: "admin1@test.com",
       role: "admin",
+      cafeName: "Cafe A",
       accountStatus: "ACTIVE",
       strikeCount: 0,
       strikePercentage: 0,
