@@ -640,8 +640,8 @@ describe("Phase H — idempotency & corrections (Tests 7-8)", () => {
           disposition: "DONATED",
         }),
       ]);
-      assert.equal(results[0].status, "fulfilled");
-      assert.equal(results[1].status, "fulfilled");
+      assert.equal(results[0].status, "fulfilled", results[0].reason);
+      assert.equal(results[1].status, "fulfilled", results[1].reason);
 
       const order = await orderById("fd-race-1");
       assert.equal(order.foodDisposition, "DONATED");

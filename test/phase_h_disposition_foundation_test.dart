@@ -34,6 +34,41 @@ import 'package:campusbite/models/order.dart';
 void main() {
   String readRepoFile(String path) => File(path).readAsStringSync();
 
+  /// Slices [source] from [startAnchor] to [endAnchor] (or to the end of the
+  /// source when omitted), failing with a clear expect message when an anchor
+  /// is missing so a broken contract reports which anchor broke instead of
+  /// throwing an opaque RangeError. When [length] is given the slice covers
+  /// exactly that many characters, clamped to the source length.
+  String anchoredSlice(
+    String source,
+    String startAnchor, {
+    String? endAnchor,
+    int? length,
+    String? what,
+  }) {
+    final start = source.indexOf(startAnchor);
+    expect(
+      start,
+      isNot(-1),
+      reason: '$what: start anchor not found: "$startAnchor"',
+    );
+    final int end;
+    if (length != null) {
+      end = start + length > source.length ? source.length : start + length;
+    } else if (endAnchor != null) {
+      final foundEnd = source.indexOf(endAnchor, start);
+      expect(
+        foundEnd,
+        isNot(-1),
+        reason: '$what: end anchor not found: "$endAnchor"',
+      );
+      end = foundEnd;
+    } else {
+      end = source.length;
+    }
+    return source.substring(start, end);
+  }
+
   group('Firestore rules — food disposition foundation', () {
     late String rules;
     setUpAll(() {
@@ -42,9 +77,11 @@ void main() {
 
     test('foodDisposition fields are server-protected from all client writes '
         '(§38)', () {
-      final protectedFn = rules.substring(
-        rules.indexOf('function adminNotModifyingProtectedOrderFields()'),
-        rules.indexOf('function canonicalOrderStatus(status)'),
+      final protectedFn = anchoredSlice(
+        rules,
+        'function adminNotModifyingProtectedOrderFields()',
+        endAnchor: 'function canonicalOrderStatus(status)',
+        what: 'protected order fields',
       );
       expect(protectedFn, contains("!('foodDisposition' in changed)"));
       expect(protectedFn, contains("!('foodDispositionAt' in changed)"));
@@ -54,9 +91,11 @@ void main() {
 
     test('no client create rule exists on /orders (callable-only creation '
         'remains)', () {
-      final orderBlock = rules.substring(
-        rules.indexOf('match /orders/{docId}'),
-        rules.indexOf('match /section/{sectionId}'),
+      final orderBlock = anchoredSlice(
+        rules,
+        'match /orders/{docId}',
+        endAnchor: 'match /section/{sectionId}',
+        what: 'orders block',
       );
       expect(orderBlock, isNot(contains('allow create')));
     });
@@ -71,15 +110,22 @@ void main() {
     test('the setFoodDisposition callable exists with admin + App Check', () {
       expect(fn, contains('exports.setFoodDisposition = onCall('));
       expect(
-        fn.substring(fn.indexOf('exports.setFoodDisposition'), fn.length),
+        anchoredSlice(
+          fn,
+          'exports.setFoodDisposition',
+          endAnchor: 'FUNCTION 5: deleteCloudinaryImage',
+          what: 'setFoodDisposition callable',
+        ),
         contains('enforceAppCheck: true'),
       );
     });
 
     test('the controlled disposition list matches AGENTS.md §2', () {
-      final listFn = fn.substring(
-        fn.indexOf('const FOOD_DISPOSITIONS ='),
-        fn.indexOf('const FOOD_DISPOSITIONS =') + 400,
+      final listFn = anchoredSlice(
+        fn,
+        'const FOOD_DISPOSITIONS =',
+        length: 400,
+        what: 'FOOD_DISPOSITIONS list',
       );
       for (final d in [
         'UNRESOLVED',
@@ -95,9 +141,11 @@ void main() {
     });
 
     test('the callable enforces admin-only authorization (§7)', () {
-      final callable = fn.substring(
-        fn.indexOf('exports.setFoodDisposition = onCall('),
-        fn.indexOf('FUNCTION 5: deleteCloudinaryImage'),
+      final callable = anchoredSlice(
+        fn,
+        'exports.setFoodDisposition = onCall(',
+        endAnchor: 'FUNCTION 5: deleteCloudinaryImage',
+        what: 'setFoodDisposition admin authorization',
       );
       expect(callable, contains('callerData.role !== "admin"'));
       expect(callable, contains('accountStatus !== "ACTIVE"'));
@@ -107,20 +155,27 @@ void main() {
 
     test('the callable enforces NO_SHOW-only eligibility and idempotency '
         '(§4, §16)', () {
-      final callable = fn.substring(
-        fn.indexOf('exports.setFoodDisposition = onCall('),
-        fn.indexOf('FUNCTION 5: deleteCloudinaryImage'),
+      final callable = anchoredSlice(
+        fn,
+        'exports.setFoodDisposition = onCall(',
+        endAnchor: 'FUNCTION 5: deleteCloudinaryImage',
+        what: 'setFoodDisposition eligibility',
       );
-      expect(callable, contains('"Only no-show orders can have a food disposition."'));
+      expect(
+        callable,
+        contains('"Only no-show orders can have a food disposition."'),
+      );
       expect(callable, contains('orderData.foodDisposition === disposition'));
       expect(callable, contains('alreadyRecorded'));
     });
 
     test('the order update and audit record commit atomically in one '
         'transaction (§15)', () {
-      final callable = fn.substring(
-        fn.indexOf('exports.setFoodDisposition = onCall('),
-        fn.indexOf('FUNCTION 5: deleteCloudinaryImage'),
+      final callable = anchoredSlice(
+        fn,
+        'exports.setFoodDisposition = onCall(',
+        endAnchor: 'FUNCTION 5: deleteCloudinaryImage',
+        what: 'setFoodDisposition transaction',
       );
       expect(callable, contains('db.runTransaction'));
       expect(callable, contains('transaction.update(orderRef, {'));
@@ -130,15 +185,19 @@ void main() {
     });
 
     test('UNRESOLVED is the default on both no-show paths (§3)', () {
-      final sched = fn.substring(
-        fn.indexOf('async function processExpiredOrder'),
-        fn.indexOf('function reliabilityOutcomeFromStatus'),
+      final sched = anchoredSlice(
+        fn,
+        'async function processExpiredOrder',
+        endAnchor: 'function reliabilityOutcomeFromStatus',
+        what: 'scheduled no-show processor',
       );
       expect(sched, contains('foodDisposition: "UNRESOLVED"'));
       expect(
-        fn.substring(
-          fn.indexOf('async function handleOrderNoShow'),
-          fn.indexOf('exports.onOrderStatusChanged = onDocumentUpdated('),
+        anchoredSlice(
+          fn,
+          'async function handleOrderNoShow',
+          endAnchor: 'exports.onOrderStatusChanged = onDocumentUpdated(',
+          what: 'handleOrderNoShow',
         ),
         contains('foodDisposition: "UNRESOLVED"'),
       );
@@ -146,46 +205,52 @@ void main() {
   });
 
   group('Student model — disposition privacy (§22)', () {
-    test('FoodOrder parses a NO_SHOW order without exposing disposition',
-        () async {
-      final now = DateTime.now();
-      final firestore = FakeFirebaseFirestore();
-      final ref = firestore.collection('orders').doc('CB-disposition-1');
-      await ref.set({
-        'studentId': 'user_1',
-        'userName': 'Test Student',
-        'items': [
-          {
-            'foodItemId': 'food_1',
-            'title': 'Rice & Beans',
-            'price': 3000.0,
-            'quantity': 1,
-            'image': '',
-            'selectedCafe': 'Cafe A',
-          },
-        ],
-        'price': 3000.0,
-        'status': 'no_show',
-        'createdAt': Timestamp.fromDate(now),
-        'noShowAt': Timestamp.fromDate(now),
-        'expiredAt': Timestamp.fromDate(now),
-        // The backend stores the disposition; the student model must ignore it.
-        'foodDisposition': 'DONATED',
-        'foodDispositionAt': Timestamp.fromDate(now),
-        'foodDispositionNote': 'Donated to campus support staff.',
-        'deadlineStatus': 'EXPIRED',
-        'pickupWindowMinutes': 20,
-      });
+    test(
+      'FoodOrder parses a NO_SHOW order without exposing disposition',
+      () async {
+        final now = DateTime.now();
+        final firestore = FakeFirebaseFirestore();
+        final ref = firestore.collection('orders').doc('CB-disposition-1');
+        await ref.set({
+          'studentId': 'user_1',
+          'userName': 'Test Student',
+          'items': [
+            {
+              'foodItemId': 'food_1',
+              'title': 'Rice & Beans',
+              'price': 3000.0,
+              'quantity': 1,
+              'image': '',
+              'selectedCafe': 'Cafe A',
+            },
+          ],
+          'price': 3000.0,
+          'status': 'no_show',
+          'createdAt': Timestamp.fromDate(now),
+          'noShowAt': Timestamp.fromDate(now),
+          'expiredAt': Timestamp.fromDate(now),
+          // The backend stores the disposition; the student model must ignore it.
+          'foodDisposition': 'DONATED',
+          'foodDispositionAt': Timestamp.fromDate(now),
+          'foodDispositionNote': 'Donated to campus support staff.',
+          'deadlineStatus': 'EXPIRED',
+          'pickupWindowMinutes': 20,
+        });
 
-      final snapshot = await ref.get();
-      final order = FoodOrder.fromFirestore(snapshot);
+        final snapshot = await ref.get();
+        final order = FoodOrder.fromFirestore(snapshot);
 
-      expect(order.status, OrderStatus.noShow, reason: 'history is preserved');
-      expect(order.noShowExcused, isFalse);
-      // The student-facing model source carries no disposition fields — the
-      // cafe's operational record never leaks into the student experience.
-      final modelSource = File('lib/models/order.dart').readAsStringSync();
-      expect(modelSource, isNot(contains('foodDisposition')));
-    });
+        expect(
+          order.status,
+          OrderStatus.noShow,
+          reason: 'history is preserved',
+        );
+        expect(order.noShowExcused, isFalse);
+        // The student-facing model source carries no disposition fields — the
+        // cafe's operational record never leaks into the student experience.
+        final modelSource = File('lib/models/order.dart').readAsStringSync();
+        expect(modelSource, isNot(contains('foodDisposition')));
+      },
+    );
   });
 }

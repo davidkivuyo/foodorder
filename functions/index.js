@@ -4113,44 +4113,16 @@ const EXCUSE_REASONS = new Set([
 // behaviour.
 
 /**
- * Load the authenticated caller's admin profile and return the trimmed
- * cafeName. Throws permission-denied when the account is missing, is not an
- * admin, or is not ACTIVE.
- * @param {string} callerUid
- * @return {string} the caller's trimmed cafeName
- */
-async function loadActiveAdminCaller(callerUid) {
-  const callerDoc = await admin
-    .firestore().collection("users").doc(callerUid).get();
-  const callerData = callerDoc.data();
-  if (!callerDoc.exists || !callerData) {
-    throw new HttpsError(
-      "permission-denied",
-      "Account not found. Please contact support."
-    );
-  }
-  if (callerData.role !== "admin") {
-    throw new HttpsError(
-      "permission-denied",
-      "Only authorized cafe administrators can excuse a no-show."
-    );
-  }
-  if (callerData.accountStatus !== "ACTIVE") {
-    throw new HttpsError(
-      "permission-denied",
-      "Your account is suspended and cannot excuse a no-show."
-    );
-  }
-  return typeof callerData.cafeName === "string" ? callerData.cafeName.trim() : "";
-}
-
-/**
- * Validate the excuse request envelope: payload shape, allowed keys
- * (orderId/reason/note only), and a well-formed orderId.
+ * Validate a callable request envelope: payload shape, only the allowed
+ * keys, and a well-formed orderId.
  * @param {*} data — request.data
- * @return {{orderId: string, reason: *, note: *}}
+ * @param {Object} options
+ * @param {string[]} options.allowedKeys — the keys this callable accepts
+ * @param {string} options.message — error message when an unexpected key or
+ *   an empty payload is supplied
+ * @return {Object} the validated payload
  */
-function assertValidExcuseEnvelope(data) {
+function assertValidEnvelope(data, { allowedKeys, message }) {
   if (
     data === null ||
     typeof data !== "object" ||
@@ -4160,17 +4132,12 @@ function assertValidExcuseEnvelope(data) {
     throw new HttpsError("invalid-argument", "Invalid request payload.");
   }
   const envelopeKeys = Object.keys(data);
-  const validKeys = envelopeKeys.filter(
-    (k) => k === "orderId" || k === "reason" || k === "note"
-  );
+  const validKeys = envelopeKeys.filter((k) => allowedKeys.includes(k));
   if (validKeys.length !== envelopeKeys.length || envelopeKeys.length === 0) {
-    throw new HttpsError(
-      "invalid-argument",
-      "Request payload must contain only orderId, reason, and an optional note."
-    );
+    throw new HttpsError("invalid-argument", message);
   }
 
-  const { orderId, reason, note } = data;
+  const { orderId } = data;
   if (
     !orderId ||
     typeof orderId !== "string" ||
@@ -4180,7 +4147,7 @@ function assertValidExcuseEnvelope(data) {
   ) {
     throw new HttpsError("invalid-argument", "orderId is invalid.");
   }
-  return { orderId, reason, note };
+  return data;
 }
 
 /**
@@ -4200,15 +4167,23 @@ function validateExcuseReason(reason) {
 
 /**
  * Normalize the optional admin note (trimmed, max 200 chars, no
- * HTML/scripts/URLs — AGENTS.md §8) and enforce the Other-requires-note rule
- * (§7). The rules language cannot express these checks, so the callable
- * enforces them server-side before anything is written.
- * @param {string} reason — the validated excuse reason
+ * HTML/scripts/URLs — AGENTS.md §8) and enforce the required-note rule when
+ * [requiresNote] is set (§7, §11). The rules language cannot express these
+ * checks, so the callable enforces them server-side before anything is
+ * written.
  * @param {*} note — the raw note field
+ * @param {Object} [options]
+ * @param {boolean} [options.requiresNote] — when true, a non-empty note is
+ *   mandatory (default false)
+ * @param {string} [options.requiredMessage] — error message for the missing
+ *   note case
  * @return {string|null} the trimmed note, or null when absent
  */
-function normalizeExcuseNote(reason, note) {
-  let excuseNote = null;
+function normalizeOptionalNote(
+  note,
+  { requiresNote = false, requiredMessage = "" } = {}
+) {
+  let normalized = null;
   if (note !== undefined && note !== null) {
     if (typeof note !== "string") {
       throw new HttpsError("invalid-argument", "note is invalid.");
@@ -4229,15 +4204,12 @@ function normalizeExcuseNote(reason, note) {
         "note cannot contain HTML, scripts, or URLs."
       );
     }
-    excuseNote = trimmed;
+    normalized = trimmed;
   }
-  if (reason === "Other" && !excuseNote) {
-    throw new HttpsError(
-      "invalid-argument",
-      "A note is required when the reason is Other."
-    );
+  if (requiresNote && !normalized) {
+    throw new HttpsError("invalid-argument", requiredMessage);
   }
-  return excuseNote;
+  return normalized;
 }
 
 /**
@@ -4270,20 +4242,53 @@ function assertAdminServesOrder(callerCafeName, orderData) {
 }
 
 /**
- * Run the excuse transaction body: eligibility, reliability correction,
- * order excuse fields, the immutable audit record, and the deterministic
- * notification outbox event — all committed in ONE transaction (§16-§18).
+ * Run the excuse transaction body: caller authorization, eligibility,
+ * reliability correction, order excuse fields, the immutable audit record,
+ * and the deterministic notification outbox event — all committed in ONE
+ * transaction (§16-§18).
  * @param {admin.firestore.Transaction} transaction
  * @param {Object} params
  * @param {admin.firestore.DocumentReference} params.orderRef
  * @param {string} params.callerUid
- * @param {string} params.callerCafeName
  * @param {string} params.excuseReason
  * @param {string|null} params.excuseNote
  */
 async function runExcuseTransaction(transaction, {
-  orderRef, callerUid, callerCafeName, excuseReason, excuseNote,
+  orderRef, callerUid, excuseReason, excuseNote,
 }) {
+  // ── Caller authorization read INSIDE the transaction (mirrors
+  //    setFoodDisposition): the caller document is re-read with the
+  //    transaction, so existence / role / ACTIVE / cafe checks are atomic
+  //    with the excuse write. If the caller changes concurrently
+  //    (suspension, role change, cafe reassignment), Firestore aborts the
+  //    transaction and the retry re-reads the fresh caller state.
+  const callerSnapshot = await transaction.get(
+    db.collection("users").doc(callerUid)
+  );
+  const callerData = callerSnapshot.data();
+  if (!callerSnapshot.exists || !callerData) {
+    throw new HttpsError(
+      "permission-denied",
+      "Account not found. Please contact support."
+    );
+  }
+  if (callerData.role !== "admin") {
+    throw new HttpsError(
+      "permission-denied",
+      "Only authorized cafe administrators can excuse a no-show."
+    );
+  }
+  if (callerData.accountStatus !== "ACTIVE") {
+    throw new HttpsError(
+      "permission-denied",
+      "Your account is suspended and cannot excuse a no-show."
+    );
+  }
+  const callerCafeName =
+    typeof callerData.cafeName === "string"
+      ? callerData.cafeName.trim()
+      : "";
+
   const orderSnapshot = await transaction.get(orderRef);
   if (!orderSnapshot.exists) {
     throw new HttpsError("not-found", "Order not found.");
@@ -4422,10 +4427,11 @@ async function runExcuseTransaction(transaction, {
  * uses a deterministic ID derived from the order, and the
  * `noShowExcused` marker is checked + written in the same transaction, so
  * concurrent or duplicate excuses can never succeed twice (Firestore
- * aborts the loser, and its re-read sees the marker and reports
- * already-excused). The student notification is created AFTER the
- * transaction commits with an eventId-based dedup, so a failed
- * intervention never notifies and retries never duplicate (§25-§26).
+    * aborts the loser, and its re-read sees the marker and reports
+    * already-excused). The student notification document is written IN THE
+    * SAME transaction under a deterministic eventId, so a failed
+    * intervention never notifies and retries never duplicate (§25-§26).
+    * FCM delivery happens post-commit in the onNewNotification trigger
  */
 exports.excuseNoShow = onCall(
   {
@@ -4441,14 +4447,19 @@ exports.excuseNoShow = onCall(
       );
     }
 
-    // ── Admin authorization (mirrors createAdminAccount) ─────────────
     const callerUid = request.auth.uid;
-    const callerCafeName = await loadActiveAdminCaller(callerUid);
 
     // ── Request envelope validation ──────────────────────────────────
-    const { orderId, reason, note } = assertValidExcuseEnvelope(request.data);
+    const { orderId, reason, note } = assertValidEnvelope(request.data, {
+      allowedKeys: ["orderId", "reason", "note"],
+      message:
+        "Request payload must contain only orderId, reason, and an optional note.",
+    });
     const excuseReason = validateExcuseReason(reason);
-    const excuseNote = normalizeExcuseNote(excuseReason, note);
+    const excuseNote = normalizeOptionalNote(note, {
+      requiresNote: excuseReason === "Other",
+      requiredMessage: "A note is required when the reason is Other.",
+    });
 
     const orderRef = db.collection("orders").doc(orderId);
 
@@ -4457,7 +4468,6 @@ exports.excuseNoShow = onCall(
         runExcuseTransaction(transaction, {
           orderRef,
           callerUid,
-          callerCafeName,
           excuseReason,
           excuseNote,
         }),
@@ -4675,36 +4685,14 @@ exports.setFoodDisposition = onCall(
     const callerUid = request.auth.uid;
 
     // ── Request envelope validation ─────────────────────────────────
-    const data = request.data;
-    if (
-      data === null ||
-      typeof data !== "object" ||
-      Array.isArray(data) ||
-      JSON.stringify(data).length > 4096
-    ) {
-      throw new HttpsError("invalid-argument", "Invalid request payload.");
-    }
-    const envelopeKeys = Object.keys(data);
-    const validKeys = envelopeKeys.filter(
-      (k) => k === "orderId" || k === "disposition" || k === "note"
+    const { orderId, disposition, note } = assertValidEnvelope(
+      request.data,
+      {
+        allowedKeys: ["orderId", "disposition", "note"],
+        message:
+          "Request payload must contain only orderId, disposition, and an optional note.",
+      },
     );
-    if (validKeys.length !== envelopeKeys.length || envelopeKeys.length === 0) {
-      throw new HttpsError(
-        "invalid-argument",
-        "Request payload must contain only orderId, disposition, and an optional note."
-      );
-    }
-
-    const { orderId, disposition, note } = data;
-    if (
-      !orderId ||
-      typeof orderId !== "string" ||
-      orderId.length === 0 ||
-      orderId.length > 128 ||
-      !/^[A-Za-z0-9_-]+$/.test(orderId)
-    ) {
-      throw new HttpsError("invalid-argument", "orderId is invalid.");
-    }
 
     // Controlled disposition only (§2) — no free-form values.
     if (!FOOD_DISPOSITIONS.includes(disposition)) {
@@ -4723,28 +4711,11 @@ exports.setFoodDisposition = onCall(
     }
 
     // Optional admin note: trimmed, max 200 chars, no HTML/scripts/URLs
-    // (§11). The rules language cannot express this, so the callable enforces
-    // it server-side before anything is written.
-    let dispositionNote = null;
-    if (note !== undefined && note !== null) {
-      if (typeof note !== "string") {
-        throw new HttpsError("invalid-argument", "note is invalid.");
-      }
-      const trimmed = note.trim();
-      if (trimmed.length > 200) {
-        throw new HttpsError(
-          "invalid-argument",
-          "note must be 200 characters or fewer."
-        );
-      }
-      if (/<[a-z][^>]*>/i.test(trimmed) || /https?:\/\//i.test(trimmed)) {
-        throw new HttpsError(
-          "invalid-argument",
-          "note cannot contain HTML, scripts, or URLs."
-        );
-      }
-      dispositionNote = trimmed;
-    }
+    // (§11 — the note is optional for every disposition, including OTHER;
+    // only the excuse flow's "Other" reason requires one). The rules
+    // language cannot express this, so the callable enforces it server-side
+    // before anything is written.
+    const dispositionNote = normalizeOptionalNote(note);
 
     const orderRef = db.collection("orders").doc(orderId);
     const callerRef = db.collection("users").doc(callerUid);
@@ -4794,29 +4765,13 @@ exports.setFoodDisposition = onCall(
         }
         const orderData = orderSnapshot.data();
 
-        // ── Cafe authorization (§7): derived from the order's
-        //    server-authoritative cafes list and the transaction-fresh
-        //    caller cafeName — never a client role claim. An order
-        //    EXPLICITLY tagged with the UNASSIGNED sentinel (genuinely
-        //    cafeless) is served by any active admin; an absent/empty
-        //    `cafes` value is unscoped legacy data and is denied (mirrors
-        //    adminServesOrder()).
-        const orderCafes = Array.isArray(orderData.cafes)
-          ? orderData.cafes.filter((c) => typeof c === "string")
-          : [];
-        const isCafelessOrder =
-          orderCafes.length > 0 &&
-          orderCafes.every((c) => c === UNASSIGNED_CAFE);
-        if (
-          !isCafelessOrder &&
-          (callerCafeName.length === 0 ||
-            !orderCafes.includes(callerCafeName))
-        ) {
-          throw new HttpsError(
-            "permission-denied",
-            "You are not authorized to manage orders for this cafe."
-          );
-        }
+        // ── Cafe authorization (§7): shared with the excuse flow — the
+        //    caller's cafeName must appear in the order's
+        //    server-authoritative cafes list, derived from the
+        //    transaction-fresh caller and order data. UNASSIGNED sentinel
+        //    = genuinely cafeless (any active admin); absent/empty `cafes`
+        //    is unscoped legacy data and is denied.
+        assertAdminServesOrder(callerCafeName, orderData);
 
         // ── Eligibility (§4): only NO_SHOW orders may receive a food
         //    disposition. PENDING/ACCEPTED/PREPARING/READY/COLLECTED/
