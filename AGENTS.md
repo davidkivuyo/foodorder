@@ -192,6 +192,8 @@ Treat this phase as a production release gate.
 
 Do not make speculative architectural changes.
 
+Use available agents skills to fix defects and improve production readiness.
+
 Only modify implementation when:
 
 - a test fails
