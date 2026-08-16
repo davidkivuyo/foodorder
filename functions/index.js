@@ -1220,18 +1220,22 @@ async function releaseDeliveryClaim(eventId, deviceDocId, claimId) {
   const ref = db.collection("delivery_records").doc(docId);
 
   try {
-    return await withRetry(
+    // The callback only needs to throw on failure — it performs no
+    // meaningful return. The boolean contract lives here: withRetry
+    // resolving means the claim is released (or was already released /
+    // reclaimed), and any failure throws out to the catch below.
+    await withRetry(
       async () => {
         const doc = await ref.get();
         if (!doc.exists) {
           // Document already deleted — the claim is already released.
-          return true;
+          return;
         }
 
         // ── Ownership check: verify claimId matches ───────────────
         if (claimId && doc.data().claimId !== claimId) {
-          // The claim was reclaimed by a newer worker.  Return true
-          // because from the old worker's perspective the claim was
+          // The claim was reclaimed by a newer worker.  Treat it as
+          // released: from the old worker's perspective the claim was
           // already released (the new worker now owns it).  This avoids
           // a redundant finalizeDelivery attempt from the caller.
           console.warn(
@@ -1239,11 +1243,10 @@ async function releaseDeliveryClaim(eventId, deviceDocId, claimId) {
             `expected ${claimId}, got ${doc.data().claimId} — ` +
             `claim already reclaimed, treating as released`
           );
-          return true;
+          return;
         }
 
         await ref.delete();
-        return true;
       },
       {
         maxRetries: 2,
@@ -1253,6 +1256,7 @@ async function releaseDeliveryClaim(eventId, deviceDocId, claimId) {
           err.code === "PERMISSION_DENIED",
       },
     );
+    return true;
   } catch (err) {
     console.warn(
       `[releaseDeliveryClaim] Failed to release claim: ${err.message}`
@@ -2583,7 +2587,7 @@ async function resolveLineItemPrice(orderRef, item) {
   const foodId = item && (item.foodItemId || item.id);
 
   if (typeof foodId !== "string" || foodId.length === 0) {
-    throw new Error(
+    throw new TypeError(
       `[normalizeOrderPricing] Order ${orderRef.id} has an item without a ` +
       `food ID — holding order`
     );
@@ -3281,20 +3285,21 @@ async function deferReliabilityEvent(orderRef) {
 // FUNCTION 2: onOrderStatusChanged  (Firestore trigger)
 // ════════════════════════════════════════════════════════════════════════════
 
-// ── onOrderStatusChanged helpers ──────────────────────────────────────────────
+// ── onOrderStatusChanged / onNewOrder helpers ─────────────────────────────────
 //
-// The trigger is split into small single-purpose helpers so the onDocumentUpdated
-// callback stays within the cognitive complexity budget while preserving every
-// backfill, terminal-timestamp, reliability and notification behaviour.
+// The trigger callbacks are split into small single-purpose helpers so they
+// stay within the cognitive complexity budget while preserving every backfill,
+// terminal-timestamp, reliability and notification behaviour.
 
 /**
  * Run an idempotent order backfill (foodIds / cafes) with bounded retries.
  * @param {string} label — "foodIds" or "cafes" (used in log/error text)
  * @param {Function} backfillFn — the idempotent backfill call
+ * @param {string} [logPrefix="[onOrderStatusChanged]"] — log/error prefix
  * @return {Promise<boolean>} false when the order no longer exists (nothing to
  *   do — the caller should return early), true when it completed or rethrew.
  */
-async function runOrderBackfill(label, backfillFn) {
+async function runOrderBackfill(label, backfillFn, logPrefix = "[onOrderStatusChanged]") {
   try {
     await withRetry(backfillFn, {
       maxRetries: 3,
@@ -3305,7 +3310,7 @@ async function runOrderBackfill(label, backfillFn) {
     return true;
   } catch (err) {
     console.error(
-      `[onOrderStatusChanged] ${label} backfill failed: ${err.message}`
+      `${logPrefix} ${label} backfill failed: ${err.message}`
     );
     // NOT_FOUND means the order no longer exists — nothing left to
     // backfill and no status/notification work is meaningful for a
@@ -3559,6 +3564,134 @@ exports.onOrderStatusChanged = onDocumentUpdated(
 // FUNCTION 3: onNewOrder  (Firestore trigger — document created)
 // ════════════════════════════════════════════════════════════════════════════
 
+// ── onNewOrder helpers ────────────────────────────────────────────────────────
+//
+// The trigger is split into small single-purpose helpers so the onDocumentCreated
+// callback stays within the cognitive complexity budget while preserving every
+// backfill, cancellation-deadline correction and notification behaviour.
+
+/**
+ * Correct the order's cancellationDeadline to the authoritative value
+ * (createdAt + CANCELLATION_WINDOW_MINUTES) when the stored value is missing
+ * or differs. The client may send an estimated deadline so the acceptance
+ * rules are enforced from the very first write (closing the admin-accept
+ * race), but this correction overwrites it with the authoritative value so a
+ * skewed device clock can never extend or shorten the window. A persistent
+ * failure is rethrown so the event is not acknowledged as successful —
+ * retries are safe because the backfills and pricing normalization are
+ * idempotent and NEW_ORDER notifications are deduplicated by eventId.
+ * @param {admin.firestore.DocumentReference} ref
+ * @param {Object} orderData — the trigger snapshot
+ * @param {string} orderId
+ */
+async function correctCancellationDeadline(ref, orderData, orderId) {
+  if (!(orderData.createdAt instanceof admin.firestore.Timestamp)) return;
+
+  const authoritativeDeadline = new admin.firestore.Timestamp(
+    orderData.createdAt.seconds + CANCELLATION_WINDOW_MINUTES * 60,
+    orderData.createdAt.nanoseconds,
+  );
+  const stored = orderData.cancellationDeadline;
+  const needsCorrection =
+    !(stored instanceof admin.firestore.Timestamp) ||
+    stored.seconds !== authoritativeDeadline.seconds ||
+    stored.nanoseconds !== authoritativeDeadline.nanoseconds;
+  if (!needsCorrection) return;
+
+  try {
+    await withRetry(
+      () => ref.update({
+        cancellationDeadline: authoritativeDeadline,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }),
+      {
+        maxRetries: 2,
+        baseDelayMs: 150,
+        maxDelayMs: 1000,
+      },
+    );
+    console.log(
+      `[onNewOrder] Authoritative cancellationDeadline set for ${orderId}`
+    );
+  } catch (deadlineErr) {
+    console.error(
+      `[onNewOrder] Failed to correct cancellationDeadline:`, deadlineErr
+    );
+    throw deadlineErr;
+  }
+}
+
+/**
+ * Notify the admins serving the order's cafes about a new order. Per-cafe
+ * scoping: an admin is notified only when their cafeName is in the order's
+ * server-authoritative `cafes` list. Cafeless orders (nothing derivable, or
+ * tagged with the UNASSIGNED sentinel) fall back to notifying every admin so
+ * no order is ever left invisible. Failures are logged but never rethrown —
+ * the Firestore notification doc is the source of truth and push delivery
+ * happens separately in onNewNotification.
+ * @param {Object} params
+ * @param {string} params.orderId
+ * @param {string} params.studentName
+ * @param {number} params.totalAmount
+ * @param {string[]} params.afterCafes — server-authoritative cafe scoping list
+ */
+async function notifyAdminsOfNewOrder({ orderId, studentName, totalAmount, afterCafes }) {
+  try {
+    const adminSnapshot = await db
+        .collection("users")
+        .where("role", "==", "admin")
+        .where("accountStatus", "==", "ACTIVE")
+        .get();
+
+    if (adminSnapshot.empty) {
+      console.log("[onNewOrder] No admin users found — skipping notifications");
+      return;
+    }
+
+    const orderCafes = afterCafes.length > 0 ? afterCafes : null;
+    const servingAdmins = orderCafes
+      ? adminSnapshot.docs.filter((doc) => {
+          const adminCafe = doc.data().cafeName;
+          return typeof adminCafe === "string" &&
+            orderCafes.includes(adminCafe);
+        })
+      : adminSnapshot.docs;
+
+    if (servingAdmins.length === 0) {
+      console.log(
+        `[onNewOrder] No admin serves cafes of order — skipping notifications`
+      );
+      return;
+    }
+
+    console.log(`[onNewOrder] Notifying ${servingAdmins.length} admin(s)`);
+
+    const adminIds = servingAdmins.map((doc) => doc.id);
+    const notificationPromises = adminIds.map((adminId) => {
+      return createNotification({
+        recipientId: adminId,
+        recipientRole: "admin",
+        type: "NEW_ORDER",
+        title: `New Order #${orderId}`,
+        message: `${studentName} placed a new order worth ` +
+                 `Tsh ${Math.round(totalAmount)}.`,
+        orderId: orderId,
+        eventId: `NEW_ORDER_${orderId}_${adminId}`,
+        deepLink: "/orders",
+        metadata: {
+          studentName: studentName,
+          totalAmount: totalAmount,
+        },
+        createdBy: "system",
+      });
+    });
+
+    await Promise.allSettled(notificationPromises);
+  } catch (err) {
+    console.error(`[onNewOrder] Error:`, err);
+  }
+}
+
 exports.onNewOrder = onDocumentCreated(
   {
     document: "orders/{orderId}",
@@ -3566,8 +3699,7 @@ exports.onNewOrder = onDocumentCreated(
     // Retry the whole event when the backfill rethrows a transient error,
     // so a failed backfill is not acknowledged as a successful event.
     retry: true,
-  },
-  async (event) => {
+  },  async (event) => {
     const orderData = event.data.data();
     if (!orderData) {
       console.log("[onNewOrder] No data for order — skipping");
@@ -3577,62 +3709,30 @@ exports.onNewOrder = onDocumentCreated(
     // Backfill `foodIds` when an order was created without it (e.g. by a
     // legacy app build whose create payload predates the field).  Orders
     // from the current app already include the field, so this is a no-op.
-    //
-    // A failed backfill must NOT be acknowledged as a successful event:
-    // transient write failures are retried in-invocation (withRetry), and
-    // if the backfill still fails the error is rethrown after logging so
-    // Cloud Functions retries the whole event.  Retries are safe because
+    // A failed backfill must NOT be acknowledged as a successful event —
+    // runOrderBackfill rethrows non-NOT_FOUND failures so Cloud Functions
+    // retries the whole event.  Retries are safe because
     // backfillOrderFoodIds is idempotent (no-op when foodIds is present,
     // with any value) and NEW_ORDER notifications are deduplicated by
     // eventId in createNotification — no side effects are duplicated.
-    try {
-      await withRetry(
-        () => backfillOrderFoodIds(event.data.ref, orderData),
-        {
-          maxRetries: 3,
-          baseDelayMs: 200,
-          maxDelayMs: 2000,
-          isPermanent: (err) => isNotFoundError(err), // order deleted mid-run
-        },
-      );
-    } catch (err) {
-      console.error(
-        `[onNewOrder] foodIds backfill failed: ${err.message}`
-      );
-      // NOT_FOUND means the order no longer exists — nothing left to
-      // backfill and no admin notification is meaningful for a deleted
-      // order, so return early instead of retrying a permanent failure.
-      // Any other failure is rethrown so the event is not acknowledged
-      // as successful.
-      if (isNotFoundError(err)) {
-        return;
-      }
-      throw err;
+    if (!(await runOrderBackfill(
+      "foodIds",
+      () => backfillOrderFoodIds(event.data.ref, orderData),
+      "[onNewOrder]",
+    ))) {
+      return; // order deleted mid-run (NOT_FOUND)
     }
 
     // Backfill `cafes` (server-authoritative per-cafe scoping list) when an
     // order was created without it (e.g. by a legacy app build).  Orders
     // from the current placeOrder callable already include the field, so
-    // this is a no-op for them.  Same retry semantics as the foodIds
-    // backfill above.
-    try {
-      await withRetry(
-        () => backfillOrderCafes(event.data.ref, orderData),
-        {
-          maxRetries: 3,
-          baseDelayMs: 200,
-          maxDelayMs: 2000,
-          isPermanent: (err) => isNotFoundError(err), // order deleted mid-run
-        },
-      );
-    } catch (err) {
-      console.error(
-        `[onNewOrder] cafes backfill failed: ${err.message}`
-      );
-      if (isNotFoundError(err)) {
-        return;
-      }
-      throw err;
+    // this is a no-op for them.  Same idempotent pattern as above.
+    if (!(await runOrderBackfill(
+      "cafes",
+      () => backfillOrderCafes(event.data.ref, orderData),
+      "[onNewOrder]",
+    ))) {
+      return; // order deleted mid-run (NOT_FOUND)
     }
 
     const studentName = orderData.userName || "A student";
@@ -3673,112 +3773,18 @@ exports.onNewOrder = onDocumentCreated(
 
     // ── Phase B: authoritative cancellation deadline ────────────────
     // cancellationDeadline = createdAt + 2 minutes, computed from the
-    // trusted server timestamp (createdAt). The client may send an
-    // estimated deadline so the acceptance rules are enforced from the
-    // very first write (closing the admin-accept race), but this trigger
-    // overwrites it with the authoritative value so a skewed device clock
-    // can never extend or shorten the window.
-    if (orderData.createdAt instanceof admin.firestore.Timestamp) {
-      const authoritativeDeadline = new admin.firestore.Timestamp(
-        orderData.createdAt.seconds + CANCELLATION_WINDOW_MINUTES * 60,
-        orderData.createdAt.nanoseconds,
-      );
-      const stored = orderData.cancellationDeadline;
-      const needsCorrection =
-        !(stored instanceof admin.firestore.Timestamp) ||
-        stored.seconds !== authoritativeDeadline.seconds ||
-        stored.nanoseconds !== authoritativeDeadline.nanoseconds;
-      if (needsCorrection) {
-        // The authoritative deadline is what the acceptance rules and the
-        // cancelOrder callable enforce. A persistent failure must NOT be
-        // acknowledged as a successful event — rethrow after retries so
-        // Cloud Functions retries the whole event. Retries are safe: the
-        // backfill and pricing normalization are idempotent, and the
-        // NEW_ORDER notifications are deduplicated by eventId.
-        try {
-          await withRetry(
-            () => event.data.ref.update({
-              cancellationDeadline: authoritativeDeadline,
-              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-            }),
-            {
-              maxRetries: 2,
-              baseDelayMs: 150,
-              maxDelayMs: 1000,
-            },
-          );
-          console.log(
-            `[onNewOrder] Authoritative cancellationDeadline set for ${orderId}`
-          );
-        } catch (deadlineErr) {
-          console.error(
-            `[onNewOrder] Failed to correct cancellationDeadline:`, deadlineErr
-          );
-          throw deadlineErr;
-        }
-      }
-    }
+    // trusted server timestamp (createdAt) — the authoritative value the
+    // acceptance rules and the cancelOrder callable enforce.
+    await correctCancellationDeadline(event.data.ref, orderData, orderId);
 
     console.log("[onNewOrder] New order received");
 
-    try {
-      const adminSnapshot = await db
-          .collection("users")
-          .where("role", "==", "admin")
-          .get();
-
-      if (adminSnapshot.empty) {
-        console.log("[onNewOrder] No admin users found — skipping notifications");
-        return;
-      }
-
-      // Per-cafe scoping: an admin is notified only when their cafeName is
-      // in the order's server-authoritative `cafes` list.  Cafeless orders
-      // (nothing derivable, or tagged with the UNASSIGNED sentinel) fall
-      // back to notifying every admin (the pre-scoping behaviour) so no
-      // order is ever left invisible.
-      const orderCafes = afterCafes.length > 0 ? afterCafes : null;
-      const servingAdmins = orderCafes
-        ? adminSnapshot.docs.filter((doc) => {
-            const adminCafe = doc.data().cafeName;
-            return typeof adminCafe === "string" &&
-              orderCafes.includes(adminCafe);
-          })
-        : adminSnapshot.docs;
-
-      if (servingAdmins.length === 0) {
-        console.log(
-          `[onNewOrder] No admin serves cafes of order — skipping notifications`
-        );
-        return;
-      }
-
-      console.log(`[onNewOrder] Notifying ${servingAdmins.length} admin(s)`);
-
-      const adminIds = servingAdmins.map((doc) => doc.id);
-      const notificationPromises = adminIds.map((adminId) => {
-        return createNotification({
-          recipientId: adminId,
-          recipientRole: "admin",
-          type: "NEW_ORDER",
-          title: `New Order #${orderId}`,
-          message: `${studentName} placed a new order worth ` +
-                   `Tsh ${Math.round(totalAmount)}.`,
-          orderId: orderId,
-          eventId: `NEW_ORDER_${orderId}_${adminId}`,
-          deepLink: "/orders",
-          metadata: {
-            studentName: studentName,
-            totalAmount: totalAmount,
-          },
-          createdBy: "system",
-        });
-      });
-
-      await Promise.allSettled(notificationPromises);
-    } catch (err) {
-      console.error(`[onNewOrder] Error:`, err);
-    }
+    await notifyAdminsOfNewOrder({
+      orderId,
+      studentName,
+      totalAmount,
+      afterCafes,
+    });
   },
 );
 
@@ -3898,6 +3904,81 @@ exports.onNewNotification = onDocumentCreated(
 // Firestore rules (validUserCreateRequest requires isAdmin()), and a brand
 // new deployment bootstraps its first admin out-of-band (Admin SDK script —
 // see README).
+
+// ── createAdminAccount helpers ────────────────────────────────────────────────
+//
+// The callable is split into small single-purpose helpers so the onCall
+// callback stays within the cognitive complexity budget while preserving
+// every validation and rollback behaviour.
+
+/**
+ * Validate and normalize the createAdminAccount request payload.
+ * @param {*} data — request.data
+ * @return {{email: string, password: string, fullName: string,
+ *   cafeName: string, phoneNumber: string}} the normalized fields
+ */
+function validateCreateAdminPayload(data) {
+  if (data === null || typeof data !== "object" || Array.isArray(data)) {
+    throw new HttpsError("invalid-argument", "Invalid request payload.");
+  }
+  const email = typeof data.email === "string" ? data.email.trim() : "";
+  const password = typeof data.password === "string" ? data.password : "";
+  const fullName = typeof data.fullName === "string" ? data.fullName.trim() : "";
+  const cafeName = typeof data.cafeName === "string" ? data.cafeName.trim() : "";
+  const phoneNumber =
+    typeof data.phoneNumber === "string" ? data.phoneNumber.trim() : "";
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new HttpsError("invalid-argument", "A valid admin email is required.");
+  }
+  if (password.length < 6) {
+    throw new HttpsError(
+      "invalid-argument",
+      "Password must be at least 6 characters."
+    );
+  }
+  if (fullName.length === 0 || fullName.length > 100) {
+    throw new HttpsError(
+      "invalid-argument",
+      "A full name (max 100 characters) is required."
+    );
+  }
+  if (cafeName.length === 0 || cafeName.length > 100) {
+    throw new HttpsError(
+      "invalid-argument",
+      "A cafe name (max 100 characters) is required."
+    );
+  }
+  if (phoneNumber.length >= 20) {
+    throw new HttpsError(
+      "invalid-argument",
+      "Phone number must be under 20 characters."
+    );
+  }
+  return { email, password, fullName, cafeName, phoneNumber };
+}
+
+/**
+ * Best-effort rollback of a partially-created admin: delete the auth account
+ * and the users/{newUid} profile. Both deletions are best-effort — cleanup
+ * failures are logged and swallowed so the original error propagates.
+ * @param {string} newUid
+ */
+async function rollbackCreatedAdmin(newUid) {
+  try {
+    await admin.auth().deleteUser(newUid);
+  } catch (cleanupErr) {
+    console.error(`[createAdminAccount] Cleanup delete failed:`, cleanupErr);
+  }
+  try {
+    await admin.firestore().collection("users").doc(newUid).delete();
+  } catch (cleanupErr) {
+    console.error(
+      `[createAdminAccount] Profile cleanup delete failed:`, cleanupErr
+    );
+  }
+}
+
 exports.createAdminAccount = onCall(
   {
     authPolicy: "required",
@@ -3939,44 +4020,8 @@ exports.createAdminAccount = onCall(
     }
 
     // ── Request validation ─────────────────────────────────────────────
-    const data = request.data;
-    if (data === null || typeof data !== "object" || Array.isArray(data)) {
-      throw new HttpsError("invalid-argument", "Invalid request payload.");
-    }
-    const email = typeof data.email === "string" ? data.email.trim() : "";
-    const password = typeof data.password === "string" ? data.password : "";
-    const fullName = typeof data.fullName === "string" ? data.fullName.trim() : "";
-    const cafeName = typeof data.cafeName === "string" ? data.cafeName.trim() : "";
-    const phoneNumber =
-      typeof data.phoneNumber === "string" ? data.phoneNumber.trim() : "";
-
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      throw new HttpsError("invalid-argument", "A valid admin email is required.");
-    }
-    if (password.length < 6) {
-      throw new HttpsError(
-        "invalid-argument",
-        "Password must be at least 6 characters."
-      );
-    }
-    if (fullName.length === 0 || fullName.length > 100) {
-      throw new HttpsError(
-        "invalid-argument",
-        "A full name (max 100 characters) is required."
-      );
-    }
-    if (cafeName.length === 0 || cafeName.length > 100) {
-      throw new HttpsError(
-        "invalid-argument",
-        "A cafe name (max 100 characters) is required."
-      );
-    }
-    if (phoneNumber.length >= 20) {
-      throw new HttpsError(
-        "invalid-argument",
-        "Phone number must be under 20 characters."
-      );
-    }
+    const { email, password, fullName, cafeName, phoneNumber } =
+      validateCreateAdminPayload(request.data);
 
     // ── Create the auth account, then the admin profile ───────────────
     let newUid;
@@ -4030,18 +4075,7 @@ exports.createAdminAccount = onCall(
       // dangling admin-profile document (no matching auth user) would
       // linger; deleting both lets the caller retry cleanly.
       console.error(`[createAdminAccount] Profile write failed:`, err);
-      try {
-        await admin.auth().deleteUser(newUid);
-      } catch (cleanupErr) {
-        console.error(`[createAdminAccount] Cleanup delete failed:`, cleanupErr);
-      }
-      try {
-        await admin.firestore().collection("users").doc(newUid).delete();
-      } catch (cleanupErr) {
-        console.error(
-          `[createAdminAccount] Profile cleanup delete failed:`, cleanupErr
-        );
-      }
+      await rollbackCreatedAdmin(newUid);
       throw new HttpsError("internal", "Could not create the admin account.");
     }
 
@@ -4062,14 +4096,316 @@ exports.createAdminAccount = onCall(
 // the ONLY intervention path is this callable.
 
 /** Predefined excuse reasons (AGENTS.md Phase G §7). */
-const EXCUSE_REASONS = [
+const EXCUSE_REASONS = new Set([
   "Student reported emergency",
   "Cafe unable to fulfill order",
   "System/application issue",
   "Pickup information was incorrect",
   "Admin-approved exception",
   "Other",
-];
+]);
+
+// ── excuseNoShow helpers ──────────────────────────────────────────────────────
+//
+// The callable is split into small single-purpose helpers so the onCall
+// callback stays within the cognitive complexity budget while preserving
+// every authorization, validation, eligibility, reliability and audit
+// behaviour.
+
+/**
+ * Load the authenticated caller's admin profile and return the trimmed
+ * cafeName. Throws permission-denied when the account is missing, is not an
+ * admin, or is not ACTIVE.
+ * @param {string} callerUid
+ * @return {string} the caller's trimmed cafeName
+ */
+async function loadActiveAdminCaller(callerUid) {
+  const callerDoc = await admin
+    .firestore().collection("users").doc(callerUid).get();
+  const callerData = callerDoc.data();
+  if (!callerDoc.exists || !callerData) {
+    throw new HttpsError(
+      "permission-denied",
+      "Account not found. Please contact support."
+    );
+  }
+  if (callerData.role !== "admin") {
+    throw new HttpsError(
+      "permission-denied",
+      "Only authorized cafe administrators can excuse a no-show."
+    );
+  }
+  if (callerData.accountStatus !== "ACTIVE") {
+    throw new HttpsError(
+      "permission-denied",
+      "Your account is suspended and cannot excuse a no-show."
+    );
+  }
+  return typeof callerData.cafeName === "string" ? callerData.cafeName.trim() : "";
+}
+
+/**
+ * Validate the excuse request envelope: payload shape, allowed keys
+ * (orderId/reason/note only), and a well-formed orderId.
+ * @param {*} data — request.data
+ * @return {{orderId: string, reason: *, note: *}}
+ */
+function assertValidExcuseEnvelope(data) {
+  if (
+    data === null ||
+    typeof data !== "object" ||
+    Array.isArray(data) ||
+    JSON.stringify(data).length > 4096
+  ) {
+    throw new HttpsError("invalid-argument", "Invalid request payload.");
+  }
+  const envelopeKeys = Object.keys(data);
+  const validKeys = envelopeKeys.filter(
+    (k) => k === "orderId" || k === "reason" || k === "note"
+  );
+  if (validKeys.length !== envelopeKeys.length || envelopeKeys.length === 0) {
+    throw new HttpsError(
+      "invalid-argument",
+      "Request payload must contain only orderId, reason, and an optional note."
+    );
+  }
+
+  const { orderId, reason, note } = data;
+  if (
+    !orderId ||
+    typeof orderId !== "string" ||
+    orderId.length === 0 ||
+    orderId.length > 128 ||
+    !/^[A-Za-z0-9_-]+$/.test(orderId)
+  ) {
+    throw new HttpsError("invalid-argument", "orderId is invalid.");
+  }
+  return { orderId, reason, note };
+}
+
+/**
+ * Validate the excuse reason against the predefined choices (AGENTS.md §7).
+ * @param {*} reason
+ * @return {string} the validated reason
+ */
+function validateExcuseReason(reason) {
+  if (typeof reason === "string" && EXCUSE_REASONS.has(reason)) {
+    return reason;
+  }
+  throw new HttpsError(
+    "invalid-argument",
+    "reason must be one of the predefined excuse reasons."
+  );
+}
+
+/**
+ * Normalize the optional admin note (trimmed, max 200 chars, no
+ * HTML/scripts/URLs — AGENTS.md §8) and enforce the Other-requires-note rule
+ * (§7). The rules language cannot express these checks, so the callable
+ * enforces them server-side before anything is written.
+ * @param {string} reason — the validated excuse reason
+ * @param {*} note — the raw note field
+ * @return {string|null} the trimmed note, or null when absent
+ */
+function normalizeExcuseNote(reason, note) {
+  let excuseNote = null;
+  if (note !== undefined && note !== null) {
+    if (typeof note !== "string") {
+      throw new HttpsError("invalid-argument", "note is invalid.");
+    }
+    const trimmed = note.trim();
+    if (trimmed.length > 200) {
+      throw new HttpsError(
+        "invalid-argument",
+        "note must be 200 characters or fewer."
+      );
+    }
+    if (
+      /<[a-z][^>]*>/i.test(trimmed) ||
+      /https?:\/\//i.test(trimmed)
+    ) {
+      throw new HttpsError(
+        "invalid-argument",
+        "note cannot contain HTML, scripts, or URLs."
+      );
+    }
+    excuseNote = trimmed;
+  }
+  if (reason === "Other" && !excuseNote) {
+    throw new HttpsError(
+      "invalid-argument",
+      "A note is required when the reason is Other."
+    );
+  }
+  return excuseNote;
+}
+
+/**
+ * Cafe-scope authorization (§34): the caller's cafeName must appear in the
+ * order's server-authoritative `cafes` list. Only an order explicitly tagged
+ * with the UNASSIGNED sentinel (genuinely cafeless) is served by any active
+ * admin, mirroring the adminServesOrder() rules gate. An absent/empty
+ * `cafes` value is unscoped legacy data — not cafeless — and is denied until
+ * the backfill normalizes it.
+ * @param {string} callerCafeName
+ * @param {Object} orderData
+ */
+function assertAdminServesOrder(callerCafeName, orderData) {
+  const orderCafes = Array.isArray(orderData.cafes)
+    ? orderData.cafes.filter((c) => typeof c === "string")
+    : [];
+  const isCafelessOrder =
+    orderCafes.length > 0 &&
+    orderCafes.every((c) => c === UNASSIGNED_CAFE);
+  if (
+    !isCafelessOrder &&
+    (callerCafeName.length === 0 ||
+      !orderCafes.includes(callerCafeName))
+  ) {
+    throw new HttpsError(
+      "permission-denied",
+      "You are not authorized to manage orders for this cafe."
+    );
+  }
+}
+
+/**
+ * Run the excuse transaction body: eligibility, reliability correction,
+ * order excuse fields, the immutable audit record, and the deterministic
+ * notification outbox event — all committed in ONE transaction (§16-§18).
+ * @param {admin.firestore.Transaction} transaction
+ * @param {Object} params
+ * @param {admin.firestore.DocumentReference} params.orderRef
+ * @param {string} params.callerUid
+ * @param {string} params.callerCafeName
+ * @param {string} params.excuseReason
+ * @param {string|null} params.excuseNote
+ */
+async function runExcuseTransaction(transaction, {
+  orderRef, callerUid, callerCafeName, excuseReason, excuseNote,
+}) {
+  const orderSnapshot = await transaction.get(orderRef);
+  if (!orderSnapshot.exists) {
+    throw new HttpsError("not-found", "Order not found.");
+  }
+  const orderData = orderSnapshot.data();
+
+  assertAdminServesOrder(callerCafeName, orderData);
+
+  // ── Eligibility (§6): only NO_SHOW with a recorded noShowAt,
+  //    and never already excused (§17).
+  const canonicalStatus =
+    orderData.status === "COLLECTED" ? "collected" : orderData.status;
+  if (canonicalStatus !== "no_show") {
+    throw new HttpsError(
+      "failed-precondition",
+      "Only no-show orders can be excused."
+    );
+  }
+  if (!(orderData.noShowAt instanceof admin.firestore.Timestamp)) {
+    throw new HttpsError(
+      "failed-precondition",
+      "This order has no recorded no-show time and cannot be excused."
+    );
+  }
+  if (orderData.noShowExcused === true) {
+    // ALREADY_EXCUSED — safe business result (§17). The marker is
+    // read inside this transaction, so a concurrent excuse that
+    // committed first is seen here and reported; the loser never
+    // writes a duplicate correction, audit record, or notification.
+    throw new HttpsError(
+      "failed-precondition",
+      "This no-show has already been excused."
+    );
+  }
+
+  const now = admin.firestore.Timestamp.now();
+  const studentId = orderData.studentId || orderData.userId;
+
+  // ── Reliability correction (§11-§15): only when the no-show was
+  //    actually counted by the engine. The summary correction and the
+  //    order marker commit atomically here.
+  if (
+    typeof studentId === "string" &&
+    studentId.length > 0 &&
+    orderData.reliabilityProcessed === true &&
+    orderData.reliabilityOutcome === "NO_SHOW"
+  ) {
+    const userRef = db.collection("users").doc(studentId);
+    const userSnapshot = await transaction.get(userRef);
+    if (userSnapshot.exists) {
+      const corrected = recomputeReliabilityAfterExcuse(
+        userSnapshot.data().pickupReliability,
+        orderRef.id,
+        now,
+      );
+      transaction.update(userRef, { pickupReliability: corrected });
+    }
+  }
+
+  transaction.update(orderRef, {
+    // The original NO_SHOW data is preserved; the excuse is additive.
+    noShowExcused: true,
+    excusedAt: now,
+    excusedBy: callerUid,
+    excuseReason,
+    excuseNote,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  // ── Immutable audit record (§22-§23). Deterministic doc ID so a
+  //    concurrent duplicate can never append twice.
+  transaction.set(
+    db.collection("audit_logs").doc(`NO_SHOW_EXCUSED_${orderRef.id}`),
+    {
+      action: "NO_SHOW_EXCUSED",
+      adminId: callerUid,
+      orderId: orderRef.id,
+      studentId: studentId || null,
+      cafeId: callerCafeName,
+      reason: excuseReason,
+      note: excuseNote,
+      timestamp: now,
+    },
+  );
+
+  // ── Notification outbox event (§16, §26): the deterministic
+  //    document keyed `NO_SHOW_EXCUSED_{orderId}` commits IN THE SAME
+  //    transaction as the order state, reliability correction, and
+  //    audit record. FCM push delivery is never performed here — it is
+  //    handled exclusively by the onNewNotification trigger (an
+  //    idempotent post-commit worker), which fires only after this
+  //    document commits. If the transaction aborts, none of the six
+  //    records are committed, so a failed intervention never leaves a
+  //    stale outbox event or a student notification behind. The
+  //    ALREADY_EXCUSED read above runs in this same transaction, so a
+  //    concurrent duplicate aborts before writing a second outbox
+  //    event.
+  if (typeof studentId === "string" && studentId.length > 0) {
+    const notifEventId = notificationEventId("NO_SHOW_EXCUSED", orderRef.id);
+    transaction.set(
+      db.collection("notifications").doc(notifEventId),
+      {
+        recipientId: studentId,
+        recipientRole: "student",
+        type: "NO_SHOW_EXCUSED",
+        title: "Missed pickup excused",
+        message: `An administrator reviewed Order #${orderRef.id} and excused ` +
+          `the missed pickup. It will not affect your pickup reliability.`,
+        orderId: orderRef.id,
+        eventId: notifEventId,
+        deepLink: null,
+        metadata: null,
+        read: false,
+        readAt: null,
+        deleted: false,
+        deletedAt: null,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdBy: "system",
+      },
+    );
+  }
+}
 
 /**
  * Excuse a no-show order (Phase G).
@@ -4107,260 +4443,25 @@ exports.excuseNoShow = onCall(
 
     // ── Admin authorization (mirrors createAdminAccount) ─────────────
     const callerUid = request.auth.uid;
-    const callerDoc = await admin
-      .firestore().collection("users").doc(callerUid).get();
-    const callerData = callerDoc.data();
-    if (!callerDoc.exists || !callerData) {
-      throw new HttpsError(
-        "permission-denied",
-        "Account not found. Please contact support."
-      );
-    }
-    if (callerData.role !== "admin") {
-      throw new HttpsError(
-        "permission-denied",
-        "Only authorized cafe administrators can excuse a no-show."
-      );
-    }
-    if (callerData.accountStatus !== "ACTIVE") {
-      throw new HttpsError(
-        "permission-denied",
-        "Your account is suspended and cannot excuse a no-show."
-      );
-    }
-    const callerCafeName =
-      typeof callerData.cafeName === "string" ? callerData.cafeName.trim() : "";
+    const callerCafeName = await loadActiveAdminCaller(callerUid);
 
     // ── Request envelope validation ──────────────────────────────────
-    const data = request.data;
-    if (
-      data === null ||
-      typeof data !== "object" ||
-      Array.isArray(data) ||
-      JSON.stringify(data).length > 4096
-    ) {
-      throw new HttpsError("invalid-argument", "Invalid request payload.");
-    }
-    const envelopeKeys = Object.keys(data);
-    const validKeys = envelopeKeys.filter(
-      (k) => k === "orderId" || k === "reason" || k === "note"
-    );
-    if (validKeys.length !== envelopeKeys.length || envelopeKeys.length === 0) {
-      throw new HttpsError(
-        "invalid-argument",
-        "Request payload must contain only orderId, reason, and an optional note."
-      );
-    }
-
-    const { orderId, reason, note } = data;
-    if (
-      !orderId ||
-      typeof orderId !== "string" ||
-      orderId.length === 0 ||
-      orderId.length > 128 ||
-      !/^[A-Za-z0-9_-]+$/.test(orderId)
-    ) {
-      throw new HttpsError("invalid-argument", "orderId is invalid.");
-    }
-
-    // Predefined reason only (AGENTS.md §7) — no arbitrary categories.
-    let excuseReason;
-    if (typeof reason === "string" && EXCUSE_REASONS.includes(reason)) {
-      excuseReason = reason;
-    } else {
-      throw new HttpsError(
-        "invalid-argument",
-        "reason must be one of the predefined excuse reasons."
-      );
-    }
-
-    // Optional admin note: trimmed, max 200 chars, no HTML/scripts/URLs
-    // (AGENTS.md §8). The rules language cannot express this, so the
-    // callable enforces it server-side before anything is written.
-    let excuseNote = null;
-    if (note !== undefined && note !== null) {
-      if (typeof note !== "string") {
-        throw new HttpsError("invalid-argument", "note is invalid.");
-      }
-      const trimmed = note.trim();
-      if (trimmed.length > 200) {
-        throw new HttpsError(
-          "invalid-argument",
-          "note must be 200 characters or fewer."
-        );
-      }
-      if (
-        /<[a-z][^>]*>/i.test(trimmed) ||
-        /https?:\/\//i.test(trimmed)
-      ) {
-        throw new HttpsError(
-          "invalid-argument",
-          "note cannot contain HTML, scripts, or URLs."
-        );
-      }
-      excuseNote = trimmed;
-    }
-
-    // The catch-all reason requires an explanation (AGENTS.md §7): the note
-    // must be present and non-empty after trimming so the audit trail always
-    // records why "Other" was used. Absent, empty, or whitespace-only notes
-    // are rejected here, before anything is written.
-    if (excuseReason === "Other" && !excuseNote) {
-      throw new HttpsError(
-        "invalid-argument",
-        "A note is required when the reason is Other."
-      );
-    }
+    const { orderId, reason, note } = assertValidExcuseEnvelope(request.data);
+    const excuseReason = validateExcuseReason(reason);
+    const excuseNote = normalizeExcuseNote(excuseReason, note);
 
     const orderRef = db.collection("orders").doc(orderId);
 
     try {
-      await db.runTransaction(async (transaction) => {
-        const orderSnapshot = await transaction.get(orderRef);
-        if (!orderSnapshot.exists) {
-          throw new HttpsError("not-found", "Order not found.");
-        }
-        const orderData = orderSnapshot.data();
-
-        // ── Cafe authorization (§34): derived from the order's
-        //    server-authoritative cafes list — never a client role claim.
-        //    Only an order EXPLICITLY tagged with the UNASSIGNED sentinel
-        //    (genuinely cafeless) is served by any active admin, mirroring
-        //    the adminServesOrder() rules gate. An absent/empty `cafes`
-        //    value is unscoped legacy data — not cafeless — and is denied
-        //    until the backfill normalizes it.
-        const orderCafes = Array.isArray(orderData.cafes)
-          ? orderData.cafes.filter((c) => typeof c === "string")
-          : [];
-        const isCafelessOrder =
-          orderCafes.length > 0 &&
-          orderCafes.every((c) => c === UNASSIGNED_CAFE);
-        if (
-          !isCafelessOrder &&
-          (callerCafeName.length === 0 ||
-            !orderCafes.includes(callerCafeName))
-        ) {
-          throw new HttpsError(
-            "permission-denied",
-            "You are not authorized to manage orders for this cafe."
-          );
-        }
-
-        // ── Eligibility (§6): only NO_SHOW with a recorded noShowAt,
-        //    and never already excused (§17).
-        const canonicalStatus =
-          orderData.status === "COLLECTED" ? "collected" : orderData.status;
-        if (canonicalStatus !== "no_show") {
-          throw new HttpsError(
-            "failed-precondition",
-            "Only no-show orders can be excused."
-          );
-        }
-        if (!(orderData.noShowAt instanceof admin.firestore.Timestamp)) {
-          throw new HttpsError(
-            "failed-precondition",
-            "This order has no recorded no-show time and cannot be excused."
-          );
-        }
-        if (orderData.noShowExcused === true) {
-          // ALREADY_EXCUSED — safe business result (§17). The marker is
-          // read inside this transaction, so a concurrent excuse that
-          // committed first is seen here and reported; the loser never
-          // writes a duplicate correction, audit record, or notification.
-          throw new HttpsError(
-            "failed-precondition",
-            "This no-show has already been excused."
-          );
-        }
-
-        const now = admin.firestore.Timestamp.now();
-        const studentId = orderData.studentId || orderData.userId;
-
-        // ── Reliability correction (§11-§15): only when the no-show was
-        //    actually counted by the engine. The summary correction and the
-        //    order marker commit atomically here.
-        if (
-          typeof studentId === "string" &&
-          studentId.length > 0 &&
-          orderData.reliabilityProcessed === true &&
-          orderData.reliabilityOutcome === "NO_SHOW"
-        ) {
-          const userRef = db.collection("users").doc(studentId);
-          const userSnapshot = await transaction.get(userRef);
-          if (userSnapshot.exists) {
-            const corrected = recomputeReliabilityAfterExcuse(
-              userSnapshot.data().pickupReliability,
-              orderRef.id,
-              now,
-            );
-            transaction.update(userRef, { pickupReliability: corrected });
-          }
-        }
-
-        transaction.update(orderRef, {
-          // The original NO_SHOW data is preserved; the excuse is additive.
-          noShowExcused: true,
-          excusedAt: now,
-          excusedBy: callerUid,
+      await db.runTransaction((transaction) =>
+        runExcuseTransaction(transaction, {
+          orderRef,
+          callerUid,
+          callerCafeName,
           excuseReason,
           excuseNote,
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        });
-
-        // ── Immutable audit record (§22-§23). Deterministic doc ID so a
-        //    concurrent duplicate can never append twice.
-        transaction.set(
-          db.collection("audit_logs").doc(`NO_SHOW_EXCUSED_${orderRef.id}`),
-          {
-            action: "NO_SHOW_EXCUSED",
-            adminId: callerUid,
-            orderId: orderRef.id,
-            studentId: studentId || null,
-            cafeId: callerCafeName,
-            reason: excuseReason,
-            note: excuseNote,
-            timestamp: now,
-          },
-        );
-
-        // ── Notification outbox event (§16, §26): the deterministic
-        //    document keyed `NO_SHOW_EXCUSED_{orderId}` commits IN THE SAME
-        //    transaction as the order state, reliability correction, and
-        //    audit record. FCM push delivery is never performed here — it is
-        //    handled exclusively by the onNewNotification trigger (an
-        //    idempotent post-commit worker), which fires only after this
-        //    document commits. If the transaction aborts, none of the six
-        //    records are committed, so a failed intervention never leaves a
-        //    stale outbox event or a student notification behind. The
-        //    ALREADY_EXCUSED read above runs in this same transaction, so a
-        //    concurrent duplicate aborts before writing a second outbox
-        //    event.
-        if (typeof studentId === "string" && studentId.length > 0) {
-          const notifEventId = notificationEventId("NO_SHOW_EXCUSED", orderRef.id);
-          transaction.set(
-            db.collection("notifications").doc(notifEventId),
-            {
-              recipientId: studentId,
-              recipientRole: "student",
-              type: "NO_SHOW_EXCUSED",
-              title: "Missed pickup excused",
-              message: `An administrator reviewed Order #${orderRef.id} and excused ` +
-                `the missed pickup. It will not affect your pickup reliability.`,
-              orderId: orderRef.id,
-              eventId: notifEventId,
-              deepLink: null,
-              metadata: null,
-              read: false,
-              readAt: null,
-              deleted: false,
-              deletedAt: null,
-              createdAt: admin.firestore.FieldValue.serverTimestamp(),
-              createdBy: "system",
-            },
-          );
-        }
-
-      });
+        }),
+      );
 
       // FCM delivery is handled by the onNewNotification trigger after this
       // transaction commits (post-commit worker). Nothing further is needed.
@@ -5712,7 +5813,16 @@ exports.migrateLegacyOrderFoodIds = functions
         `nextPhase='${nextPhase}'`
       );
 
-      return null;
+      // Return a summary of what this run did: null (above) means the
+      // migration is already completed and nothing was processed, while this
+      // object reports the run's outcome — the return value distinguishes
+      // the two paths instead of always returning null.
+      return {
+        phase: nextPhase,
+        backfilled: backfilledCount,
+        failed: remainingFailedIds.length,
+        processedTotal: stateUpdate.processedCount,
+      };
     });
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -5855,7 +5965,16 @@ exports.migrateLegacyOrderCafes = functions
         `completed=${completedThisRun}`
       );
 
-      return null;
+      // Return a summary of what this run did: null (above) means the
+      // migration is already completed and nothing was processed, while this
+      // object reports the run's outcome — the return value distinguishes
+      // the two paths instead of always returning null.
+      return {
+        completed: completedThisRun,
+        backfilled: backfilledCount,
+        failed: remainingFailedIds.length,
+        processedTotal: stateUpdate.processedCount,
+      };
     });
 
 // ════════════════════════════════════════════════════════════════════════════

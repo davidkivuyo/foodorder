@@ -181,8 +181,10 @@ void main() {
 
     test('onNewOrder writes the authoritative cancellationDeadline from the '
         'server createdAt (Test 5 — server-authoritative)', () {
+      // Anchor to the actual helper declaration, not the FUNCTION 3 banner
+      // comment, so the slice pins the real function symbol through refactors.
       final newOrderFn = fn.substring(
-        fn.indexOf('exports.onNewOrder'),
+        fn.indexOf('async function correctCancellationDeadline('),
         fn.indexOf('exports.onNewNotification'),
       );
       expect(newOrderFn, contains('CANCELLATION_WINDOW_MINUTES'));

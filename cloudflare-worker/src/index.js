@@ -60,13 +60,13 @@ export default {
         return await serveLatest(ctx);
       }
 
-      const releaseMatch = url.pathname.match(/^\/release\/(v[\w.-]+)$/);
+      const releaseMatch = /^\/release\/(v[\w.-]+)$/.exec(url.pathname);
       if (releaseMatch) {
         return await serveRelease(releaseMatch[1], ctx);
       }
 
-      const assetMatch = url.pathname.match(
-        /^\/(v[\w.-]+)\/([\w.-]+\.(apk|sha256))$/
+      const assetMatch = /^\/(v[\w.-]+)\/([\w.-]+\.(apk|sha256))$/.exec(
+        url.pathname
       );
       if (assetMatch) {
         const [, tag, filename] = assetMatch;
@@ -249,8 +249,8 @@ function staleResponse(cached) {
 
 function rewriteGithubUrls(obj, tag) {
   if (typeof obj === "string") {
-    const match = obj.match(
-      /^https:\/\/github\.com\/[^/]+\/[^/]+\/releases\/download\/[^/]+\/([\w.-]+)$/
+    const match = /^https:\/\/github\.com\/[^/]+\/[^/]+\/releases\/download\/[^/]+\/([\w.-]+)$/.exec(
+      obj
     );
     if (match) {
       return `https://${ALLOWED_HOST}/${tag}/${match[1]}`;
