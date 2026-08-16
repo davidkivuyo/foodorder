@@ -195,7 +195,16 @@ service cloud.firestore {
         && !('excusedAt' in changed)
         && !('excusedBy' in changed)
         && !('excuseReason' in changed)
-        && !('excuseNote' in changed);
+        && !('excuseNote' in changed)
+        // Phase H — food disposition fields are written ONLY by the
+        // setFoodDisposition callable (Admin SDK) on NO_SHOW orders.
+        // Neither student nor admin client may forge them: disposition is
+        // an operational record (AGENTS.md Phase H §38), and UNRESOLVED is
+        // the default written by the no-show engine.
+        && !('foodDisposition' in changed)
+        && !('foodDispositionAt' in changed)
+        && !('foodDispositionBy' in changed)
+        && !('foodDispositionNote' in changed);
     }
 
     // Normalise legacy order status spellings to the app's canonical casing.

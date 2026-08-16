@@ -389,6 +389,16 @@ Admin-only callable that reactivates a genuinely SUSPENDED student account:
 - The account-status flip and the immutable `audit_logs` REACTIVATE record commit in **one Firestore transaction**; actor identity (`adminId`) and `timestamp` are derived server-side from the authenticated caller.
 - Creates exactly one `ACCOUNT_REACTIVATED` student notification after commit (eventId-deduped).
 
+### 7. `setFoodDisposition` (Callable — Phase H food waste management)
+
+Admin-only callable that records what happened to the prepared food of a NO_SHOW order. Enforced server-side:
+- The caller must be an authenticated, **ACTIVE** admin whose `cafeName` is in the order's `cafes` list (cross-cafe denied), mirroring `excuseNoShow`.
+- Only orders with `status == NO_SHOW` are eligible; `studentId` and `cafeId` are derived from the order, never accepted from the client.
+- The disposition must be one of the controlled values — `RESOLD`, `DISCOUNTED`, `DONATED`, `STAFF_USE`, `DISPOSED`, `OTHER` (`UNRESOLVED` is the engine default and never an admin target). Optional note ≤ 200 chars, URLs/HTML rejected, whitespace trimmed.
+- Atomically writes the compact order record (`foodDisposition`, `foodDispositionAt`, `foodDispositionBy`, `foodDispositionNote`) and an immutable `audit_logs` FOOD_DISPOSITION record (with `previousDisposition` / `newDisposition`) in **one Firestore transaction**.
+- Idempotent: submitting the current disposition again returns `alreadyRecorded: true` with **no** write and **no** duplicate audit record; a correction (e.g. `DONATED → DISPOSED`) updates the order and appends a second audit record.
+- The order **remains NO_SHOW** and the student's reliability is untouched — disposition is an operational record only.
+
 `firestore.rules` grants **no** client create/update/delete on `audit_logs` — audit records are backend-only (AGENTS.md §23).
 
 ### Deploying Functions
@@ -411,12 +421,12 @@ Get the api keys on your cloudinary account or any other storage providers.
 
 - **`categories`** — `{ name, order }`
 - **`food_items`** — `{ title, subtitle, description, image, price, rating, category, availableCafes, section, time, available, featured, quantity, dietaryTags, keywords, searchPrefixes, createdAt, updatedAt }`
-- **`orders`** — `{ orderId, userId, userName, items, totalPrice, status, cafe, cafeId, cafes, cafeLocation, distanceMeters, distanceCalculated, pickupWindowMinutes, readyAt, pickupDeadline, deadlineStatus, noShowProcessed, noShowAt, noShowExcused, excusedAt, excusedBy, excuseReason, excuseNote, expiredAt, deadlineExtended, extensionAt, createdAt, updatedAt }`
+- **`orders`** — `{ orderId, userId, userName, items, totalPrice, status, cafe, cafeId, cafes, cafeLocation, distanceMeters, distanceCalculated, pickupWindowMinutes, readyAt, pickupDeadline, deadlineStatus, noShowProcessed, noShowAt, noShowExcused, excusedAt, excusedBy, excuseReason, excuseNote, expiredAt, deadlineExtended, extensionAt, foodDisposition, foodDispositionAt, foodDispositionBy, foodDispositionNote, createdAt, updatedAt }`
 - **`users`** — `{ fullName, email, role, strikeCount, accountStatus, lastPardonAt, createdAt, updatedAt, pickupReliability }`
 - **`users/{userId}/cart`** — `{ foodItemId, quantity, cafe }`
 - **`users/{userId}/plans`** — `{ title, note, totalAmount, plannedDate, createdAt, items }`
 - **`notifications`** — `{ recipientId, recipientRole, type, title, message, orderId, eventId, deepLink, metadata, read, readAt, deleted, deletedAt, createdAt, createdBy }`
-- **`audit_logs`** -- `{action, studentId, orderId, adminId, cafeId, previousStrikeCount, newStrikeCount, previousStrike, newStrike, reason, note, timestamp}`
+- **`audit_logs`** -- `{action, studentId, orderId, adminId, cafeId, previousStrikeCount, newStrikeCount, previousStrike, newStrike, reason, note, timestamp}` — Phase H FOOD_DISPOSITION records carry `{action, orderId, studentId, cafeId, adminId, previousDisposition, newDisposition, note, timestamp}`
 - **`cafes`** — `{ name, location, geopoint }`
 - **`section`** — `{ name }`
 - **`reviews`** — `{ userId, text, rating, ... }`
@@ -686,6 +696,17 @@ Authorized cafe admins can correct a legitimate exceptional NO_SHOW without recr
 - **Student visibility:** the order card/sheet show "No-show recorded · Excused" / a green "No-show excused" notice — the order was not collected, but it is excluded from reliability. Admin UID and private notes are never exposed.
 - **Security rules:** `noShowExcused`/`excusedAt`/`excusedBy`/`excuseReason`/`excuseNote` are added to `adminNotModifyingProtectedOrderFields()` (server-written only), `NO_SHOW_EXCUSED` joins the notification allowed types, and audit logs remain append-only.
 - **Admin UI:** on the admin order screen, eligible NO_SHOW orders show an **Excuse No-Show** action → reason selection sheet → confirmation dialog ("Excuse this no-show? … The original order history will remain unchanged."). Already-excused orders render an "Excused" badge with the reason and no action.
+
+### 3g. Cafe Food Waste Management (Phase H)
+Phase H lets authorized cafe admins record what happened to the prepared food of NO_SHOW orders — separate from the order lifecycle and from reliability:
+- **Core principle:** the order lifecycle answers "what happened to the order?" (NO_SHOW); the food disposition answers "what happened to the prepared food?" (e.g. DONATED). The order **remains NO_SHOW** and the student's reliability is **never** affected by disposition (AGENTS.md §1, §20-§21).
+- **Controlled dispositions (§2):** `UNRESOLVED` (default), `RESOLD`, `DISCOUNTED`, `DONATED`, `STAFF_USE`, `DISPOSED`, `OTHER` — shared enum/constants on the backend and in the admin app, never free-form strings.
+- **Default state (§3):** the no-show engine writes `foodDisposition: "UNRESOLVED"` when an order becomes NO_SHOW (both the scheduled expiry processor and the manual trigger path), so every NO_SHOW starts unresolved and is never auto-marked DISPOSED.
+- **Backend (`setFoodDisposition` callable, §7, §17):** enforces authentication, the `admin` role, an `ACTIVE` account, and per-cafe authorization from the order's server-authoritative `cafes` list. Only NO_SHOW orders are eligible. The note is optional (≤ 200 chars, URLs/HTML rejected, trimmed). The order update + immutable `audit_logs` FOOD_DISPOSITION record (with `previousDisposition` / `newDisposition`, `orderId`, `studentId`, `cafeId`, `adminId`, `timestamp`, `note`) commit in **one transaction** (§15); a duplicate submission writes nothing (§16); corrections (DONATED → DISPOSED) update the order and append a second audit record (§12).
+- **Security rules (§38):** `foodDisposition`/`foodDispositionAt`/`foodDispositionBy`/`foodDispositionNote` are added to `adminNotModifyingProtectedOrderFields()` — no student or admin client can write them directly; only the callable (Admin SDK) can. Audit records remain backend-only and cafe-scoped reads.
+- **Admin UI (§9-§11, §34-§35):** NO_SHOW orders show a separate disposition badge (UNRESOLVED / DONATED / …) distinct from the NO-SHOW order badge. The **Record Food Outcome** (or **Change Food Outcome**) action opens a disposition sheet (Resold / Discounted / Donated / Staff Use / Disposed / Other, optional note), always followed by an explicit confirmation dialog that states the order remains No-show. Disposed is never the default.
+- **Reports dashboard (§23-§25, §42):** a Food Disposition summary card counts the cafe's NO_SHOW orders by disposition with a disposition filter (All + each disposition) and a simple date-range filter (All / Today / This week / This month). The card is driven by a dedicated **indexed, paginated query** — `cafes` array-contains + `createdAt` DESC + a page limit (`OrderService.foodDispositionStreamForCafe`), served by the existing `cafes` CONTAINS + `createdAt` DESC composite index in `firestore.indexes.json` — never the unbounded full-order stream. Summary counts are therefore **limited to the loaded page** (the most recent 100 cafe orders, stated in the card UI); the date-range and disposition filters apply client-side over that loaded page, preserving the stated range behavior. No aggregate documents or additional indexes are required.
+- **Student experience (§22, §36-§37):** unchanged — no disposition details, no new notifications or FCM types.
 
 ### 4. Suspension Enforcement
 Account suspension is still honoured when ordering: if `accountStatus == "SUSPENDED"` (managed by the admin app), `CartService.isAccountSuspended()` blocks the student from placing new orders or adding items to the cart.

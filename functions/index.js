@@ -1310,6 +1310,11 @@ async function processExpiredOrder(transaction, orderSnapshot) {
     noShowAt: admin.firestore.FieldValue.serverTimestamp(),
     expiredAt: admin.firestore.FieldValue.serverTimestamp(),
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    // Phase H — default food disposition when an order becomes NO_SHOW:
+    // UNRESOLVED until an authorized admin records the actual outcome
+    // (AGENTS.md §3). This is written on the terminal transition only, so
+    // it can never overwrite a disposition an admin already recorded.
+    foodDisposition: "UNRESOLVED",
   });
 
   // ── Step 3: Create audit log ────────────────────────────────────
@@ -2450,6 +2455,22 @@ async function backfillOrderFoodIds(orderRef, orderData) {
 // "notify all admins" fallback.
 const UNASSIGNED_CAFE = "UNASSIGNED";
 
+// Phase H — Cafe Food Waste Management. Controlled food-disposition types
+// (AGENTS.md Phase H §2). UNRESOLVED is the default state when an order
+// becomes NO_SHOW (§3); the remaining values are chosen by an authorized
+// cafe admin through the setFoodDisposition callable. RESOLD/DISCOUNTED/
+// DONATED/DISPOSED/STAFF_USE/OTHER are operational records only — they never
+// change the order status or the student's reliability (§20-§21).
+const FOOD_DISPOSITIONS = [
+  "UNRESOLVED",
+  "RESOLD",
+  "DISCOUNTED",
+  "DONATED",
+  "STAFF_USE",
+  "DISPOSED",
+  "OTHER",
+];
+
 /**
  * Derive the deduplicated, non-empty `cafes` list from an order's nested
  * `items` array (the cafe each line item was ordered from).
@@ -3443,7 +3464,17 @@ async function handleOrderNoShow(ref, afterData, beforeStatus) {
     ref,
     afterData,
     "expiredAt",
-    { noShowProcessed: true, deadlineStatus: "EXPIRED" },
+    {
+      noShowProcessed: true,
+      deadlineStatus: "EXPIRED",
+      // Phase H — default food disposition on the manual NO_SHOW path:
+      // UNRESOLVED until an authorized admin records the outcome (§3).
+      // Only set when the field is genuinely absent so an already-recorded
+      // disposition is never overwritten by this bookkeeping write.
+      ...(afterData.foodDisposition == null
+        ? { foodDisposition: "UNRESOLVED" }
+        : {}),
+    },
     `[onOrderStatusChanged] Order marked NO_SHOW.`
   );
 
@@ -4489,6 +4520,283 @@ exports.reactivateStudent = onCall(
       throw new HttpsError(
         "internal",
         "Could not reactivate the account. Please try again."
+      );
+    }
+  },
+);
+
+// ════════════════════════════════════════════════════════════════════════════
+// PHASE H — CAFE FOOD WASTE MANAGEMENT: setFoodDisposition
+// (Callable — cafe admin only)
+// ════════════════════════════════════════════════════════════════════════════
+//
+// Authorized cafe admins record what happened to the prepared food of a
+// NO_SHOW order. The order REMAINS NO_SHOW — disposition is a separate
+// operational property that never changes order status or the student's
+// reliability (AGENTS.md Phase H §1, §20-§21).
+//
+// Backend-enforced authorization (§7): the caller must be an authenticated,
+// ACTIVE admin whose cafeName appears in the order's server-authoritative
+// `cafes` list (mirrors excuseNoShow). studentId and cafeId are DERIVED from
+// the order document, never accepted from the client (§17). Only NO_SHOW
+// orders are eligible (§4); UNRESOLVED is the default state, never an
+// admin-chosen target (§3).
+//
+// Atomicity & idempotency (§15-§16): the eligibility check, the order
+// disposition fields, and the immutable audit record commit in ONE Firestore
+// transaction. If currentDisposition == requestedDisposition the operation
+// returns alreadyRecorded with NO writes, so repeated submissions never
+// create duplicate audit records. A disposition correction (DONATED →
+// DISPOSED, §12) appends a NEW audit record while the order reflects the
+// latest value.
+
+exports.setFoodDisposition = onCall(
+  {
+    authPolicy: "required",
+    enforceAppCheck: true,
+    region: "us-central1",
+  },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError(
+        "unauthenticated",
+        "You must be signed in to record a food disposition."
+      );
+    }
+
+    // The caller's identity comes from the verified ID token. The caller
+    // DOCUMENT (role / ACTIVE status / cafe scope) is re-read INSIDE the
+    // transaction immediately before the write, so authorization is atomic
+    // with the disposition update: a concurrent suspension, role change, or
+    // cafe reassignment aborts the transaction and the retry re-reads the
+    // fresh caller state instead of slipping a stale authorization through
+    // (AGENTS.md §7 — never trust a pre-transaction snapshot).
+    const callerUid = request.auth.uid;
+
+    // ── Request envelope validation ─────────────────────────────────
+    const data = request.data;
+    if (
+      data === null ||
+      typeof data !== "object" ||
+      Array.isArray(data) ||
+      JSON.stringify(data).length > 4096
+    ) {
+      throw new HttpsError("invalid-argument", "Invalid request payload.");
+    }
+    const envelopeKeys = Object.keys(data);
+    const validKeys = envelopeKeys.filter(
+      (k) => k === "orderId" || k === "disposition" || k === "note"
+    );
+    if (validKeys.length !== envelopeKeys.length || envelopeKeys.length === 0) {
+      throw new HttpsError(
+        "invalid-argument",
+        "Request payload must contain only orderId, disposition, and an optional note."
+      );
+    }
+
+    const { orderId, disposition, note } = data;
+    if (
+      !orderId ||
+      typeof orderId !== "string" ||
+      orderId.length === 0 ||
+      orderId.length > 128 ||
+      !/^[A-Za-z0-9_-]+$/.test(orderId)
+    ) {
+      throw new HttpsError("invalid-argument", "orderId is invalid.");
+    }
+
+    // Controlled disposition only (§2) — no free-form values.
+    if (!FOOD_DISPOSITIONS.includes(disposition)) {
+      throw new HttpsError(
+        "invalid-argument",
+        "disposition must be one of the predefined food dispositions."
+      );
+    }
+    // UNRESOLVED is the default state written by the no-show engine, never
+    // an admin-chosen target (§3).
+    if (disposition === "UNRESOLVED") {
+      throw new HttpsError(
+        "invalid-argument",
+        "Choose an outcome for the food; UNRESOLVED is the default state."
+      );
+    }
+
+    // Optional admin note: trimmed, max 200 chars, no HTML/scripts/URLs
+    // (§11). The rules language cannot express this, so the callable enforces
+    // it server-side before anything is written.
+    let dispositionNote = null;
+    if (note !== undefined && note !== null) {
+      if (typeof note !== "string") {
+        throw new HttpsError("invalid-argument", "note is invalid.");
+      }
+      const trimmed = note.trim();
+      if (trimmed.length > 200) {
+        throw new HttpsError(
+          "invalid-argument",
+          "note must be 200 characters or fewer."
+        );
+      }
+      if (/<[a-z][^>]*>/i.test(trimmed) || /https?:\/\//i.test(trimmed)) {
+        throw new HttpsError(
+          "invalid-argument",
+          "note cannot contain HTML, scripts, or URLs."
+        );
+      }
+      dispositionNote = trimmed;
+    }
+
+    const orderRef = db.collection("orders").doc(orderId);
+    const callerRef = db.collection("users").doc(callerUid);
+
+    try {
+      let alreadyRecorded = false;
+      await db.runTransaction(async (transaction) => {
+        // Reset on every attempt so a transaction retry never inherits the
+        // previous attempt's flag (the same pattern as the notification
+        // repository's created flag).
+        alreadyRecorded = false;
+
+        // ── Caller authorization read INSIDE the transaction (§7): the
+        //    caller document is re-read with the transaction, so the
+        //    existence / role / ACTIVE / cafe checks below are atomic with
+        //    the write. If the caller document changes concurrently
+        //    (suspension, role change, cafe reassignment), Firestore aborts
+        //    the transaction and the retry re-reads the fresh caller state.
+        const callerSnapshot = await transaction.get(callerRef);
+        const callerData = callerSnapshot.data();
+        if (!callerSnapshot.exists || !callerData) {
+          throw new HttpsError(
+            "permission-denied",
+            "Account not found. Please contact support."
+          );
+        }
+        if (callerData.role !== "admin") {
+          throw new HttpsError(
+            "permission-denied",
+            "Only authorized cafe administrators can record a food disposition."
+          );
+        }
+        if (callerData.accountStatus !== "ACTIVE") {
+          throw new HttpsError(
+            "permission-denied",
+            "Your account is suspended and cannot record a food disposition."
+          );
+        }
+        const callerCafeName =
+          typeof callerData.cafeName === "string"
+            ? callerData.cafeName.trim()
+            : "";
+
+        const orderSnapshot = await transaction.get(orderRef);
+        if (!orderSnapshot.exists) {
+          throw new HttpsError("not-found", "Order not found.");
+        }
+        const orderData = orderSnapshot.data();
+
+        // ── Cafe authorization (§7): derived from the order's
+        //    server-authoritative cafes list and the transaction-fresh
+        //    caller cafeName — never a client role claim. An order
+        //    EXPLICITLY tagged with the UNASSIGNED sentinel (genuinely
+        //    cafeless) is served by any active admin; an absent/empty
+        //    `cafes` value is unscoped legacy data and is denied (mirrors
+        //    adminServesOrder()).
+        const orderCafes = Array.isArray(orderData.cafes)
+          ? orderData.cafes.filter((c) => typeof c === "string")
+          : [];
+        const isCafelessOrder =
+          orderCafes.length > 0 &&
+          orderCafes.every((c) => c === UNASSIGNED_CAFE);
+        if (
+          !isCafelessOrder &&
+          (callerCafeName.length === 0 ||
+            !orderCafes.includes(callerCafeName))
+        ) {
+          throw new HttpsError(
+            "permission-denied",
+            "You are not authorized to manage orders for this cafe."
+          );
+        }
+
+        // ── Eligibility (§4): only NO_SHOW orders may receive a food
+        //    disposition. PENDING/ACCEPTED/PREPARING/READY/COLLECTED/
+        //    CANCELLED/REJECTED are all rejected.
+        const canonicalStatus =
+          orderData.status === "COLLECTED" ? "collected" : orderData.status;
+        if (canonicalStatus !== "no_show") {
+          throw new HttpsError(
+            "failed-precondition",
+            "Only no-show orders can have a food disposition."
+          );
+        }
+
+        // ── Idempotency (§16): same disposition submitted twice → no
+        //    writes, no duplicate audit record. Read inside the transaction,
+        //    so a concurrent duplicate that committed first is seen here.
+        if (orderData.foodDisposition === disposition) {
+          alreadyRecorded = true;
+          return;
+        }
+
+        const now = admin.firestore.Timestamp.now();
+        const studentId = orderData.studentId || orderData.userId;
+
+        // ── One order update (§19): compact disposition record on the
+        //    order. The note always describes the CURRENT disposition: when
+        //    the admin supplies one it is written, otherwise a stale note
+        //    from the previous disposition is cleared so the order can never
+        //    display a note that contradicts the recorded outcome (e.g.
+        //    "Disposed" + "Donated to support staff"). The prior note
+        //    remains in the immutable audit trail.
+        transaction.update(orderRef, {
+          foodDisposition: disposition,
+          foodDispositionAt: now,
+          foodDispositionBy: callerUid,
+          foodDispositionNote: dispositionNote !== null
+            ? dispositionNote
+            : admin.firestore.FieldValue.delete(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        // ── Immutable audit record (§13-§14). Auto-ID: dispositions can be
+        //    corrected (DONATED → DISPOSED, §12), so each change is its own
+        //    append-only record; the idempotency check above guarantees no
+        //    duplicate record when the disposition is unchanged.
+        transaction.set(db.collection("audit_logs").doc(), {
+          action: "FOOD_DISPOSITION",
+          orderId: orderRef.id,
+          studentId: studentId || null,
+          // The acting admin's cafe name (may be empty for a genuinely
+          // cafeless order served by any admin) — adminCanReadAudit() treats
+          // a cafeless record (empty/missing cafeId) as readable by any
+          // admin, mirroring adminServesOrder(). Never null: a null cafeId
+          // would make the record's read rule evaluate to false for everyone.
+          cafeId: callerCafeName,
+          adminId: callerUid,
+          previousDisposition: orderData.foodDisposition || "UNRESOLVED",
+          newDisposition: disposition,
+          note: dispositionNote,
+          timestamp: now,
+        });
+      });
+
+      if (alreadyRecorded) {
+        console.log(
+          `[FoodDisposition] Order ${orderId} disposition unchanged ` +
+          `(${disposition}) — already recorded`
+        );
+        return { success: true, alreadyRecorded: true, orderId };
+      }
+
+      console.log(
+        `[FoodDisposition] Order ${orderId} disposition recorded: ${disposition}`
+      );
+      return { success: true, alreadyRecorded: false, orderId };
+    } catch (err) {
+      if (err instanceof HttpsError) throw err;
+      console.error("[setFoodDisposition] Error:", err);
+      throw new HttpsError(
+        "internal",
+        "Could not record the food disposition. Please try again."
       );
     }
   },
