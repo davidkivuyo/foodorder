@@ -124,20 +124,27 @@ void main() {
       final listFn = anchoredSlice(
         fn,
         'const FOOD_DISPOSITIONS =',
-        length: 400,
+        endAnchor: '];',
         what: 'FOOD_DISPOSITIONS list',
       );
-      for (final d in [
-        'UNRESOLVED',
-        'RESOLD',
-        'DISCOUNTED',
-        'DONATED',
-        'STAFF_USE',
-        'DISPOSED',
-        'OTHER',
-      ]) {
-        expect(listFn, contains('"$d"'));
-      }
+      final declared = RegExp(
+        r'"([A-Z_]+)"',
+      ).allMatches(listFn).map((m) => m.group(1)!).toSet();
+      expect(
+        declared,
+        equals(const {
+          'UNRESOLVED',
+          'RESOLD',
+          'DISCOUNTED',
+          'DONATED',
+          'STAFF_USE',
+          'DISPOSED',
+          'OTHER',
+        }),
+        reason:
+            'declared FOOD_DISPOSITIONS must equal the Phase H §2 set '
+            'exactly — extra or missing entries must fail',
+      );
     });
 
     test('the callable enforces admin-only authorization (§7)', () {
@@ -149,8 +156,14 @@ void main() {
       );
       expect(callable, contains('callerData.role !== "admin"'));
       expect(callable, contains('accountStatus !== "ACTIVE"'));
-      expect(callable, contains('not authorized to manage orders'));
       expect(callable, contains('callerCafeName'));
+      expect(
+        callable,
+        contains('assertAdminServesOrder(callerCafeName, orderData)'),
+        reason:
+            'per-cafe scope is enforced through the shared '
+            'assertAdminServesOrder helper (§7)',
+      );
     });
 
     test('the callable enforces NO_SHOW-only eligibility and idempotency '
