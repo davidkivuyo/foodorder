@@ -387,7 +387,7 @@ This project includes an `AGENTS.md` file that defines strict rules for AI codin
 
 ---
 
-More on [Project official Documentation](DOCUMENTATION.md)
+See the [Project official Documentation](DOCUMENTATION.md)
 
 ---
 

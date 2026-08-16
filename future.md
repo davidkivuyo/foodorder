@@ -3,14 +3,6 @@
 # TODOS
 1. apply ai to view and monitor images uploaded to be for food only no harm or dangerous materials
 
-1. does the update system allow v1.8.0-dev to v1.0.0 
-
-2. look for any problem with the notification system
-
-2. make sure there is consistency in edite review and write a review
-
-2. Making sure that order can be extended only once by a user
-
 6. create a new branch to add restaurants other than university ones
 * Their menu items will be able to link to whatsapp easily
 * Or start a messaging platform inside the app
