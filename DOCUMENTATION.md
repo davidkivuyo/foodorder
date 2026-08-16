@@ -2,6 +2,46 @@
 
 ---
 
+## Order Lifecycle
+
+```
+Student places order
+        │
+        ▼
+    ┌────────┐
+    │PENDING │ ← Awaiting admin review
+    └───┬────┘
+        │ Admin accepts
+        ▼
+    ┌────────┐
+    │ACCEPTED│
+    └───┬────┘
+        │ Admin starts cooking
+        ▼
+    ┌──────────┐
+    │PREPARING │
+    └───┬──────┘
+        │ Admin marks "Ready for Pickup"
+        │ (only updates status field)
+        ▼
+    ┌───────┐ ── Cloud Function triggers ──→ writes readyAt,
+    │ READY │                                pickupDeadline,
+    └───┬───┘                                deadlineStatus = ACTIVE
+        │
+        ├── Student collects ──→ COLLECTED (deadlineStatus = COLLECTED)
+        │
+        ├── Student extends pickup ──→ +10 min to pickupDeadline (once per order)
+        │
+        └── Deadline expires ──→ NO_SHOW (deadlineStatus = EXPIRED)
+                                  └──→ Student notified (ORDER_NO_SHOW)
+
+COLLECTED and NO_SHOW are the only reliability-eligible outcomes:
+                COLLECTED ──→ reliability +collected, +eligible
+                NO_SHOW   ──→ reliability +no-show, +eligible
+                (cancelled / rejected / never-ready orders are never counted)
+```
+---
+
 ## Project Structure — Student App
 
 ```
@@ -423,3 +463,65 @@ To ensure genuine feedback and maintain quality standards, CampusBite features a
 3. **One Review Per Meal:** A student has at most one live review per food item. Once a meal is reviewed, the app always offers "Edit Review" (never "Write a Review") and `ReviewService.createReview` refuses to create a second live review for the same meal via a different order, so `reviewCount` and the rating distribution can never be inflated by duplicates.
 4. **Firestore Enforcement:** Rules explicitly prevent writing rating values outside the 1–5 range, or writing reviews for items the user has not collected.
 5. **Cafeteria Quality Control:** The average rating of each item is dynamically visible to help cafeteria staff maintain standard dining options.
+
+---
+
+---
+
+## Cloud Functions
+
+Located in `functions/index.js` (shared with the admin app).
+
+### 1. `onOrderStatusChanged` (Firestore Trigger)
+
+### 2. `deleteCloudinaryImage` (Callable Function)
+
+### 3. `processExpiredPickups` (Scheduled — every 5 minutes)
+
+### 4. `extendPickupDeadline` (Callable Function)
+
+### 5. `excuseNoShow` (Callable — Phase G admin intervention)
+
+### 6. `reactivateStudent` (Callable — admin account action)
+
+### 7. `setFoodDisposition` (Callable — Phase H food waste management)
+
+### Deploying Functions
+
+Write your firebase.rules and deploy them. It is added in .gitignore by default so consider that.
+
+```bash
+npx firebase-tools deploy --only functions
+```
+
+Cloudinary api:
+
+Get the api keys on your cloudinary account or any other storage providers.
+
+---
+
+## Firestore Data Schema
+
+## Seed Required Collections
+
+Create these collections manually in the Firestore Console (or through the admin app):
+
+| Collection | Required Documents |
+|---|---|
+| `categories` | `{ name: "Breakfast", order: 1 }`, `{ name: "Lunch", order: 2 }`, etc. |
+| `cafes` | `{ name: "Main Cafeteria", location: "Building A" }` |
+| `section` | `{ name: "campus_favourite" }` |
+
+## Collections
+
+- **`categories`** — `{ name, order }`
+- **`food_items`** — `{ title, subtitle, description, image, price, rating, category, availableCafes, section, time, available, featured, quantity, dietaryTags, keywords, searchPrefixes, createdAt, updatedAt }`
+- **`orders`** — `{ orderId, userId, userName, items, totalPrice, status, cafe, cafeId, cafes, cafeLocation, distanceMeters, distanceCalculated, pickupWindowMinutes, readyAt, pickupDeadline, deadlineStatus, noShowProcessed, noShowAt, noShowExcused, excusedAt, excusedBy, excuseReason, excuseNote, expiredAt, deadlineExtended, extensionAt, foodDisposition, foodDispositionAt, foodDispositionBy, foodDispositionNote, createdAt, updatedAt }`
+- **`users`** — `{ fullName, email, role, strikeCount, accountStatus, lastPardonAt, createdAt, updatedAt, pickupReliability }`
+- **`users/{userId}/cart`** — `{ foodItemId, quantity, cafe }`
+- **`users/{userId}/plans`** — `{ title, note, totalAmount, plannedDate, createdAt, items }`
+- **`notifications`** — `{ recipientId, recipientRole, type, title, message, orderId, eventId, deepLink, metadata, read, readAt, deleted, deletedAt, createdAt, createdBy }`
+- **`audit_logs`** -- `{action, studentId, orderId, adminId, cafeId, previousStrikeCount, newStrikeCount, previousStrike, newStrike, reason, note, timestamp}` — Phase H FOOD_DISPOSITION records carry `{action, orderId, studentId, cafeId, adminId, previousDisposition, newDisposition, note, timestamp}`
+- **`cafes`** — `{ name, location, geopoint }`
+- **`section`** — `{ name }`
+- **`reviews`** — `{ userId, text, rating, ... }`

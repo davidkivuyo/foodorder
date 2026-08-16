@@ -26,8 +26,6 @@ This Project code changes must be reviewed by:
   - [2. Firebase Setup](#2-firebase-setup)
   - [3. Install Dependencies](#3-install-dependencies)
   - [4. Run the App](#4-run-the-app)
-- [Cloud Functions](#cloud-functions)
-- [Firestore Data Schema](#firestore-data-schema)
 - [Firestore Security Rules](#firestore-security-rules)
 - [App Navigation](#app-navigation)
 - [Key Features](#key-features)
@@ -186,16 +184,6 @@ create your firebase rules and deploy them
 npx firebase-tools deploy --only functions
 ```
 
-#### e) Seed Required Collections
-
-Create these collections manually in the Firestore Console (or through the admin app):
-
-| Collection | Required Documents |
-|---|---|
-| `categories` | `{ name: "Breakfast", order: 1 }`, `{ name: "Lunch", order: 2 }`, etc. |
-| `cafes` | `{ name: "Main Cafeteria", location: "Building A" }` |
-| `section` | `{ name: "campus_favourite" }` |
-
 ### 3. Install Dependencies
 
 ```bash
@@ -220,55 +208,6 @@ flutter run
 ```bash
 flutter run -d chrome
 ```
----
-
-## Cloud Functions
-
-Located in `functions/index.js` (shared with the admin app).
-
-### 1. `onOrderStatusChanged` (Firestore Trigger)
-
-### 2. `deleteCloudinaryImage` (Callable Function)
-
-### 3. `processExpiredPickups` (Scheduled — every 5 minutes)
-
-### 4. `extendPickupDeadline` (Callable Function)
-
-### 5. `excuseNoShow` (Callable — Phase G admin intervention)
-
-### 6. `reactivateStudent` (Callable — admin account action)
-
-### 7. `setFoodDisposition` (Callable — Phase H food waste management)
-
-### Deploying Functions
-
-Write your firebase.rules and deploy them. It is added in .gitignore by default so consider that.
-
-```bash
-npx firebase-tools deploy --only functions
-```
-
-Cloudinary api:
-
-Get the api keys on your cloudinary account or any other storage providers.
-
----
-
-## Firestore Data Schema
-
-## Collections
-
-- **`categories`** — `{ name, order }`
-- **`food_items`** — `{ title, subtitle, description, image, price, rating, category, availableCafes, section, time, available, featured, quantity, dietaryTags, keywords, searchPrefixes, createdAt, updatedAt }`
-- **`orders`** — `{ orderId, userId, userName, items, totalPrice, status, cafe, cafeId, cafes, cafeLocation, distanceMeters, distanceCalculated, pickupWindowMinutes, readyAt, pickupDeadline, deadlineStatus, noShowProcessed, noShowAt, noShowExcused, excusedAt, excusedBy, excuseReason, excuseNote, expiredAt, deadlineExtended, extensionAt, foodDisposition, foodDispositionAt, foodDispositionBy, foodDispositionNote, createdAt, updatedAt }`
-- **`users`** — `{ fullName, email, role, strikeCount, accountStatus, lastPardonAt, createdAt, updatedAt, pickupReliability }`
-- **`users/{userId}/cart`** — `{ foodItemId, quantity, cafe }`
-- **`users/{userId}/plans`** — `{ title, note, totalAmount, plannedDate, createdAt, items }`
-- **`notifications`** — `{ recipientId, recipientRole, type, title, message, orderId, eventId, deepLink, metadata, read, readAt, deleted, deletedAt, createdAt, createdBy }`
-- **`audit_logs`** -- `{action, studentId, orderId, adminId, cafeId, previousStrikeCount, newStrikeCount, previousStrike, newStrike, reason, note, timestamp}` — Phase H FOOD_DISPOSITION records carry `{action, orderId, studentId, cafeId, adminId, previousDisposition, newDisposition, note, timestamp}`
-- **`cafes`** — `{ name, location, geopoint }`
-- **`section`** — `{ name }`
-- **`reviews`** — `{ userId, text, rating, ... }`
 
 ---
 
@@ -341,60 +280,15 @@ To minimize food waste from abandoned orders while keeping pickup schedules fair
 
 ---
 
-## Order Lifecycle
-
-```
-Student places order
-        │
-        ▼
-    ┌────────┐
-    │PENDING │ ← Awaiting admin review
-    └───┬────┘
-        │ Admin accepts
-        ▼
-    ┌────────┐
-    │ACCEPTED│
-    └───┬────┘
-        │ Admin starts cooking
-        ▼
-    ┌──────────┐
-    │PREPARING │
-    └───┬──────┘
-        │ Admin marks "Ready for Pickup"
-        │ (only updates status field)
-        ▼
-    ┌───────┐ ── Cloud Function triggers ──→ writes readyAt,
-    │ READY │                                pickupDeadline,
-    └───┬───┘                                deadlineStatus = ACTIVE
-        │
-        ├── Student collects ──→ COLLECTED (deadlineStatus = COLLECTED)
-        │
-        ├── Student extends pickup ──→ +10 min to pickupDeadline (once per order)
-        │
-        └── Deadline expires ──→ NO_SHOW (deadlineStatus = EXPIRED)
-                                  └──→ Student notified (ORDER_NO_SHOW)
-
-COLLECTED and NO_SHOW are the only reliability-eligible outcomes:
-                COLLECTED ──→ reliability +collected, +eligible
-                NO_SHOW   ──→ reliability +no-show, +eligible
-                (cancelled / rejected / never-ready orders are never counted)
-```
-
----
-
 ## Meal Planning & Reordering System
 
 CampusBite provides students with tools to plan meals in advance and quickly repeat past orders. These features improve convenience and decrease checkout friction, especially during busy campus hours.
-
-More on [Documentation](DOCUMENTATION.md##Meal-Planning-and-reordering)
 
 ---
 
 ## Pickup Extension & No-Show Handling
 
 CampusBite keeps pickup schedules fair and prevents food waste by enforcing server-authoritative deadlines, giving students a one-time grace action, and notifying them when an order is missed.
-
-More on [Documentation](DOCUMENTATION.md)
 
 ---
 
@@ -403,8 +297,6 @@ More on [Documentation](DOCUMENTATION.md)
 CampusBite features a scalable, production-ready notification platform that decouples notification delivery from core business logic.
 
 > **Where notifications are created:** In production, notification documents are written **server-side** by Cloud Functions (`createNotification` in `functions/index.js`) using the Admin SDK, which bypasses Firestore client rules. `NotificationService.dart` is the **client-side helper** — it mirrors the same idempotent creation logic for parity/future use and powers all read, unread-count, and read/delete operations in the apps. The client never writes notifications directly in the current flows.
-
-More on [Documentation](DOCUMENTATION.md)
 
 ---
 
@@ -492,6 +384,10 @@ This project includes an `AGENTS.md` file that defines strict rules for AI codin
 | Countdown timer shows wrong time | Ensure device clock is roughly accurate; the countdown uses `pickupDeadline - DateTime.now()` |
 | Build fails after `git pull` | Run `flutter pub get` and `flutter clean` |
 | Emulator not connecting to Firestore | Check internet connection and Firebase project configuration |
+
+---
+
+More on [Project official Documentation](DOCUMENTATION.md)
 
 ---
 
