@@ -3,6 +3,8 @@
 # TODOS
 1. apply ai to view and monitor images uploaded to be for food only no harm or dangerous materials
 
+1. does the update system allow v1.8.0-dev to v1.0.0 
+
 2. look for any problem with the notification system
 
 2. make sure there is consistency in edite review and write a review

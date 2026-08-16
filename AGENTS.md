@@ -145,184 +145,133 @@ Do not remove existing comments unless they are directly related to what you are
 
 # Current Phase
 
-# PHASE G — ADMIN INTERVENTION
+# PHASE H — CAFE FOOD WASTE MANAGEMENT
 
 ## OBJECTIVE
 
-Implement Phase G of the CampusBite Pickup Reliability System.
+Implement Phase H of the CampusBite Pickup Reliability System.
 
 Previous phases completed:
 
 ✓ Phase A — No-show foundation
-✓ Phase B — Pickup Reliability calculation
+✓ Phase B — Pickup Reliability
 ✓ Phase B.1 — 2-minute order cancellation
 ✓ Phase C — Grace period & automatic NO_SHOW
 ✓ Phase D — Student reliability experience
 ✓ Phase E — Graduated ordering restrictions
 ✓ Phase F — Reliability recovery
+✓ Phase G — Admin intervention / Excuse No-show
 
-Phase G introduces controlled administrator intervention.
+Phase H introduces Cafe Food Waste Management.
 
-The objective is to allow authorized cafe administrators to correct legitimate exceptional cases without recreating the old strike/pardon system.
+The purpose of this phase is to help cafe administrators record and manage what happens to food from uncollected NO_SHOW orders.
 
-Examples of legitimate exceptions:
+This phase must:
 
-- Student had an emergency.
-- Cafe instructed the student not to collect.
-- Cafe was unable to fulfill the order.
-- System malfunction caused an incorrect NO_SHOW.
-- Other documented exceptional circumstances.
+- identify uncollected food
+- let authorized cafe admins record its disposition
+- preserve the original order history
+- prevent duplicate disposition records
+- support future food-waste analytics
+- minimize Firestore reads and writes
+- avoid exposing unnecessary student information
+- avoid changing the reliability system
 
-The admin must NOT be able to arbitrarily set a student's reliability score.
+IMPORTANT:
 
-The admin must act on a specific order/event.
+A NO_SHOW does NOT automatically mean FOOD WASTE.
 
-The reliability engine remains authoritative.
+The cafe decides what happened to the food.
 
 ---
 
 # 1. CORE PRINCIPLE
 
-Admins can:
+The order lifecycle answers:
 
-EXCUSE a specific NO_SHOW
+"What happened to the order?"
 
-but cannot:
+Food disposition answers:
 
-- set reliabilityScore directly
-- set collectionRate directly
-- set noShowOrders directly
-- set restrictionLevel directly
-- set arbitrary recovery points
-- erase the original order
-- rewrite historical timestamps
+"What happened to the prepared food?"
 
-An administrative intervention is a correction to an event.
-
-The reliability engine then recalculates the affected metrics.
-
----
-
-# 2. AUTHORIZATION
-
-Only authorized cafe administrators may perform intervention.
-
-Before every intervention verify:
-
-- Firebase Authentication session exists.
-- User has admin role.
-- Admin account is active.
-- Admin is authorized to manage the cafe associated with the order.
-- Target order exists.
-
-Do NOT trust the Flutter UI role alone.
-
-Do NOT rely on hidden buttons as authorization.
-
-The backend must enforce authorization.
-
----
-
-# 3. CAFE OWNERSHIP
-
-An admin should normally be allowed to intervene only on orders belonging to their authorized cafe.
+Keep these concepts separate.
 
 Example:
 
-Admin for:
+Order:
 
-Cafe A
+NO_SHOW
 
-must NOT excuse:
+Food disposition:
 
-Cafe B
+DONATED
 
-orders unless their role explicitly grants cross-cafe administrative access.
+The order remains:
 
-Use the existing cafe/admin authorization model.
+NO_SHOW
 
-Do not invent a second role system.
+Do NOT change it to:
 
----
+COLLECTED
 
-# 4. WHAT AN ADMIN MAY DO
-
-For this phase implement:
-
-## Excuse No-Show
-
-This changes the administrative treatment of a specific no-show.
-
-The admin selects:
-
-Order
-
-↓
-
-Excuse No-Show
-
-↓
-
-Select reason
-
-↓
-
-Optional note
-
-↓
-
-Confirm
-
-↓
-
-Backend validates
-
-↓
-
-Reliability recalculates
-
-↓
-
-Audit log created
+Do NOT change the student's reliability based on food disposition.
 
 ---
 
-# 5. DO NOT CALL IT "REMOVE STRIKE"
+# 2. SUPPORTED FOOD DISPOSITIONS
 
-There are no strikes.
+Create the following controlled disposition types:
 
-Use product language such as:
+UNRESOLVED
 
-- Excuse No-Show
-- Mark as Excused
-- Correct No-Show
+RESOLD
 
-Do NOT use:
+DISCOUNTED
 
-- Remove Strike
-- Pardon Strike
-- Strike Removal
-- Clear Strike
+DONATED
 
-The old strike engine has been removed.
+STAFF_USE
+
+DISPOSED
+
+OTHER
+
+Use enums/constants.
+
+Do not use arbitrary free-form status strings throughout the codebase.
 
 ---
 
-# 6. ELIGIBLE ORDERS
+# 3. DEFAULT STATE
 
-An order can be excused only if:
+When an order becomes:
+
+NO_SHOW
+
+initial food disposition should be:
+
+UNRESOLVED
+
+unless the existing system already determines a valid disposition.
+
+Do not automatically mark:
+
+DISPOSED
+
+because the food may still be recoverable.
+
+---
+
+# 4. ELIGIBILITY
+
+Only orders with:
 
 status == NO_SHOW
 
-and:
+may receive a food disposition.
 
-noShowAt exists
-
-and:
-
-the order has not already been excused.
-
-Do not allow excusing:
+Do not create waste records for:
 
 PENDING
 
@@ -336,345 +285,133 @@ COLLECTED
 
 CANCELLED
 
-Only NO_SHOW is eligible.
+REJECTED
 
 ---
 
-# 7. EXCUSE REASONS
+# 5. FOOD DISPOSITION DATA
 
-Provide predefined reasons.
+Prefer storing a compact disposition record on the order if only one final disposition is required.
 
-Recommended initial choices:
+Recommended fields:
 
-- Student reported emergency
-- Cafe unable to fulfill order
-- System/application issue
-- Pickup information was incorrect
-- Admin-approved exception
-- Other
-
-Do not allow arbitrary uncontrolled categories.
-
-If `Other` is selected, a non-empty explanatory note is required (see §8).
-
----
-
-# 8. OPTIONAL ADMIN NOTE
-
-Allow a short administrative note.
-
-Maximum:
-
-200 characters.
-
-Do not allow:
-
-HTML
-
-scripts
-
-URLs
-
-massive payloads
-
-Use the application's existing input sanitization and validation mechanisms.
-
-Do not expose internal notes publicly.
-
----
-
-# 9. DATA MODEL
-
-Do NOT delete the original NO_SHOW data.
-
-The order should preserve:
-
-status = NO_SHOW
-
-noShowAt
-
-The intervention should add fields such as:
-
-noShowExcused
-excusedAt
-excusedBy
-excuseReason
-excuseNote
-
-Use the project's existing naming conventions.
-
-Recommended conceptual structure:
-
-{
-  status: "NO_SHOW",
-
-  noShowAt: Timestamp,
-
-  noShowExcused: true,
-
-  excusedAt: Timestamp,
-
-  excusedBy: adminUid,
-
-  excuseReason: "Student reported emergency",
-
-  excuseNote: "Student informed cafe after emergency."
-}
-
-Do not duplicate existing fields.
-
----
-
-# 10. IMPORTANT — DO NOT CHANGE ORDER STATUS
-
-Excusing a no-show MUST NOT change:
-
-NO_SHOW → COLLECTED
-
-That would create false operational history.
-
-The food was not actually collected.
-
-The order remains:
-
-NO_SHOW
-
-but becomes:
-
-EXCUSED
-
-for reliability purposes.
-
-Use a separate boolean/state field rather than rewriting the historical order outcome.
-
----
-
-# 11. RELIABILITY EFFECT
-
-An excused NO_SHOW must no longer count as an unexcused failed pickup.
-
-Conceptually:
-
-Before:
-
-eligibleOrders += 1
-noShowOrders += 1
-
-After excusal:
-
-exclude that event from reliability failure calculations.
-
-The exact recalculation must use the existing Phase B architecture.
-
-Do NOT simply subtract 1 from:
-
-reliabilityScore
-
-or:
-
-noShowOrders
-
-inside the admin app.
-
----
-
-# 12. RECALCULATION STRATEGY
-
-The backend must recalculate the reliability summary after an excuse.
-
-Do NOT make the Flutter app calculate the corrected score.
-
-Do NOT query the entire order history from the Flutter app.
-
-Reuse the existing reliability service/processor.
-
----
-
-# 13. RECENT HISTORY CORRECTION
-
-If the excused order exists in:
-
-recentPickupHistory
-
-it must be removed or converted so that it no longer counts as:
-
-NO_SHOW
-
-Do not replace it with:
-
-COLLECTED
-
-because the order was not collected.
-
-The preferred representation is:
-
-EXCUSED
-
-or omission from the reliability event window.
-
-Use whichever approach best matches the existing Phase B implementation.
-
-The important rule is:
-
-EXCUSED must not count as success or failure.
-
----
-
-# 14. LIFETIME METRIC CORRECTION
-
-After excuse:
-
-eligibleOrders
-
-must represent only eligible unexcused pickup outcomes according to the established reliability model.
-
-noShowOrders
-
-must exclude the excused event.
-
-collectedOrders
-
-must remain unchanged.
-
-Do not incorrectly turn:
-
-NO_SHOW → COLLECTED.
-
----
-
-# 15. RESTRICTION RECALCULATION
-
-After reliability recalculation:
-
-recalculate:
-
-reliabilityScore
-
-reliabilityStatus
-
-restrictionLevel
-
-Use existing Phase B + Phase E logic.
+foodDisposition
+foodDispositionAt
+foodDispositionBy
+foodDispositionNote
 
 Example:
 
-Before:
+{
+    "status": "NO_SHOW",
+    "foodDisposition": "DONATED",
+    "foodDispositionAt": Timestamp,
+    "foodDispositionBy": "adminUid",
+    "foodDispositionNote": "Donated to campus support staff."
+}
 
-reliabilityScore = 40
-restrictionLevel = LIMITED
+Reuse existing order fields if equivalent fields already exist.
 
-After excusing a no-show:
-
-reliabilityScore = 55
-restrictionLevel = NORMAL
-
-The change should happen automatically if the corrected reliability crosses a threshold.
-
-Do not manually set:
-
-restrictionLevel = NORMAL
+Do not create duplicate structures.
 
 ---
 
-# 16. ATOMICITY
+# 6. DO NOT STORE STUDENT LOCATION
 
-The intervention must be atomic.
+Food waste management must not introduce any location storage.
 
-The following must not become partially updated:
+Do not copy:
 
-1. Order excuse state
-2. Reliability summary
-3. Recent history
-4. Restriction level
-5. Audit log
-6. Notification outbox event — deterministic document keyed `NO_SHOW_EXCUSED_{orderId}`
+studentLocation
 
-Use a Firestore transaction or appropriate backend atomic mechanism. All six
-records must commit in ONE transaction. FCM push delivery is NEVER performed
-inside the transaction or inline in the callable: it happens exclusively
-through the `onNewNotification` Firestore trigger, which fires only after the
-notification document commits (an idempotent post-commit worker). The outbox
-event document ID is derived deterministically from the eventId, so a retried
-or redelivered call maps to the same document and can never append a duplicate.
+coordinates
 
-If the operation fails:
+address
 
-none of the changes should be committed.
+device location
+
+into waste records.
+
+The cafe only needs operational order information.
 
 ---
 
-# 17. IDEMPOTENCY
+# 7. ADMIN AUTHORIZATION
 
-An already excused order cannot be excused again.
+Only authorized cafe administrators can set or change a food disposition.
 
-If:
+Before allowing a disposition:
 
-noShowExcused == true
+1. Authenticate admin.
+2. Verify admin role.
+3. Verify admin account is active.
+4. Verify admin is authorized for the order's cafe.
+5. Verify order.status == NO_SHOW.
 
-return:
+Do not trust the Flutter UI.
 
-ALREADY_EXCUSED
+Do not rely only on hiding buttons.
 
-or an equivalent safe business result.
-
-Do not create another audit record.
-
-Do not create another notification outbox event (the deterministic
-`NO_SHOW_EXCUSED_{orderId}` document ID plus the in-transaction read of
-`noShowExcused` prevents any duplicate).
-
-Do not recalculate reliability unnecessarily.
+Backend validation is mandatory.
 
 ---
 
-# 18. RACE CONDITION
+# 8. STUDENTS MUST NOT MODIFY DISPOSITION
 
-Handle:
+Students may:
 
-Admin A excuses order
+READ their own order status if the existing product experience requires it.
 
-while:
+Students must NOT:
 
-Admin B excuses same order
+- set foodDisposition
+- change foodDisposition
+- mark food as donated
+- mark food as disposed
+- edit cafe waste notes
 
-Only one intervention may succeed.
-
-The second request must detect:
-
-noShowExcused == true
-
-and stop.
-
-Do not create duplicate corrections.
-
-Because the order update, reliability correction, audit record, and
-notification outbox event commit in ONE transaction, the losing request
-aborts before writing ANY of them — no duplicate correction, audit record, or
-outbox event can be committed by the loser.
+All disposition changes belong to authorized cafe admins/backend operations.
 
 ---
 
-# 19. ADMIN UI
+# 9. ADMIN UI
 
-In the Admin App, on the student/order management screen:
+In the Admin Order Details screen:
 
-For an eligible NO_SHOW order display:
+When:
 
-Excuse No-Show
+status == NO_SHOW
 
-Do not display the option for other statuses.
+show:
+
+Food Disposition
+
+If unresolved:
+
+"Record food outcome"
+
+Available actions:
+
+- Resold
+- Discounted
+- Donated
+- Staff Use
+- Disposed
+- Other
+
+Do not show this control for active or completed collected orders.
 
 ---
 
-# 20. CONFIRMATION DIALOG
+# 10. CONFIRMATION
 
-Before intervention display:
+Before saving a final disposition, require confirmation.
 
-Excuse this no-show?
+Example:
 
-Explain:
+"Record food as donated?"
 
-"This removes this no-show from the student's pickup reliability calculation. The original order history will remain unchanged."
+"The order will remain marked as No-show. This only records what happened to the prepared food."
 
 Buttons:
 
@@ -682,29 +419,67 @@ Cancel
 
 Confirm
 
-Do not execute immediately without confirmation.
+Do not silently save an irreversible operational action.
 
 ---
 
-# 21. REASON SELECTION
+# 11. OPTIONAL NOTE
 
-Before confirmation require:
+Allow an optional admin note.
 
-Excuse Reason
+Maximum:
 
-Use a dropdown/bottom-sheet selection.
+200 characters.
 
-Do not default silently to:
+Examples:
 
-Other
+"Donated to campus support staff."
 
-unless the UI explicitly allows it.
+"Sold at 50% discount."
+
+"Food was disposed because it was no longer safe to serve."
+
+Trim whitespace.
+
+Reject excessively long input.
+
+Do not allow HTML or scripts.
 
 ---
 
-# 22. AUDIT LOGGING
+# 12. DISPOSITION CORRECTIONS
 
-Every successful intervention MUST create an immutable audit record.
+Admins may need to correct an incorrectly recorded disposition.
+
+Do NOT delete historical information silently.
+
+Preferred approach:
+
+Allow changing:
+
+DISPOSITION A → DISPOSITION B
+
+while preserving an immutable audit history.
+
+Example:
+
+DONATED
+
+changed to:
+
+DISPOSED
+
+The current order reflects:
+
+DISPOSED
+
+The audit trail shows:
+
+DONATED → DISPOSED
+
+---
+
+# 13. AUDIT LOG
 
 Use the existing:
 
@@ -712,9 +487,11 @@ audit_logs
 
 collection.
 
-Record:
+Record every successful disposition change.
 
-action = NO_SHOW_EXCUSED
+Fields:
+
+action
 
 orderId
 
@@ -724,385 +501,645 @@ cafeId
 
 adminId
 
+previousDisposition
+
+newDisposition
+
 timestamp
 
-reason
+note
 
-adminNote
+Do not store unnecessary student personal information.
 
-previousReliabilitySummary
-(optional only if existing architecture safely supports it)
-
-newReliabilitySummary
-(optional only if needed)
-
-Do not store unnecessary personal information.
+Do not expose audit records publicly.
 
 ---
 
-# 23. AUDIT LOG IMMUTABILITY
+# 14. AUDIT IMMUTABILITY
 
-Audit logs are append-only.
+Audit records must be append-only.
 
-Create audit records only through trusted backend operations (Cloud Functions via Admin SDK): the actor identity and timestamp are derived server-side, never accepted from the client.
+Admins must not be able to:
 
-Firestore rules deny all direct client creates, updates, and deletes on audit_logs.
+edit
 
-Admin reads are cafe-scoped: an audit record carrying a `cafeId` is readable only by an admin of that cafe; cafeless records (global actions such as CREATE_ADMIN / REACTIVATE) remain readable by any admin. Add an explicit branch for a higher-level role when one is introduced.
+delete
 
-Admins must NOT be able to edit or delete excuse audit logs.
+rewrite
 
-Students must NOT be able to read private administrative notes unless a future policy explicitly allows it.
+audit history.
 
----
-
-# 24. STUDENT VISIBILITY
-
-The student should see that the no-show was excused.
-
-The order can display:
-
-NO-SHOW
-
-Excused
-
-The student should understand that the order itself was not collected, but it was excluded from their reliability calculation.
-
-Do not expose:
-
-admin UID
-
-private admin note
-
-internal authorization details
+Students must not access private cafe audit records unless a future feature explicitly permits it.
 
 ---
 
-# 25. STUDENT NOTIFICATION
+# 15. ATOMIC UPDATE
 
-If the existing notification architecture supports appropriate account/order notifications, create:
+Changing a food disposition and creating its audit record should be atomic.
 
-"Your missed pickup has been excused."
+Use a Firestore transaction or appropriate backend mechanism.
 
-Example:
+If the operation fails:
 
-"An administrator reviewed Order #CB-1234 and excused the missed pickup. It will not affect your pickup reliability."
-
-Do not send a notification if the intervention did not succeed.
-
-Use the existing:
-
-notifications
-
-collection
-
-and existing FCM pipeline.
-
-Do not create a second notification system.
+the order disposition must not partially change.
 
 ---
 
-# 26. NOTIFICATION IDEMPOTENCY
+# 16. IDEMPOTENCY
 
-If the backend retries:
+Repeated requests must not create duplicate effects.
 
-do not send duplicate excuse notifications.
+If the same disposition is submitted twice:
 
-Use the existing eventId/deduplication mechanism.
+do not create duplicate audit records if nothing changed.
 
-For example:
+If:
 
-NO_SHOW_EXCUSED_{orderId}
+currentDisposition == requestedDisposition
 
-Reuse the existing notification architecture.
+return a safe "already recorded" result.
 
----
-
-# 27. SECURITY RULES
-
-Students:
-
-READ own orders
-
-READ own reliability
-
-CANNOT:
-
-excuse no-show
-
-modify:
-
-noShowExcused
-excusedAt
-excusedBy
-excuseReason
-excuseNote
-
-Admins:
-
-read authorized orders
-
-request an excuse through the approved backend operation
-
-Do not allow direct arbitrary client writes to excuse fields.
+Do not perform unnecessary Firestore writes.
 
 ---
 
-# 28. ADMIN BACKEND OPERATION
+# 17. ADMIN BACKEND OPERATION
 
-Prefer a dedicated callable HTTPS Cloud Function or another trusted backend operation:
+Prefer a dedicated backend operation such as:
 
-excuseNoShow(orderId, reason, note)
-
-The backend must:
-
-1. Authenticate requester.
-2. Verify admin role.
-3. Verify cafe authorization.
-4. Read order.
-5. Verify status == NO_SHOW.
-6. Verify not already excused.
-7. Update order.
-8. Recalculate reliability.
-9. Recalculate restriction.
-10. Create audit log.
-11. Create the deterministic notification outbox record (keyed `NO_SHOW_EXCUSED_{orderId}`).
-12. Commit atomically — mandatory, not optional.
-
-Steps 7-11 MUST commit in ONE Firestore transaction: the order state,
-reliability data, recent history, restriction level, audit record, and
-notification outbox record are all-or-nothing. A transaction failure commits
-none of them. FCM push delivery is strictly post-commit — it happens only
-through the `onNewNotification` trigger after the outbox record commits, never
-inline in the callable.
-
-Reuse existing backend service abstractions.
-
----
-
-# 29. DO NOT TRUST CLIENT-PROVIDED STUDENT ID
+setFoodDisposition(
+    orderId,
+    disposition,
+    note
+)
 
 The client should provide:
 
 orderId
 
+disposition
+
+note
+
 The backend should derive:
 
 studentId
 
-from:
-
-orders/{orderId}
-
-Do not accept:
-
-studentId
-
-as an authoritative client-provided argument.
-
-Similarly derive:
-
 cafeId
 
-from the order.
+from the order document.
+
+Do not trust client-provided studentId/cafeId.
+
+Refactor functions to reduce cognitive complexity.
+
+Avoid declarations of unused variables.
 
 ---
 
-# 30. COST OPTIMIZATION
+# 18. FIRESTORE READ OPTIMIZATION
 
-Do not query:
+For a disposition update, do not read:
 
-all student orders
+- all student orders
+- food_items
+- reviews
+- notifications
+- reliability history
 
-all reviews
+Only the target order and whatever existing authorization mechanism requires.
 
-all notifications
+Reuse existing admin authorization data where possible.
 
-all food items
-
-for an excuse action.
-
-Use:
-
-target order
-
-existing reliability summary
-
-existing reliability history
-
-only as needed.
-
-If Phase B stores sufficient recent/lifetime summary data, use it.
-
-Do not perform a full order-history scan unless the existing data model absolutely requires it.
-
-If a full recalculation is required for correctness, document why and assess whether the Phase B data model should be extended rather than adding repeated expensive scans.
+Do not introduce unnecessary role lookups if the existing architecture already has a secure admin claim/service.
 
 ---
 
-# 31. NO DIRECT ADMIN PROFILE EDIT
+# 19. FIRESTORE WRITE OPTIMIZATION
 
-Do NOT allow admins to edit:
+A successful disposition change should normally require:
+
+1. One order update.
+2. One audit log creation.
+
+Prefer one transaction.
+
+Do not write:
+
+- analytics documents
+- daily summaries
+- user profile updates
+- reliability updates
+
+in this phase.
+
+Analytics belongs later.
+
+---
+
+# 20. NO IMPACT ON RELIABILITY
+
+Food disposition must NOT affect:
 
 reliabilityScore
 
 collectionRate
 
+recentCollectionRate
+
+noShowOrders
+
 restrictionLevel
 
-directly.
+A no-show remains a no-show regardless of whether the food was:
 
-The only allowed intervention in this phase is:
+DONATED
 
-EXCUSE NO_SHOW
+RESOLD
 
-The reliability engine recalculates all affected values.
+DISPOSED
 
----
+or otherwise handled.
 
-# 32. STUDENT SUPPORT FLOW
-
-Add a clear path for students to request an intervention.
-
-Recommended later UI:
-
-"Report an issue"
-
-Can be added in help and support screen where a student can report via the support email
-
-But do NOT build a full support/ticketing system in this phase.
-
-For now, only ensure the backend can record legitimate admin intervention.
+The reliability event has already been processed.
 
 ---
 
-# 33. MULTIPLE CAFE ADMINISTRATORS
+# 21. NO IMPACT ON ORDER STATUS
 
-If multiple admins manage the same cafe:
-
-all authorized admins may review and excuse eligible no-shows.
-
-The audit log must identify exactly which admin performed the action.
-
----
-
-# 34. CROSS-CAFE SECURITY
-
-Admin for Cafe A:
-
-MUST NOT excuse:
-
-Cafe B
-
-orders.
-
-Unless the existing role model explicitly defines a higher-level administrator.
-
-Do not weaken cafe isolation.
-
----
-
-# 35. PRIVACY
-
-Do not expose:
-
-student location
-
-email
-
-phone
-
-FCM token
-
-private admin note
-
-to unauthorized users.
-
-The excuse record should contain only the minimum information needed for auditing and reliability correction.
-
----
-
-# 36. TESTING
-
-Create/update tests for:
-
-## TEST 1 — Valid no-show
+Food disposition must NOT change:
 
 NO_SHOW
 
-not excused
+to:
 
-Expected:
+COLLECTED
 
-Excuse No-Show button visible.
+The historical order outcome remains:
 
----
+NO_SHOW
 
-## TEST 2 — Excuse
-
-Admin selects:
-
-Student reported emergency
-
-Confirm.
-
-Expected:
-
-noShowExcused = true
-
-reliability recalculates.
+Food disposition is a separate operational property.
 
 ---
 
-## TEST 3 — Already excused
+# 22. STUDENT EXPERIENCE
 
-Attempt excuse again.
+Students do not need to see private cafe waste-management details.
 
-Expected:
+At most, the student may continue seeing:
 
-rejected.
+NO_SHOW
 
-No duplicate audit log.
+and the existing reliability information.
 
-No duplicate notification.
+Do not expose:
 
----
+- disposal reason
+- staff notes
+- cafe internal comments
+- estimated loss
+- admin identity
 
-## TEST 4 — Wrong status
-
-Attempt excuse on:
-
-READY
-
-Expected:
-
-rejected.
+unless explicitly required later.
 
 ---
 
-## TEST 5 — Collected order
+# 23. CAFE DASHBOARD
 
-Attempt excuse.
+Add a lightweight operational summary.
 
-Expected:
+For example:
 
-rejected.
+Unresolved No-shows
+
+Donated
+
+Resold
+
+Discounted
+
+Staff Use
+
+Disposed
+
+Do not build advanced analytics yet.
+
+The dashboard should query only the cafe's relevant orders.
 
 ---
 
-## TEST 6 — Cancelled order
+# 24. FILTERING
 
-Attempt excuse.
+Admin should be able to filter:
 
-Expected:
+All
 
-rejected.
+Unresolved
+
+Donated
+
+Resold
+
+Discounted
+
+Staff Use
+
+Disposed
+
+Do not download all historical orders unnecessarily.
+
+Use indexed Firestore queries.
+
+Paginate results.
 
 ---
 
-## TEST 7 — Unauthorized admin
+# 25. DATE RANGE
 
-Cafe A admin attempts to excuse Cafe B order.
+Allow simple date filtering if the existing admin architecture supports it.
+
+Examples:
+
+Today
+
+This week
+
+This month
+
+Do not load all historical data into memory.
+
+Use Firestore date constraints.
+
+---
+
+# 26. COST OPTIMIZATION
+
+Avoid:
+
+- scanning every order
+- loading all historical no-shows
+- recalculating all disposition totals on every screen load
+- writing aggregate counters for every change unless actually needed
+
+Use indexed queries.
+
+Paginate large results.
+
+Only load the records displayed.
+
+---
+
+# 27. OPTIONAL AGGREGATES
+
+If performance later requires aggregate statistics, create them through backend events.
+
+Do NOT introduce aggregate documents in this phase unless current query performance proves they are necessary.
+
+Start with the simplest correct implementation.
+
+---
+
+# 28. FOOD WASTE REPORTING FOUNDATION
+
+Prepare the data model for future reporting.
+
+The system should eventually be able to answer:
+
+- How many NO_SHOW orders occurred?
+- How many were donated?
+- How many were resold?
+- How many were discounted?
+- How many were disposed?
+- How many remain unresolved?
+- How frequently does food go to waste?
+- Which cafe has the highest no-show waste rate?
+
+Do not implement advanced analytics in Phase H.
+
+Only make the stored data capable of supporting it.
+
+---
+
+# 29. ESTIMATED WASTE VALUE
+
+Do NOT calculate financial loss unless the application already has a reliable cost model.
+
+Do not assume:
+
+food price == food cost
+
+because:
+
+selling price
+
+and:
+
+actual cafe cost
+
+are different concepts.
+
+If a future phase needs waste value, introduce a separate cost model.
+
+Do not fabricate financial metrics in this phase.
+
+---
+
+# 30. FOOD SAFETY
+
+Do not allow the application to recommend that potentially unsafe food be resold.
+
+The app only records the cafe administrator's chosen disposition.
+
+The cafe is responsible for following its own food-safety policies.
+
+Do not implement food-safety decisions in code.
+
+---
+
+# 31. RESOLD / DISCOUNTED FLOW
+
+For:
+
+RESOLD
+
+or:
+
+DISCOUNTED
+
+the system should record the disposition only.
+
+Do not automatically create a new food listing.
+
+Do not modify the food item price.
+
+Do not create a second order.
+
+These are operational records only.
+
+A future "food rescue" feature can implement actual resale workflows separately.
+
+---
+
+# 32. DONATED FLOW
+
+For:
+
+DONATED
+
+record:
+
+disposition = DONATED
+
+Optional note.
+
+Do not collect recipient personal information unless a future legal/product requirement explicitly requires it.
+
+---
+
+# 33. DISPOSED FLOW
+
+For:
+
+DISPOSED
+
+allow optional note such as:
+
+"Food no longer suitable for service."
+
+Do not collect unnecessary disposal details.
+
+---
+
+# 34. ADMIN UI SAFETY
+
+Never make:
+
+DISPOSED
+
+the default button.
+
+Avoid destructive-looking defaults.
+
+Require confirmation.
+
+If the system allows changing from:
+
+DISPOSED → RESOLD
+
+record the correction in audit history.
+
+---
+
+# 35. ORDER LIST
+
+For NO_SHOW orders, display a clear badge:
+
+NO-SHOW
+
+and a separate disposition badge:
+
+UNRESOLVED
+
+DONATED
+
+RESOLD
+
+DISCOUNTED
+
+STAFF USE
+
+DISPOSED
+
+Do not combine them into one ambiguous status.
+
+---
+
+# 36. NOTIFICATIONS
+
+Do NOT add new student notifications for food disposition in this phase.
+
+Do not notify students:
+
+"Your food was disposed."
+
+unless a future product requirement explicitly asks for it.
+
+The existing:
+
+NO_SHOW
+
+notification remains unchanged.
+
+---
+
+# 37. FCM
+
+Do not add new FCM message types.
+
+No new push notifications in Phase H.
+
+---
+
+# 38. SECURITY RULES
+
+Students must not write:
+
+foodDisposition
+
+foodDispositionAt
+
+foodDispositionBy
+
+foodDispositionNote
+
+Admins must only change disposition through the authorized backend operation.
+
+Audit logs:
+
+readable only to appropriately authorized administrators.
+
+Audit logs:
+
+not writable or deletable directly by students.
+
+Do not weaken existing rules.
+
+---
+
+# 39. PRIVACY
+
+Minimize data.
+
+Do not store:
+
+- student location
+- phone number
+- email
+- FCM token
+- private student information
+
+inside food disposition records.
+
+Use:
+
+orderId
+
+studentId
+
+cafeId
+
+adminId
+
+only where required for audit/security.
+
+---
+
+# 40. PERFORMANCE
+
+Admin dashboard must:
+
+- paginate
+- use indexed queries
+- avoid full collection reads
+- avoid unnecessary realtime listeners
+- reuse existing order streams where possible
+
+A real-time listener is appropriate only if the screen actually requires live updates.
+
+---
+
+# 41. TESTING
+
+Create/update tests for:
+
+## TEST 1 — No-show eligibility
+
+NO_SHOW order.
+
+Expected:
+
+food disposition can be recorded.
+
+---
+
+## TEST 2 — Collected order
+
+COLLECTED.
+
+Expected:
+
+food disposition controls unavailable.
+
+---
+
+## TEST 3 — Cancelled order
+
+CANCELLED.
+
+Expected:
+
+not eligible.
+
+---
+
+## TEST 4 — Record donated
+
+DONATED.
+
+Expected:
+
+order remains NO_SHOW.
+
+---
+
+## TEST 5 — Record disposed
+
+DISPOSED.
+
+Expected:
+
+order remains NO_SHOW.
+
+---
+
+## TEST 6 — Record resold
+
+RESOLD.
+
+Expected:
+
+order remains NO_SHOW.
+
+---
+
+## TEST 7 — Duplicate disposition
+
+Same disposition submitted twice.
+
+Expected:
+
+no unnecessary write.
+
+No duplicate audit record.
+
+---
+
+## TEST 8 — Change disposition
+
+DONATED → DISPOSED.
+
+Expected:
+
+current disposition = DISPOSED.
+
+Audit history records both events.
+
+---
+
+## TEST 9 — Unauthorized student
+
+Student attempts to change disposition.
 
 Expected:
 
@@ -1110,9 +1147,9 @@ PERMISSION_DENIED.
 
 ---
 
-## TEST 8 — Student attempt
+## TEST 10 — Unauthorized cafe admin
 
-Student attempts excuseNoShow.
+Admin from Cafe A attempts to modify Cafe B order.
 
 Expected:
 
@@ -1120,173 +1157,156 @@ PERMISSION_DENIED.
 
 ---
 
-## TEST 9 — Reliability correction
+## TEST 11 — Concurrent admin actions
 
-Before:
-
-eligible = 10
-collected = 7
-noShow = 3
-
-Excuse one no-show.
+Two authorized admins modify the same order.
 
 Expected:
 
-reliability calculations no longer count the excused event as an unexcused failure.
+transaction prevents inconsistent state.
 
 ---
 
-## TEST 10 — Restriction recovery
+## TEST 12 — Reliability isolation
 
-Before:
-
-restrictionLevel = LIMITED
-
-After excusing a no-show:
-
-reliability crosses threshold.
+Change food disposition.
 
 Expected:
 
-restrictionLevel = NORMAL
-
-if the existing Phase E rules produce that result.
+reliability remains unchanged.
 
 ---
 
-## TEST 11 — Recent history
+## TEST 13 — Order status isolation
 
-If the excused order exists in recent history:
+Change food disposition.
 
 Expected:
 
-it no longer counts as NO_SHOW.
+order status remains NO_SHOW.
 
 ---
 
-## TEST 12 — Notification
+# 42. COST AUDIT
 
-Successful excuse:
+Before completing Phase H, document:
 
-one student notification.
+- number of reads for disposition update
+- number of writes for disposition update
+- dashboard query strategy
+- pagination strategy
+- required Firestore indexes
+- any realtime listeners
+- any aggregate calculations
 
-Repeated attempt:
+Remove unnecessary Firestore operations.
 
-no duplicate notification.
+Target:
 
----
+Disposition update:
+one target-order read/transaction + one atomic commit containing order update + audit log.
 
-## TEST 13 — Audit
-
-Successful excuse:
-
-one immutable audit log.
-
-Repeated attempt:
-
-no duplicate audit log.
-
----
-
-## TEST 14 — Concurrent admin actions
-
-Two admins attempt to excuse the same order simultaneously.
-
-Expected:
-
-one succeeds.
-
-one is rejected as already processed.
+Dashboard:
+indexed paginated query only.
 
 ---
 
-# 37. PERFORMANCE TESTING
-
-Verify:
-
-- no full order-history query from the admin UI
-- no unnecessary listeners
-- no repeated reads
-- no duplicate writes
-- one controlled backend operation per intervention
-
-Admin UI should not continuously poll for intervention state.
-
----
-
-# 38. BACKWARD COMPATIBILITY
+# 43. BACKWARD COMPATIBILITY
 
 Do not break:
 
 - authentication
 - cart
-- orders
+- ordering
 - cancellation
 - grace period
-- NO_SHOW processing
+- NO_SHOW
 - reliability calculation
 - reliability recovery
 - graduated restrictions
+- admin intervention
 - notifications
 - FCM
 - reviews
 - favourites
-- admin order management
+- Cloudinary
+- update system
 
-Do not reintroduce:
-
-- strikes
-- suspension
-- bans
-- automatic punishment
+Do not reintroduce the old strike system.
 
 ---
 
-# 39. FINAL ACCEPTANCE CRITERIA
+# 44. DO NOT IMPLEMENT FUTURE PHASES
 
-Phase G is complete only when:
+STOP after Phase H.
 
-✓ Authorized admins can excuse legitimate NO_SHOW orders.
+Do NOT implement:
 
-✓ Admin cafe authorization is enforced server-side.
+❌ advanced food-waste analytics
+❌ financial loss calculations
+❌ food rescue marketplace
+❌ automatic discounting
+❌ automatic donation matching
+❌ student resale
+❌ loyalty rewards
+❌ reliability notifications
+❌ new punishment systems
 
-✓ Students cannot excuse orders.
+These belong to future phases.
 
-✓ Only NO_SHOW orders are eligible.
+---
 
-✓ Original order remains NO_SHOW.
+# 45. FINAL ACCEPTANCE CRITERIA
 
-✓ Excused no-shows are excluded from reliability failure calculations.
+Phase H is complete only when:
 
-✓ Collected orders remain collected.
+✓ NO_SHOW orders can receive a food disposition.
 
-✓ Cancelled orders remain cancelled.
+✓ Only authorized cafe admins can set disposition.
 
-✓ Reliability recalculates correctly.
+✓ Students cannot modify disposition.
 
-✓ Restriction level recalculates automatically.
+✓ Cafe isolation is enforced.
 
-✓ Audit log is created.
+✓ NO_SHOW remains the order status.
 
-✓ Audit log is immutable.
+✓ Reliability remains unchanged by disposition.
 
-✓ Student receives an appropriate notification if enabled.
+✓ Dispositions include UNRESOLVED, RESOLD, DISCOUNTED, DONATED, STAFF_USE, DISPOSED, OTHER.
 
-✓ Duplicate excuses are prevented.
+✓ Admin can correct an existing disposition.
 
-✓ Concurrent admin actions are handled safely.
+✓ Every successful disposition change is audited.
 
-✓ Admins cannot directly edit reliability score.
+✓ Audit logs are immutable.
 
-✓ No unnecessary Firestore reads are introduced.
+✓ Duplicate operations are prevented.
+
+✓ Concurrent updates are safe.
+
+✓ Dashboard can filter disposition status.
+
+✓ Dashboard queries are paginated/indexed.
+
+✓ No unnecessary historical scans are introduced.
 
 ✓ No unnecessary Firestore writes are introduced.
 
-✓ Existing recovery system remains functional.
+✓ No student location or unnecessary personal data is stored.
 
-✓ Existing graduated restrictions remain functional.
+✓ Existing order lifecycle remains functional.
 
-✓ No old strike functionality returns.
+✓ Existing cancellation remains functional.
+
+✓ Existing grace period remains functional.
+
+✓ Existing reliability system remains functional.
+
+✓ Existing restrictions remain functional.
+
+✓ Existing admin intervention remains functional.
+
+✓ Existing notifications remain functional.
 
 ---
 
@@ -1297,31 +1317,29 @@ After implementation, provide:
 1. Files inspected.
 2. Files modified.
 3. Files created.
-4. Admin intervention architecture.
-5. Backend authorization mechanism.
-6. Excuse data model.
-7. Reliability recalculation strategy.
-8. Restriction recalculation strategy.
-9. Transaction/idempotency strategy.
-10. Audit log implementation.
-11. Notification implementation.
-12. Firestore security changes.
-13. Firestore reads introduced.
-14. Firestore writes introduced.
-15. Cost analysis.
-16. Security test results.
-17. Functional test results.
-18. Any unresolved risks.
+4. Food disposition data model.
+5. Admin UI implementation.
+6. Backend authorization mechanism.
+7. Audit log implementation.
+8. Firestore security changes.
+9. Firestore indexes.
+10. Firestore reads introduced.
+11. Firestore writes introduced.
+12. Cost optimization analysis.
+13. Privacy considerations.
+14. Test results.
+15. Security test results.
+16. Remaining technical risks.
 
-STOP AFTER PHASE G.
+STOP AFTER PHASE H.
 
-Do not begin Phase H.
+Do not begin the next phase.
 
 ---
 
 # Phase Completion Criteria
 
-Phase C is complete when:
+Phase H is complete when:
 
 * The new features works well with past features.
 * App runs successfully.
