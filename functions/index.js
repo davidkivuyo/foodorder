@@ -4,9 +4,10 @@
  *
  * Combined deployment of all CampusBite Cloud Functions:
  *
- * 1) processExpiredPickups — Scheduled (every 5 min) pickup-expiry processor:
- *    marks expired orders as no_show and notifies the student. The automatic
- *    strike engine has been removed; no strikes are issued.
+ * 1) processExpiredPickups — Scheduled (every 1 min) pickup-expiry processor:
+ *    marks eligible ready orders as no_show after pickupDeadline + the
+ *    5-minute grace period and notifies the student. The automatic strike
+ *    engine has been removed; no strikes are issued.
  * 2) extendPickupDeadline — Callable (student) — extends an order's pickup
  *    deadline by 10 minutes, once per order, before the deadline passes.
  * 3) onOrderStatusChanged — Firestore trigger on orders/{orderId}.
@@ -1434,6 +1435,141 @@ async function reconcilePendingReliabilityOrders() {
   return { counted, stillPending, errors };
 }
 
+/**
+ * Reconcile deferred excuse corrections (reliabilityExcusePending orders).
+ *
+ * When a counted NO_SHOW is excused while users/{studentId} is absent,
+ * runExcuseTransaction persists `reliabilityExcusePending` instead of
+ * committing the excuse with a silently skipped correction. Once the user
+ * document appears, the scheduled processor applies the correction
+ * (recomputeReliabilityAfterExcuse) atomically with clearing the marker;
+ * orders whose marker is older than RELIABILITY_MISSING_USER_RETRY_MS are
+ * given up explicitly and audibly (reliabilityExcuseSkippedReason:
+ * "MISSING_USER" + reliabilityExcuseSkippedAt) so the marker never persists
+ * forever. Mirrors reconcilePendingReliabilityOrders.
+ *
+ * @return {Promise<{corrected: number, stillPending: number, errors: number}>}
+ */
+async function reconcilePendingExcuseCorrections() {
+  const now = admin.firestore.Timestamp.now();
+  let corrected = 0;
+  let stillPending = 0;
+  let errors = 0;
+
+  let pendingSnapshot;
+  try {
+    pendingSnapshot = await db
+        .collection("orders")
+        .where("reliabilityExcusePending", "==", true)
+        .limit(100)
+        .get();
+  } catch (err) {
+    console.error("[PickupReliability] Excuse reconcile query failed:", err);
+    return { corrected: 0, stillPending: 0, errors: 1 };
+  }
+
+  if (pendingSnapshot.size === 0) {
+    return { corrected: 0, stillPending: 0, errors: 0 };
+  }
+
+  const promises = pendingSnapshot.docs.map(async (orderSnapshot) => {
+    try {
+      const result = await db.runTransaction(async (transaction) => {
+        const freshSnapshot = await transaction.get(orderSnapshot.ref);
+        if (!freshSnapshot.exists) return "gone";
+        const orderData = freshSnapshot.data();
+        if (!orderData || orderData.reliabilityExcusePending !== true) {
+          // Already resolved by another path — nothing to do.
+          return "done";
+        }
+
+        const studentId = orderData.studentId || orderData.userId;
+        if (typeof studentId !== "string" || studentId.length === 0) {
+          // No user doc can be located — nothing meaningful to correct.
+          transaction.update(orderSnapshot.ref, {
+            reliabilityExcusePending: admin.firestore.FieldValue.delete(),
+            reliabilityExcusePendingSince:
+              admin.firestore.FieldValue.delete(),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+          return "done";
+        }
+
+        const userSnapshot = await transaction.get(
+          db.collection("users").doc(studentId),
+        );
+        if (!userSnapshot.exists) {
+          const pendingSince = orderData.reliabilityExcusePendingSince;
+          const pendingTimestamp =
+            pendingSince instanceof admin.firestore.Timestamp
+              ? pendingSince
+              : null;
+
+          if (pendingTimestamp == null) {
+            // No valid pending timestamp yet — initialize it with the
+            // current time (mirrors deferReliabilityEvent) so the retry
+            // window below can eventually trigger the explicit MISSING_USER
+            // give-up. Without this, a marker lacking a timestamp would
+            // pend forever and never reach the skip path.
+            transaction.update(orderSnapshot.ref, {
+              reliabilityExcusePendingSince: now,
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+            return "stillPending";
+          }
+
+          if (
+            now.toMillis() - pendingTimestamp.toMillis() >=
+            RELIABILITY_MISSING_USER_RETRY_MS
+          ) {
+            // Explicit, auditable give-up after the retry window: record
+            // WHY the correction was skipped, then clear the marker so the
+            // reconciler does not pick the order up again.
+            transaction.update(orderSnapshot.ref, {
+              reliabilityExcusePending: admin.firestore.FieldValue.delete(),
+              reliabilityExcusePendingSince:
+                admin.firestore.FieldValue.delete(),
+              reliabilityExcuseSkippedReason: "MISSING_USER",
+              reliabilityExcuseSkippedAt: now,
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+            return "skip";
+          }
+          // Still within the retry window: keep the marker for the next run.
+          return "stillPending";
+        }
+
+        const correctedSummary = recomputeReliabilityAfterExcuse(
+          userSnapshot.data().pickupReliability,
+          orderSnapshot.id,
+          now,
+        );
+        transaction.update(db.collection("users").doc(studentId), {
+          pickupReliability: correctedSummary,
+        });
+        transaction.update(orderSnapshot.ref, {
+          reliabilityExcusePending: admin.firestore.FieldValue.delete(),
+          reliabilityExcusePendingSince: admin.firestore.FieldValue.delete(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        return "corrected";
+      });
+
+      if (result === "corrected") corrected++;
+      else if (result === "stillPending") stillPending++;
+    } catch (err) {
+      errors++;
+      console.error(
+        `[PickupReliability] Excuse reconcile failed for order ${orderSnapshot.id}:`,
+        err,
+      );
+    }
+  });
+
+  await Promise.all(promises);
+  return { corrected, stillPending, errors };
+}
+
 exports.processExpiredPickups = functions
     .runWith({
       memory: "256MB",
@@ -1614,6 +1750,26 @@ exports.processExpiredPickups = functions
       } catch (reconcileErr) {
         console.error(
           "[PickupExpiry] Reliability reconcile error:", reconcileErr
+        );
+      }
+
+      // ── Phase G — reconcile deferred excuse corrections ───────────
+      // An excuse committed while users/{studentId} was absent carries a
+      // reliabilityExcusePending marker (never a silently skipped
+      // correction). Once the user doc appears, the correction is applied
+      // here; markers older than the retry window are given up explicitly
+      // (MISSING_USER).
+      try {
+        const excuseResult = await reconcilePendingExcuseCorrections();
+        console.log(
+          `[PickupExpiry] Excuse reconcile: ` +
+          `${excuseResult.corrected} corrected, ` +
+          `${excuseResult.stillPending} still pending, ` +
+          `${excuseResult.errors} errors`
+        );
+      } catch (excuseErr) {
+        console.error(
+          "[PickupExpiry] Excuse reconcile error:", excuseErr
         );
       }
 
@@ -4046,17 +4202,18 @@ exports.createAdminAccount = onCall(
     }
 
     try {
+      // Profile matches the ADMIN_BOOTSTRAP.md admin document structure:
+      // role, accountStatus, fullName, email, cafeName, phoneNumber,
+      // createdAt (+ updatedAt). No student/strike-era fields are written
+      // (strikeCount/strikePercentage/lastStrikeAt/lastPardonAt) — admin
+      // gating treats an absent strikeCount as 0, so none are required.
       await admin.firestore().collection("users").doc(newUid).set({
-        fullName,
-        cafeName,
-        email,
-        phoneNumber: phoneNumber || null,
         role: "admin",
         accountStatus: "ACTIVE",
-        strikePercentage: 0,
-        strikeCount: 0,
-        lastStrikeAt: null,
-        lastPardonAt: null,
+        fullName,
+        email,
+        cafeName,
+        phoneNumber: phoneNumber || null,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
@@ -4329,13 +4486,18 @@ async function runExcuseTransaction(transaction, {
 
   // ── Reliability correction (§11-§15): only when the no-show was
   //    actually counted by the engine. The summary correction and the
-  //    order marker commit atomically here.
-  if (
+  //    order marker commit atomically here. If the student's user document
+  //    is absent, the excuse is NEVER committed with a silently skipped
+  //    correction: a reconciliation marker is persisted in this same
+  //    transaction and the scheduled processor applies the correction once
+  //    the user document exists (guaranteed reliability update).
+  const excuseCorrectionNeeded =
     typeof studentId === "string" &&
     studentId.length > 0 &&
     orderData.reliabilityProcessed === true &&
-    orderData.reliabilityOutcome === "NO_SHOW"
-  ) {
+    orderData.reliabilityOutcome === "NO_SHOW";
+  let excuseCorrectionDeferred = false;
+  if (excuseCorrectionNeeded) {
     const userRef = db.collection("users").doc(studentId);
     const userSnapshot = await transaction.get(userRef);
     if (userSnapshot.exists) {
@@ -4345,6 +4507,8 @@ async function runExcuseTransaction(transaction, {
         now,
       );
       transaction.update(userRef, { pickupReliability: corrected });
+    } else {
+      excuseCorrectionDeferred = true;
     }
   }
 
@@ -4356,6 +4520,16 @@ async function runExcuseTransaction(transaction, {
     excuseReason,
     excuseNote,
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    // When the counted NO_SHOW could not be corrected because the user doc
+    // is absent, carry the reconciliation marker so the scheduled processor
+    // applies the correction once the user doc appears — the excuse is never
+    // committed with a reliability update that can be silently skipped.
+    ...(excuseCorrectionDeferred
+      ? {
+          reliabilityExcusePending: true,
+          reliabilityExcusePendingSince: now,
+        }
+      : {}),
   });
 
   // ── Immutable audit record (§22-§23). Deterministic doc ID so a
@@ -5390,6 +5564,33 @@ async function applyReviewRatingChange(foodId, { removeRating, addRating }, even
   }, eventId);
 }
 
+/**
+ * Release the deterministic per-(user, food) review guard (Admin SDK).
+ *
+ * Server-controlled release: firestore.rules deny ALL client deletes on
+ * review_guards, so only this trigger can drop the guard — and only when
+ * the review actually becomes non-live (soft-delete or hard delete). Deleting
+ * a non-existent guard is a no-op, so redelivered events are idempotent.
+ * Best-effort: a failure must never block the rating-stats aggregation.
+ *
+ * @param {string} userId
+ * @param {string} foodId
+ */
+async function releaseReviewGuard(userId, foodId) {
+  if (typeof userId !== "string" || userId.length === 0 ||
+      typeof foodId !== "string" || foodId.length === 0) {
+    return;
+  }
+  try {
+    await db.collection("review_guards").doc(`${userId}:${foodId}`).delete();
+  } catch (err) {
+    console.warn(
+      `[onReviewChanged] Failed to release review guard for ` +
+      `(user ${userId}, food ${foodId}):`, err
+    );
+  }
+}
+
 /** Case 1: Review document created. */
 async function handleReviewCreated(ctx, event) {
   if (ctx.after.deleted) {
@@ -5412,6 +5613,9 @@ async function handleReviewDeleted(ctx, event) {
     );
     return;
   }
+  // Release the guard even on hard delete (Admin SDK only — rules deny
+  // client deletes) so a removed review can never orphan its guard.
+  await releaseReviewGuard(ctx.before.userId, ctx.before.foodId);
   await applyReviewRatingChange(ctx.foodId, {
     removeRating: ctx.beforeRating,
     addRating: null,
@@ -5428,6 +5632,14 @@ async function handleReviewUpdated(ctx, event) {
   }
 
   if (!ctx.before.deleted && ctx.after.deleted) {
+    // Server-controlled release: the client no longer deletes the guard;
+    // this trigger drops it when the review becomes soft-deleted, so a
+    // client can never release its own guard and create a duplicate live
+    // review for the same meal.
+    await releaseReviewGuard(
+      ctx.after.userId || ctx.before.userId,
+      ctx.after.foodId || ctx.before.foodId,
+    );
     await applyReviewRatingChange(ctx.foodId, {
       removeRating: ctx.beforeRating,
       addRating: null,

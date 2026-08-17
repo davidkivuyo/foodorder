@@ -296,7 +296,7 @@ class ReviewService {
           'updatedAt': FieldValue.serverTimestamp(),
         };
 
-        final revived = await _repository.update(softDeleted.id, reviveData);
+        final revived = await _repository.revive(softDeleted.id, reviveData);
         // Rating stats are updated server-side by the onReviewChanged
         // Cloud Function. No client-side aggregation needed.
         if (revived) {

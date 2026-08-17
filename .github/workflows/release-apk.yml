@@ -85,7 +85,11 @@ jobs:
             # tags (v1.2), multi-segment tags (v1.2.3.4), non-numeric segments
             # and shell-special characters all fail the anchored regex and
             # abort the job instead of building with a mangled version.
-            if [[ "$REF" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
+            # Complete SemVer: numeric core and numeric prerelease
+            # identifiers must not have leading zeros, and prerelease/build
+            # components must not be empty (e.g. v01.2.3, v1.2.3-01 and
+            # v1.2.3-alpha..1 are rejected).
+            if [[ "$REF" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*)(\.(0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*))*))?(\+[0-9a-zA-Z-]+(\.[0-9a-zA-Z-]+)*)?$ ]]; then
               IS_TAG="true"
               VERSION="${REF#v}"
               if [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+- ]]; then
@@ -96,9 +100,162 @@ jobs:
               exit 1
             fi
           fi
+          if [[ "$IS_TAG" == "true" ]]; then
+            # Release-ordering gate: the candidate tag must be semver-greater
+            # than every previously published version tag (excluding itself,
+            # so workflow re-runs of the same tag pass). This prevents the
+            # ordering trap — e.g. shipping v1.0.0 after v1.8.0-dev strands
+            # existing installs because 1.0.0 < 1.8.0-dev in semver and the
+            # in-app updater never offers the "newer" build.
+            python3 - "${REF#v}" <<'PYEOF' || { echo "ERROR: release-ordering gate failed for tag '$REF'." >&2; exit 1; }
+          import re
+          import subprocess
+          import sys
+
+          candidate = sys.argv[1]
+          SEMVER = re.compile(
+              r"^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)"
+              r"(?:-((?:0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*)"
+              r"(?:\.(?:0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*))*))?"
+              r"(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$"
+          )
+
+
+          def parse(tag):
+              m = SEMVER.fullmatch(tag)
+              if not m:
+                  return None
+              core = tuple(int(m.group(i)) for i in (1, 2, 3))
+              return core, m.group(4)
+
+
+          def pre_identifiers(pre):
+              if not pre:
+                  return []
+              return [(0, int(p)) if p.isdigit() else (1, p) for p in pre.split(".")]
+
+
+          def compare(a, b):
+              # a, b = (core, prerelease-or-None); >0 when a > b per semver.
+              if a[0] != b[0]:
+                  return -1 if a[0] < b[0] else 1
+              apre, bpre = a[1], b[1]
+              if apre is None and bpre is None:
+                  return 0
+              if apre is None:
+                  return 1  # a release sorts above a prerelease of the same core
+              if bpre is None:
+                  return -1
+              ai, bi = pre_identifiers(apre), pre_identifiers(bpre)
+              for x, y in zip(ai, bi):
+                  if x != y:
+                      return -1 if x < y else 1
+              return len(ai) - len(bi)
+
+
+          def existing_tags():
+              try:
+                  out = subprocess.run(
+                      ["git", "ls-remote", "--tags", "origin", "refs/tags/v*"],
+                      capture_output=True, text=True, check=True, timeout=30,
+                  ).stdout
+                  tags = []
+                  for line in out.splitlines():
+                      ref = line.split("\t")[-1] if "\t" in line else ""
+                      if ref.endswith("^{}"):
+                          continue  # peeled entry of an annotated tag
+                      name = ref.rsplit("/", 1)[-1]
+                      if name:
+                          tags.append(name)
+                  if tags:
+                      return tags
+              except Exception:
+                  pass
+              # Fallback: local tags (full clone).
+              return subprocess.run(
+                  ["git", "tag", "--list", "v*"],
+                  capture_output=True, text=True, check=True,
+              ).stdout.split()
+
+
+          cand = parse("v" + candidate)
+          if cand is None:
+              # Defensive: an invalid candidate must never pass the ordering
+              # gate even if the Extract Version bash regex diverged.
+              print("ERROR: candidate v%s is not valid SemVer" % candidate,
+                    file=sys.stderr)
+              sys.exit(1)
+
+          bad = []
+          for tag in existing_tags():
+              if tag == "v" + candidate:
+                  continue  # the candidate itself (workflow re-runs)
+              other = parse(tag)
+              if other is None:
+                  continue  # non-semver tags are not release candidates
+              if compare(cand, other) <= 0:
+                  bad.append(tag)
+
+          if bad:
+              print(
+                  "ERROR: tag v%s is not semver-greater than previously published "
+                  "tag(s): %s" % (candidate, ", ".join(sorted(bad))),
+                  file=sys.stderr,
+              )
+              sys.exit(1)
+          print("release-ordering gate passed for v%s" % candidate)
+          PYEOF
+          fi
           echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
           echo "IS_TAG=$IS_TAG" >> "$GITHUB_OUTPUT"
           echo "IS_PRERELEASE=$IS_PRERELEASE" >> "$GITHUB_OUTPUT"
+
+      - name: Validate SemVer Cases
+        # Pins the strict SemVer grammar shared by the Extract Version regex
+        # and the release-ordering gate: numeric core/prerelease identifiers
+        # must not have leading zeros and prerelease/build components must not
+        # be empty. A regression in either validator fails CI here.
+        run: |
+          python3 - <<'PYEOF'
+          import re
+          SEMVER = re.compile(
+              r"^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)"
+              r"(?:-((?:0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*)"
+              r"(?:\.(?:0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*))*))?"
+              r"(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$"
+          )
+          INVALID = [
+              "v01.2.3",        # leading zero in core major
+              "v1.2.3-01",      # leading zero in numeric prerelease identifier
+              "v1.2.3-alpha..1",  # empty prerelease component
+              "v1.2.03", "v1.2.3-1.02", "v1.2.3-", "v1.2.3-alpha.",
+              "v1.2.3+", "v1.2.3+build..1",
+          ]
+          VALID = [
+              "v0.0.0", "v1.2.3", "v10.20.30",
+              "v1.2.3-alpha.1", "v1.2.3-0.3.7", "v1.2.3-x.7.z.92",
+              "v1.2.3-rc.1+build.5", "v1.2.3+build.5",
+          ]
+          for tag in INVALID:
+              assert SEMVER.fullmatch(tag) is None, f"python validator accepted {tag}"
+          for tag in VALID:
+              assert SEMVER.fullmatch(tag) is not None, f"python validator rejected {tag}"
+          print("python SemVer cases passed")
+          PYEOF
+          BASH_RE='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*)(\.(0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*))*))?(\+[0-9a-zA-Z-]+(\.[0-9a-zA-Z-]+)*)?$'
+          for tag in v01.2.3 v1.2.3-01 v1.2.3-alpha..1 v1.2.03 v1.2.3-1.02 v1.2.3- v1.2.3-alpha. v1.2.3+ v1.2.3+build..1; do
+            if [[ "$tag" =~ $BASH_RE ]]; then
+              echo "ERROR: bash validator accepted invalid '$tag'" >&2
+              exit 1
+            fi
+          done
+          for tag in v0.0.0 v1.2.3 v10.20.30 v1.2.3-alpha.1 v1.2.3-0.3.7 v1.2.3-x.7.z.92 v1.2.3-rc.1+build.5 v1.2.3+build.5; do
+            if [[ ! "$tag" =~ $BASH_RE ]]; then
+              echo "ERROR: bash validator rejected valid '$tag'" >&2
+              exit 1
+            fi
+          done
+          echo "bash SemVer cases passed"
 
       - name: Build Universal APK
         env:

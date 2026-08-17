@@ -99,18 +99,30 @@ void main() {
     });
 
     test('preserves static technical labels like firebase_crashlytics', () {
-      // 21 chars of lowercase + underscore: a single character class, so it
-      // must NOT be treated as an opaque UID.
+      // Explicitly allowlisted in _trustedTechnicalLabels (static plugin
+      // name), so it is preserved despite matching the bare-identifier regex.
       final out = AppLog.sanitize('plugin firebase_crashlytics initialized');
       expect(out, 'plugin firebase_crashlytics initialized');
     });
 
+    test('redacts single-class lowercase bare identifiers (not allowlisted)', () {
+      // 20 lowercase chars — a single character class, no allowlist entry.
+      // Firestore auto-IDs are [a-z0-9]{20}, so this must be redacted like
+      // any other UID.
+      const id = 'abcdefghijklmnopqrst';
+      expect(id.length, 20);
+      final out = AppLog.sanitize('user $id failed');
+      expect(out, 'user [uid] failed');
+    });
+
     test('preserves long lowercase technical identifiers', () {
-      // Lowercase + separators only — a single character class, so even at
-      // 60+ chars it must not be treated as an opaque token.
+      // Lowercase + separators only, >128 chars — beyond the bare-UID range
+      // (20–128), so the long-token rule's single-class heuristic keeps it
+      // readable instead of redacting it.
       const label =
-          'com_example_flutter_application_phase_seventeen_monitoring_module';
-      expect(label.length, greaterThanOrEqualTo(60));
+          'com_example_flutter_application_phase_seventeen_monitoring_module_'
+          'with_longer_technical_context_for_emission_testing_and_extra_context';
+      expect(label.length, greaterThan(128));
       final out = AppLog.sanitize('module $label loaded');
       expect(out, 'module $label loaded');
     });

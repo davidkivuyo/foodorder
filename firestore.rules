@@ -177,6 +177,15 @@ service cloud.firestore {
         && !('reliabilityPendingSince' in changed)
         && !('reliabilitySkippedReason' in changed)
         && !('reliabilitySkippedAt' in changed)
+        // Phase G — deferred excuse-correction markers are written only by
+        // the excuseNoShow callable and the scheduled reconciler (Admin
+        // SDK): reliabilityExcusePending/Since request the correction once
+        // the user doc exists, and reliabilityExcuseSkippedReason/At record
+        // an explicit give-up. Clients may not forge them.
+        && !('reliabilityExcusePending' in changed)
+        && !('reliabilityExcusePendingSince' in changed)
+        && !('reliabilityExcuseSkippedReason' in changed)
+        && !('reliabilityExcuseSkippedAt' in changed)
         // Phase B — cancellation metadata is written only by the cancelOrder
         // callable (Admin SDK); neither student nor admin client may forge it.
         && !('cancellationDeadline' in changed)
@@ -432,6 +441,16 @@ service cloud.firestore {
     // collision-free in practice.
     function reviewCompositeId(userId, orderId, foodId) {
       return userId + ':' + orderId + ':' + foodId;
+    }
+
+    // Deterministic per-(user, food) guard document ID — mirrors
+    // ReviewRepository._compositeGuardId. Enforced in the review_guards
+    // create rule so a client cannot claim a guard for another student.
+    // One live review per (student, food) is enforced atomically: the
+    // create/revive transaction claims the guard in the same mutation as
+    // the review, and soft-delete releases it.
+    function reviewGuardId(userId, foodId) {
+      return userId + ':' + foodId;
     }
 
     // Predefined review template tags — mirrors `reviewTemplateTags` in
@@ -783,6 +802,28 @@ service cloud.firestore {
         && validReviewUpdate();
       allow delete: if false;
       // Soft-delete via update
+    }
+
+    // Review guards — deterministic per-(user, food) documents that make
+    // "one live review per (student, food)" race-free. The guard is claimed
+    // in the same transaction as the review (create/revive) and never
+    // updated in place. Release is SERVER-CONTROLLED: only the
+    // onReviewChanged trigger (Admin SDK) deletes the guard when the review
+    // is soft-deleted, so a client can never drop its own guard and create a
+    // duplicate live review for the same meal.
+    match /review_guards/{docId} {
+      allow read: if isAuth()
+        && resource.data.userId == request.auth.uid;
+      allow create: if isAuth()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.foodId is string
+        && docId == reviewGuardId(
+             request.resource.data.userId,
+             request.resource.data.foodId)
+        && request.resource.data.keys().hasOnly(['userId', 'foodId', 'createdAt'])
+        && request.resource.data.createdAt is timestamp;
+      allow update: if false;
+      allow delete: if false;
     }
 
     // Devices

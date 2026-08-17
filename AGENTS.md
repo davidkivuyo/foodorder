@@ -145,83 +145,735 @@ Do not remove existing comments unless they are directly related to what you are
 
 # Current Phase
 
-# PHASE H — CAFE FOOD WASTE MANAGEMENT
+# PHASE I — TESTING & PRODUCTION HARDENING
 
 ## OBJECTIVE
 
-Implement Phase H of the CampusBite Pickup Reliability System.
+Implement Phase I of the CampusBite Pickup Reliability and Food Waste Management system.
 
-Previous phases completed:
+This is the final validation and production-hardening phase for:
 
-✓ Phase A — No-show foundation
-✓ Phase B — Pickup Reliability
-✓ Phase B.1 — 2-minute order cancellation
-✓ Phase C — Grace period & automatic NO_SHOW
-✓ Phase D — Student reliability experience
-✓ Phase E — Graduated ordering restrictions
-✓ Phase F — Reliability recovery
-✓ Phase G — Admin intervention / Excuse No-show
+- Order cancellation
+- Pickup deadlines
+- Grace period
+- Automatic NO_SHOW
+- Pickup Reliability
+- Graduated Restrictions
+- Reliability Recovery
+- Admin No-show Excusal
+- Cafe Food Disposition
 
-Phase H introduces Cafe Food Waste Management.
+The objective is NOT to add new features.
 
-The purpose of this phase is to help cafe administrators record and manage what happens to food from uncollected NO_SHOW orders.
+The objective is to:
 
-This phase must:
+1. Validate the complete system.
+2. Find and fix defects.
+3. Validate security.
+4. Validate concurrency and race conditions.
+5. Validate Firestore efficiency.
+6. Validate Cloud Functions.
+7. Validate offline and failure behavior.
+8. Validate privacy.
+9. Validate release readiness.
+10. Document any remaining risks.
 
-- identify uncollected food
-- let authorized cafe admins record its disposition
-- preserve the original order history
-- prevent duplicate disposition records
-- support future food-waste analytics
-- minimize Firestore reads and writes
-- avoid exposing unnecessary student information
-- avoid changing the reliability system
+DO NOT redesign the system.
 
-IMPORTANT:
+DO NOT introduce new punishment mechanisms.
 
-A NO_SHOW does NOT automatically mean FOOD WASTE.
-
-The cafe decides what happened to the food.
+DO NOT reintroduce the old Strike Engine.
 
 ---
 
-# 1. CORE PRINCIPLE
+# 1. CRITICAL PRINCIPLE
 
-The order lifecycle answers:
+Treat this phase as a production release gate.
 
-"What happened to the order?"
+Do not make speculative architectural changes.
 
-Food disposition answers:
+Use available agents skills to fix defects and improve production readiness.
 
-"What happened to the prepared food?"
+Only modify implementation when:
 
-Keep these concepts separate.
+- a test fails
+- a security issue is discovered
+- a performance issue is demonstrated
+- a reliability issue is demonstrated
+- a production blocker is identified
+
+Every change must have a reason.
+
+---
+
+# 2. SYSTEM UNDER TEST
+
+The complete system includes:
+
+## Student App
+
+- Registration
+- Email verification
+- Login
+- Forgot password
+- Menu
+- Search
+- Cart
+- Order placement
+- 2-minute cancellation
+- Pickup countdown
+- Grace period
+- Order collection
+- No-show display
+- Pickup reliability
+- Graduated restrictions
+- Reliability recovery
+- Reviews
+- Notifications
+- FCM
+- Favourite menu
+- In-app updates
+
+## Admin App
+
+- Admin authentication
+- Menu management
+- Cloudinary upload
+- Order management
+- Accept
+- Preparing
+- Ready
+- Collected
+- Student reliability visibility
+- Admin No-show excusal
+- Food disposition
+- Notifications
+- Audit logs
+
+## Backend
+
+- Firebase Authentication
+- Firestore
+- Firestore Security Rules
+- Cloud Functions
+- Scheduled functions
+- Notification system
+- FCM
+- Cloudinary integration
+- Cloudflare update proxy
+
+---
+
+# 3. BEFORE TESTING
+
+Create a production-hardening branch.
 
 Example:
 
-Order:
+production-hardening
 
-NO_SHOW
+Do not perform testing directly against production data unless explicitly approved.
 
-Food disposition:
+If a staging Firebase project exists:
 
-DONATED
+USE IT.
 
-The order remains:
+If no staging project exists:
 
-NO_SHOW
+create a safe testing strategy using controlled test accounts and test documents.
 
-Do NOT change it to:
-
-COLLECTED
-
-Do NOT change the student's reliability based on food disposition.
+Never use real student personal data for automated testing.
 
 ---
 
-# 2. SUPPORTED FOOD DISPOSITIONS
+# 4. ENVIRONMENT AUDIT
 
-Create the following controlled disposition types:
+Document:
+
+Flutter version
+
+Dart version
+
+Android Gradle version
+
+Java version
+
+Firebase project
+
+Cloud Functions runtime
+
+Node.js version
+
+Cloudinary configuration
+
+Cloudflare Worker endpoint
+
+Build signing configuration
+
+Current application version
+
+Do not expose secrets in the report.
+
+---
+
+# 5. DEPENDENCY AUDIT
+
+Run:
+
+flutter pub outdated
+
+flutter pub deps
+
+flutter analyze
+
+Review:
+
+- outdated packages
+- abandoned packages
+- conflicting dependencies
+- deprecated APIs
+- unused packages
+
+Do not blindly upgrade all dependencies.
+
+Only update packages when:
+
+- compatible with current Flutter version
+- stable
+- tested
+- required for security or production compatibility
+
+Run the full test suite after every dependency change.
+
+---
+
+# 6. STATIC ANALYSIS
+
+Run:
+
+flutter analyze
+
+Fix:
+
+errors
+
+warnings
+
+unused imports
+
+deprecated APIs
+
+unreachable code
+
+unsafe casts
+
+null-safety issues
+
+Do not suppress warnings without understanding their cause.
+
+---
+
+# 7. FORMATTING
+
+Run:
+
+dart format
+
+on changed Dart files.
+
+Do not perform a massive unrelated formatting rewrite.
+
+---
+
+# 8. TEST ORDER LIFECYCLE
+
+Test the complete lifecycle.
+
+## TEST A — Normal order
+
+Student:
+
+Place order
+
+↓
+
+Admin:
+
+Accept
+
+↓
+
+Preparing
+
+↓
+
+Ready
+
+↓
+
+Student collects
+
+↓
+
+Collected
+
+Expected:
+
+- order succeeds
+- reliability records one collection
+- no NO_SHOW
+- no restriction change caused by failure
+- no false notification
+- order history correct
+
+---
+
+# 9. TEST ORDER CANCELLATION
+
+## TEST B — Cancel within 2 minutes
+
+Student places order.
+
+Cancel before:
+
+cancellationDeadline
+
+Expected:
+
+CANCELLED
+
+Verify:
+
+- cafe cannot accept
+- order does not become READY
+- order does not become NO_SHOW
+- order does not affect reliability
+- no false food-waste record
+
+---
+
+# 10. TEST CANCELLATION CUTOFF
+
+## TEST C
+
+Attempt cancellation at or after:
+
+currentServerTime >= cancellationDeadline
+
+Expected:
+
+Cancellation rejected.
+
+Do not trust device clock.
+
+---
+
+# 11. TEST CANCELLATION RACE
+
+## TEST D
+
+Simultaneously attempt:
+
+Student cancellation
+
+and:
+
+Admin acceptance
+
+before cancellation deadline.
+
+Verify only one transaction succeeds.
+
+Possible final states:
+
+CANCELLED
+
+or:
+
+ACCEPTED
+
+Never both.
+
+The application must never create contradictory state.
+
+---
+
+# 12. TEST PICKUP DEADLINE
+
+## TEST E
+
+Admin marks order READY.
+
+Verify:
+
+readyAt exists.
+
+pickupDeadline exists.
+
+pickup deadline is server-authoritative.
+
+Countdown appears correctly.
+
+No Firestore writes occur every second.
+
+---
+
+# 13. TEST NORMAL PICKUP
+
+## TEST F
+
+Student collects before pickup deadline.
+
+Expected:
+
+COLLECTED.
+
+No NO_SHOW.
+
+Reliability:
+
++ eligible order
+
++ collected order
+
+---
+
+# 14. TEST GRACE PERIOD
+
+## TEST G
+
+Allow:
+
+pickupDeadline
+
+to pass.
+
+Verify order remains:
+
+READY
+
+during grace period.
+
+Student can still collect.
+
+---
+
+# 15. TEST HARD CUTOFF
+
+## TEST H
+
+At:
+
+currentServerTime >= noShowEligibleAt
+
+attempt collection.
+
+Expected:
+
+collection rejected.
+
+The grace period is a hard cutoff.
+
+A delayed scheduler must NOT extend collection eligibility.
+
+---
+
+# 16. TEST NO-SHOW
+
+## TEST I
+
+READY order
+
+↓
+
+pickup deadline expires
+
+↓
+
+grace period expires
+
+↓
+
+automatic processor runs
+
+Expected:
+
+READY → NO_SHOW
+
+Set:
+
+noShowAt
+
+Do not change unrelated order data.
+
+---
+
+# 17. TEST NO-SHOW IDempotency
+
+## TEST J
+
+Run the automatic NO_SHOW processor twice.
+
+Expected:
+
+First:
+
+READY → NO_SHOW
+
+Second:
+
+no change
+
+No duplicate:
+
+- reliability update
+- notification
+- audit log
+- food disposition event
+
+---
+
+# 18. TEST NO-SHOW VS COLLECTION RACE
+
+## TEST K
+
+Near the hard cutoff:
+
+Attempt simultaneously:
+
+collection
+
+and:
+
+automatic NO_SHOW
+
+Verify:
+
+BEFORE cutoff:
+collection may succeed.
+
+AT/AFTER cutoff:
+collection must fail.
+
+NO_SHOW may succeed.
+
+There must never be:
+
+COLLECTED + NO_SHOW
+
+---
+
+# 19. TEST RELIABILITY CALCULATION
+
+Verify:
+
+eligibleOrders
+
+collectedOrders
+
+noShowOrders
+
+collectionRate
+
+recentEligibleOrders
+
+recentCollectedOrders
+
+recentNoShowOrders
+
+recentCollectionRate
+
+reliabilityScore
+
+status
+
+Use known test datasets.
+
+Compare actual calculations against expected results.
+
+---
+
+# 20. TEST NEW USERS
+
+User with:
+
+eligibleOrders = 0
+
+Expected:
+
+status = NEW
+
+No restrictions.
+
+No poor-reliability warning.
+
+---
+
+# 21. TEST INSUFFICIENT HISTORY
+
+User with:
+
+1–2 eligible orders.
+
+Expected:
+
+INSUFFICIENT_HISTORY
+
+Restriction:
+
+NORMAL
+
+---
+
+# 22. TEST RESTRICTIONS
+
+Verify Phase E:
+
+90–100:
+
+NORMAL
+
+75–89:
+
+NORMAL
+
+50–74:
+
+NORMAL
+
+25–49:
+
+LIMITED
+
+0–24:
+
+HIGHLY_LIMITED
+
+Verify:
+
+minimum-history rule is respected.
+
+---
+
+# 23. TEST ACTIVE ORDER LIMIT
+
+For:
+
+LIMITED
+
+Maximum active orders:
+
+2
+
+For:
+
+HIGHLY_LIMITED
+
+Maximum active orders:
+
+1
+
+Verify the limit is enforced by backend.
+
+Do not rely only on Flutter UI.
+
+---
+
+# 24. TEST CONCURRENT ORDER ATTEMPTS
+
+A restricted student uses two devices.
+
+Both attempt to place orders simultaneously.
+
+Verify active-order limit cannot be bypassed.
+
+---
+
+# 25. TEST RELIABILITY RECOVERY
+
+Start with a restricted account.
+
+Process successful collections.
+
+Verify:
+
+HIGHLY_LIMITED → LIMITED
+
+and eventually:
+
+LIMITED → NORMAL
+
+when the existing reliability score crosses the appropriate thresholds.
+
+Do not create bonus recovery points.
+
+Use the existing reliability engine.
+
+---
+
+# 26. TEST EXCUSED NO-SHOW
+
+Create:
+
+NO_SHOW
+
+Admin:
+
+Excuse No-show
+
+Expected:
+
+- order remains NO_SHOW
+- no-show is excluded from reliability failure calculations
+- reliability recalculates
+- restriction recalculates
+- audit log created
+- student notification created if enabled
+
+---
+
+# 27. TEST ADMIN AUTHORIZATION
+
+Test:
+
+Admin from Cafe A
+
+attempting to manage:
+
+Cafe B
+
+Expected:
+
+PERMISSION_DENIED
+
+Test non-admin user attempting the same action.
+
+Expected:
+
+PERMISSION_DENIED
+
+---
+
+# 28. TEST ADMIN AUDIT LOGS
+
+Verify:
+
+- excuse action
+- food disposition action
+- menu modifications
+- other existing privileged actions
+
+create immutable audit records where required.
+
+Verify audit records cannot be edited or deleted through the client.
+
+---
+
+# 29. TEST FOOD DISPOSITION
+
+For a NO_SHOW:
+
+test:
 
 UNRESOLVED
 
@@ -237,1109 +889,1162 @@ DISPOSED
 
 OTHER
 
-Use enums/constants.
+Verify:
 
-Do not use arbitrary free-form status strings throughout the codebase.
+order remains NO_SHOW
 
----
+reliability does not change
 
-# 3. DEFAULT STATE
+disposition is stored correctly
 
-When an order becomes:
-
-NO_SHOW
-
-initial food disposition should be:
-
-UNRESOLVED
-
-unless the existing system already determines a valid disposition.
-
-Do not automatically mark:
-
-DISPOSED
-
-because the food may still be recoverable.
+audit log is created
 
 ---
 
-# 4. ELIGIBILITY
-
-Only orders with:
-
-status == NO_SHOW
-
-may receive a food disposition.
-
-Do not create waste records for:
-
-PENDING
-
-ACCEPTED
-
-PREPARING
-
-READY
-
-COLLECTED
-
-CANCELLED
-
-REJECTED
-
----
-
-# 5. FOOD DISPOSITION DATA
-
-Prefer storing a compact disposition record on the order if only one final disposition is required.
-
-Recommended fields:
-
-foodDisposition
-foodDispositionAt
-foodDispositionBy
-foodDispositionNote
-
-Example:
-
-{
-    "status": "NO_SHOW",
-    "foodDisposition": "DONATED",
-    "foodDispositionAt": Timestamp,
-    "foodDispositionBy": "adminUid",
-    "foodDispositionNote": "Donated to campus support staff."
-}
-
-Reuse existing order fields if equivalent fields already exist.
-
-Do not create duplicate structures.
-
----
-
-# 6. DO NOT STORE STUDENT LOCATION
-
-Food waste management must not introduce any location storage.
-
-Do not copy:
-
-studentLocation
-
-coordinates
-
-address
-
-device location
-
-into waste records.
-
-The cafe only needs operational order information.
-
----
-
-# 7. ADMIN AUTHORIZATION
-
-Only authorized cafe administrators can set or change a food disposition.
-
-Before allowing a disposition:
-
-1. Authenticate admin.
-2. Verify admin role.
-3. Verify admin account is active.
-4. Verify admin is authorized for the order's cafe.
-5. Verify order.status == NO_SHOW.
-
-Do not trust the Flutter UI.
-
-Do not rely only on hiding buttons.
-
-Backend validation is mandatory.
-
----
-
-# 8. STUDENTS MUST NOT MODIFY DISPOSITION
-
-Students may:
-
-READ their own order status if the existing product experience requires it.
-
-Students must NOT:
-
-- set foodDisposition
-- change foodDisposition
-- mark food as donated
-- mark food as disposed
-- edit cafe waste notes
-
-All disposition changes belong to authorized cafe admins/backend operations.
-
----
-
-# 9. ADMIN UI
-
-In the Admin Order Details screen:
-
-When:
-
-status == NO_SHOW
-
-show:
-
-Food Disposition
-
-If unresolved:
-
-"Record food outcome"
-
-Available actions:
-
-- Resold
-- Discounted
-- Donated
-- Staff Use
-- Disposed
-- Other
-
-Do not show this control for active or completed collected orders.
-
----
-
-# 10. CONFIRMATION
-
-Before saving a final disposition, require confirmation.
-
-Example:
-
-"Record food as donated?"
-
-"The order will remain marked as No-show. This only records what happened to the prepared food."
-
-Buttons:
-
-Cancel
-
-Confirm
-
-Do not silently save an irreversible operational action.
-
----
-
-# 11. OPTIONAL NOTE
-
-Allow an optional admin note.
-
-Maximum:
-
-200 characters.
-
-Examples:
-
-"Donated to campus support staff."
-
-"Sold at 50% discount."
-
-"Food was disposed because it was no longer safe to serve."
-
-Trim whitespace.
-
-Reject excessively long input.
-
-Do not allow HTML or scripts.
-
----
-
-# 12. DISPOSITION CORRECTIONS
-
-Admins may need to correct an incorrectly recorded disposition.
-
-Do NOT delete historical information silently.
-
-Preferred approach:
-
-Allow changing:
-
-DISPOSITION A → DISPOSITION B
-
-while preserving an immutable audit history.
+# 30. TEST DISPOSITION CORRECTION
 
 Example:
 
 DONATED
 
-changed to:
+↓
 
 DISPOSED
 
-The current order reflects:
+Verify:
 
-DISPOSED
+current disposition = DISPOSED
 
-The audit trail shows:
+audit history records:
 
 DONATED → DISPOSED
 
----
-
-# 13. AUDIT LOG
-
-Use the existing:
-
-audit_logs
-
-collection.
-
-Record every successful disposition change.
-
-Fields:
-
-action
-
-orderId
-
-studentId
-
-cafeId
-
-adminId
-
-previousDisposition
-
-newDisposition
-
-timestamp
-
-note
-
-Do not store unnecessary student personal information.
-
-Do not expose audit records publicly.
+No duplicate current-state record.
 
 ---
 
-# 14. AUDIT IMMUTABILITY
+# 31. TEST UNAUTHORIZED DISPOSITION
 
-Audit records must be append-only.
-
-Admins must not be able to:
-
-edit
-
-delete
-
-rewrite
-
-audit history.
-
-Students must not access private cafe audit records unless a future feature explicitly permits it.
-
----
-
-# 15. ATOMIC UPDATE
-
-Changing a food disposition and creating its audit record should be atomic.
-
-Use a Firestore transaction or appropriate backend mechanism.
-
-If the operation fails:
-
-the order disposition must not partially change.
-
----
-
-# 16. IDEMPOTENCY
-
-Repeated requests must not create duplicate effects.
-
-If the same disposition is submitted twice:
-
-do not create duplicate audit records if nothing changed.
-
-If:
-
-currentDisposition == requestedDisposition
-
-return a safe "already recorded" result.
-
-Do not perform unnecessary Firestore writes.
-
----
-
-# 17. ADMIN BACKEND OPERATION
-
-Prefer a dedicated backend operation such as:
-
-setFoodDisposition(
-    orderId,
-    disposition,
-    note
-)
-
-The client should provide:
-
-orderId
-
-disposition
-
-note
-
-The backend should derive:
-
-studentId
-
-cafeId
-
-from the order document.
-
-Do not trust client-provided studentId/cafeId.
-
-Refactor functions to reduce cognitive complexity.
-
-Avoid declarations of unused variables.
-
----
-
-# 18. FIRESTORE READ OPTIMIZATION
-
-For a disposition update, do not read:
-
-- all student orders
-- food_items
-- reviews
-- notifications
-- reliability history
-
-Only the target order and whatever existing authorization mechanism requires.
-
-Reuse existing admin authorization data where possible.
-
-Do not introduce unnecessary role lookups if the existing architecture already has a secure admin claim/service.
-
----
-
-# 19. FIRESTORE WRITE OPTIMIZATION
-
-A successful disposition change should normally require:
-
-1. One order update.
-2. One audit log creation.
-
-Prefer one transaction.
-
-Do not write:
-
-- analytics documents
-- daily summaries
-- user profile updates
-- reliability updates
-
-in this phase.
-
-Analytics belongs later.
-
----
-
-# 20. NO IMPACT ON RELIABILITY
-
-Food disposition must NOT affect:
-
-reliabilityScore
-
-collectionRate
-
-recentCollectionRate
-
-noShowOrders
-
-restrictionLevel
-
-A no-show remains a no-show regardless of whether the food was:
-
-DONATED
-
-RESOLD
-
-DISPOSED
-
-or otherwise handled.
-
-The reliability event has already been processed.
-
----
-
-# 21. NO IMPACT ON ORDER STATUS
-
-Food disposition must NOT change:
-
-NO_SHOW
-
-to:
-
-COLLECTED
-
-The historical order outcome remains:
-
-NO_SHOW
-
-Food disposition is a separate operational property.
-
----
-
-# 22. STUDENT EXPERIENCE
-
-Students do not need to see private cafe waste-management details.
-
-At most, the student may continue seeing:
-
-NO_SHOW
-
-and the existing reliability information.
-
-Do not expose:
-
-- disposal reason
-- staff notes
-- cafe internal comments
-- estimated loss
-- admin identity
-
-unless explicitly required later.
-
----
-
-# 23. CAFE DASHBOARD
-
-Add a lightweight operational summary.
-
-For example:
-
-Unresolved No-shows
-
-Donated
-
-Resold
-
-Discounted
-
-Staff Use
-
-Disposed
-
-Do not build advanced analytics yet.
-
-The dashboard should query only the cafe's relevant orders.
-
----
-
-# 24. FILTERING
-
-Admin should be able to filter:
-
-All
-
-Unresolved
-
-Donated
-
-Resold
-
-Discounted
-
-Staff Use
-
-Disposed
-
-Do not download all historical orders unnecessarily.
-
-Use indexed Firestore queries.
-
-Paginate results.
-
----
-
-# 25. DATE RANGE
-
-Allow simple date filtering if the existing admin architecture supports it.
-
-Examples:
-
-Today
-
-This week
-
-This month
-
-Do not load all historical data into memory.
-
-Use Firestore date constraints.
-
----
-
-# 26. COST OPTIMIZATION
-
-Avoid:
-
-- scanning every order
-- loading all historical no-shows
-- recalculating all disposition totals on every screen load
-- writing aggregate counters for every change unless actually needed
-
-Use indexed queries.
-
-Paginate large results.
-
-Only load the records displayed.
-
----
-
-# 27. OPTIONAL AGGREGATES
-
-If performance later requires aggregate statistics, create them through backend events.
-
-Do NOT introduce aggregate documents in this phase unless current query performance proves they are necessary.
-
-Start with the simplest correct implementation.
-
----
-
-# 28. FOOD WASTE REPORTING FOUNDATION
-
-Prepare the data model for future reporting.
-
-The system should eventually be able to answer:
-
-- How many NO_SHOW orders occurred?
-- How many were donated?
-- How many were resold?
-- How many were discounted?
-- How many were disposed?
-- How many remain unresolved?
-- How frequently does food go to waste?
-- Which cafe has the highest no-show waste rate?
-
-Do not implement advanced analytics in Phase H.
-
-Only make the stored data capable of supporting it.
-
----
-
-# 29. ESTIMATED WASTE VALUE
-
-Do NOT calculate financial loss unless the application already has a reliable cost model.
-
-Do not assume:
-
-food price == food cost
-
-because:
-
-selling price
-
-and:
-
-actual cafe cost
-
-are different concepts.
-
-If a future phase needs waste value, introduce a separate cost model.
-
-Do not fabricate financial metrics in this phase.
-
----
-
-# 30. FOOD SAFETY
-
-Do not allow the application to recommend that potentially unsafe food be resold.
-
-The app only records the cafe administrator's chosen disposition.
-
-The cafe is responsible for following its own food-safety policies.
-
-Do not implement food-safety decisions in code.
-
----
-
-# 31. RESOLD / DISCOUNTED FLOW
-
-For:
-
-RESOLD
-
-or:
-
-DISCOUNTED
-
-the system should record the disposition only.
-
-Do not automatically create a new food listing.
-
-Do not modify the food item price.
-
-Do not create a second order.
-
-These are operational records only.
-
-A future "food rescue" feature can implement actual resale workflows separately.
-
----
-
-# 32. DONATED FLOW
-
-For:
-
-DONATED
-
-record:
-
-disposition = DONATED
-
-Optional note.
-
-Do not collect recipient personal information unless a future legal/product requirement explicitly requires it.
-
----
-
-# 33. DISPOSED FLOW
-
-For:
-
-DISPOSED
-
-allow optional note such as:
-
-"Food no longer suitable for service."
-
-Do not collect unnecessary disposal details.
-
----
-
-# 34. ADMIN UI SAFETY
-
-Never make:
-
-DISPOSED
-
-the default button.
-
-Avoid destructive-looking defaults.
-
-Require confirmation.
-
-If the system allows changing from:
-
-DISPOSED → RESOLD
-
-record the correction in audit history.
-
----
-
-# 35. ORDER LIST
-
-For NO_SHOW orders, display a clear badge:
-
-NO-SHOW
-
-and a separate disposition badge:
-
-UNRESOLVED
-
-DONATED
-
-RESOLD
-
-DISCOUNTED
-
-STAFF USE
-
-DISPOSED
-
-Do not combine them into one ambiguous status.
-
----
-
-# 36. NOTIFICATIONS
-
-Do NOT add new student notifications for food disposition in this phase.
-
-Do not notify students:
-
-"Your food was disposed."
-
-unless a future product requirement explicitly asks for it.
-
-The existing:
-
-NO_SHOW
-
-notification remains unchanged.
-
----
-
-# 37. FCM
-
-Do not add new FCM message types.
-
-No new push notifications in Phase H.
-
----
-
-# 38. SECURITY RULES
-
-Students must not write:
+Student attempts to change:
 
 foodDisposition
 
-foodDispositionAt
-
-foodDispositionBy
-
-foodDispositionNote
-
-Admins must only change disposition through the authorized backend operation.
-
-Audit logs:
-
-readable only to appropriately authorized administrators.
-
-Audit logs:
-
-not writable or deletable directly by students.
-
-Do not weaken existing rules.
-
----
-
-# 39. PRIVACY
-
-Minimize data.
-
-Do not store:
-
-- student location
-- phone number
-- email
-- FCM token
-- private student information
-
-inside food disposition records.
-
-Use:
-
-orderId
-
-studentId
-
-cafeId
-
-adminId
-
-only where required for audit/security.
-
----
-
-# 40. PERFORMANCE
-
-Admin dashboard must:
-
-- paginate
-- use indexed queries
-- avoid full collection reads
-- avoid unnecessary realtime listeners
-- reuse existing order streams where possible
-
-A real-time listener is appropriate only if the screen actually requires live updates.
-
----
-
-# 41. TESTING
-
-Create/update tests for:
-
-## TEST 1 — No-show eligibility
-
-NO_SHOW order.
-
 Expected:
 
-food disposition can be recorded.
+PERMISSION_DENIED
+
+Admin from another cafe:
+
+PERMISSION_DENIED
 
 ---
 
-## TEST 2 — Collected order
+# 32. NOTIFICATION TESTING
 
-COLLECTED.
+Verify:
 
-Expected:
+Student:
 
-food disposition controls unavailable.
+ORDER_ACCEPTED
 
----
+ORDER_PREPARING
 
-## TEST 3 — Cancelled order
+ORDER_READY
 
-CANCELLED.
+PICKUP_REMINDER
 
-Expected:
+ORDER_NO_SHOW
 
-not eligible.
+STRIKE notifications must NOT exist.
 
----
+Instead use the new reliability/no-show terminology.
 
-## TEST 4 — Record donated
+Admin:
 
-DONATED.
+NEW_ORDER
 
-Expected:
-
-order remains NO_SHOW.
+Food disposition should not create unnecessary student notifications.
 
 ---
 
-## TEST 5 — Record disposed
+# 33. FCM TESTING
 
-DISPOSED.
+Test:
 
-Expected:
+Foreground
 
-order remains NO_SHOW.
+Background
 
----
+Terminated
 
-## TEST 6 — Record resold
+No internet
 
-RESOLD.
+Token refresh
 
-Expected:
+Invalid token
 
-order remains NO_SHOW.
+Duplicate event
 
----
+Notification tap
 
-## TEST 7 — Duplicate disposition
+Deep link
 
-Same disposition submitted twice.
+Verify:
 
-Expected:
+notification is stored in Firestore
 
-no unnecessary write.
+push notification is sent
 
-No duplicate audit record.
-
----
-
-## TEST 8 — Change disposition
-
-DONATED → DISPOSED.
-
-Expected:
-
-current disposition = DISPOSED.
-
-Audit history records both events.
+duplicate push is prevented
 
 ---
 
-## TEST 9 — Unauthorized student
+# 34. SECURITY RULE AUDIT
 
-Student attempts to change disposition.
+Review every Firestore rule.
 
-Expected:
+Explicitly test:
 
-PERMISSION_DENIED.
+Student:
 
----
+- cannot modify reliability
+- cannot modify restrictions
+- cannot modify NO_SHOW
+- cannot modify food disposition
+- cannot modify another user's order
+- cannot modify another user's cart
+- cannot create admin data
+- cannot modify audit logs
 
-## TEST 10 — Unauthorized cafe admin
+Admin:
 
-Admin from Cafe A attempts to modify Cafe B order.
+- cannot manage unauthorized cafe
+- cannot directly rewrite reliability
+- cannot edit audit logs
 
-Expected:
+Public:
 
-PERMISSION_DENIED.
+- can only read intentionally public content
 
----
+No rule should contain:
 
-## TEST 11 — Concurrent admin actions
+allow read, write: if true;
 
-Two authorized admins modify the same order.
-
-Expected:
-
-transaction prevents inconsistent state.
-
----
-
-## TEST 12 — Reliability isolation
-
-Change food disposition.
-
-Expected:
-
-reliability remains unchanged.
+unless deliberately justified.
 
 ---
 
-## TEST 13 — Order status isolation
+# 35. CLOUD FUNCTION SECURITY AUDIT
 
-Change food disposition.
+Review every Cloud Function.
 
-Expected:
-
-order status remains NO_SHOW.
-
----
-
-# 42. COST AUDIT
-
-Before completing Phase H, document:
-
-- number of reads for disposition update
-- number of writes for disposition update
-- dashboard query strategy
-- pagination strategy
-- required Firestore indexes
-- any realtime listeners
-- any aggregate calculations
-
-Remove unnecessary Firestore operations.
-
-Target:
-
-Disposition update:
-one target-order read/transaction + one atomic commit containing order update + audit log.
-
-Dashboard:
-indexed paginated query only.
-
----
-
-# 43. BACKWARD COMPATIBILITY
-
-Do not break:
+Verify:
 
 - authentication
-- cart
-- ordering
-- cancellation
-- grace period
-- NO_SHOW
-- reliability calculation
-- reliability recovery
-- graduated restrictions
-- admin intervention
+- admin authorization
+- ownership
+- input validation
+- idempotency
+- retry safety
+- error handling
+- secret access
+
+Never expose:
+
+API secrets
+
+stack traces
+
+tokens
+
+private data
+
+---
+
+# 36. FIREBASE SECRETS AUDIT
+
+Verify sensitive credentials are not present in:
+
+- Flutter source
+- git history
+- GitHub Actions logs
+- public release metadata
+- Cloudflare responses
+
+Sensitive backend credentials must remain in Firebase Secret Manager or GitHub Secrets as appropriate.
+
+---
+
+# 37. CLOUDINARY SECURITY
+
+Verify:
+
+Flutter never contains:
+
+Cloudinary API Secret
+
+Cloudinary private credentials
+
+Image deletion goes through the authorized backend function.
+
+Only secure URLs/public IDs required by the application are stored.
+
+---
+
+# 38. PRIVACY AUDIT
+
+Verify no unnecessary storage of:
+
+student coordinates
+
+location history
+
+passwords
+
+authentication tokens
+
+FCM tokens in logs
+
+private review content in logs
+
+private admin notes in public documents
+
+Review:
+
+Firestore
+
+Crashlytics
+
+Analytics
+
+Cloud Logging
+
+FCM payloads
+
+---
+
+# 39. FIRESTORE COST AUDIT
+
+Measure and document:
+
+- order creation reads/writes
+- order cancellation reads/writes
+- READY transition
+- NO_SHOW processing
+- reliability update
+- restriction update
+- admin excuse
+- food disposition
 - notifications
-- FCM
+- account screen
+
+Look for:
+
+- duplicate reads
+- duplicate writes
+- full collection scans
+- unnecessary listeners
+- per-second writes
+- unnecessary scheduled functions
+
+Eliminate unnecessary operations where safe.
+
+---
+
+# 40. FIRESTORE QUERY AUDIT
+
+Every major query must have:
+
+- a clear purpose
+- appropriate filters
+- appropriate limit/pagination
+- necessary indexes
+
+Review:
+
+orders
+
+notifications
+
+reviews
+
+food_items
+
+admin student searches
+
+food disposition records
+
+Do not download unbounded collections.
+
+---
+
+# 41. CLOUD FUNCTION COST AUDIT
+
+Document all:
+
+- scheduled functions
+- Firestore triggers
+- callable functions
+- HTTP functions
+
+For each function document:
+
+- trigger frequency
+- expected invocations
+- Firestore reads
+- Firestore writes
+- external API calls
+- retry behavior
+
+Remove redundant functions if they duplicate another backend responsibility.
+
+---
+
+# 42. OFFLINE TESTING
+
+Test:
+
+- app starts offline
+- menu cache
+- account cache
+- existing order view
+- notification cache
+- cart synchronization
+- reconnect after offline
+- failed writes
+- retry behavior
+
+Never allow offline behavior to bypass:
+
+- order limits
+- authorization
+- cancellation deadlines
+- NO_SHOW cutoff
+
+---
+
+# 43. NETWORK FAILURE TESTING
+
+Simulate:
+
+- slow network
+- lost network
+- intermittent network
+- Firebase unavailable
+- Cloud Function timeout
+- FCM failure
+- Cloudflare Worker failure
+- GitHub release metadata failure
+
+The application must fail gracefully.
+
+---
+
+# 44. UPDATE SYSTEM TESTING
+
+Test the Cloudflare update proxy:
+
+https://dl.larason.space
+
+Verify:
+
+latest metadata
+
+version comparison
+
+minimum version
+
+force update
+
+optional update
+
+ABI detection
+
+universal fallback
+
+APK download
+
+SHA-256 verification
+
+installation flow
+
+offline update-check failure
+
+Do not allow an invalid or unverified APK to proceed to installation.
+
+---
+
+# 45. APK RELEASE TESTING
+
+For each production tag verify:
+
+CampusBite-universal.apk
+
+CampusBite-arm64-v8a.apk
+
+CampusBite-armeabi-v7a.apk
+
+CampusBite-x86_64.apk
+
+Check:
+
+- package name
+- versionName
+- versionCode
+- signing
+- APK opens
+- Firebase connection
+- update metadata
+- checksum
+
+---
+
+# 46. ANDROID PERMISSION AUDIT
+
+Review AndroidManifest.xml.
+
+Remove unused permissions.
+
+Pay particular attention to:
+
+location
+
+internet
+
+notifications
+
+storage
+
+install packages
+
+Only request permissions actually needed.
+
+Location permission must NOT include background tracking unless explicitly required.
+
+---
+
+# 47. DATA RETENTION AUDIT
+
+Document retention for:
+
+- orders
+- notifications
+- audit logs
 - reviews
-- favourites
-- Cloudinary
+- reliability summaries
+- food disposition records
+- device tokens
+- logs
+
+Do not implement destructive cleanup without verifying legal/business requirements.
+
+---
+
+# 48. UI/UX REGRESSION TEST
+
+Verify:
+
+- no layout overflow
+- dialogs work
+- snackbars work
+- loading states work
+- error states work
+- dark/light mode if supported
+- accessibility
+- large text
+- keyboard behavior
+- navigation back behavior
+
+---
+
+# 49. ACCESSIBILITY AUDIT
+
+Review:
+
+- semantic labels
+- button sizes
+- contrast
+- screen readers
+- text scaling
+- focus order
+- meaningful error messages
+
+Do not rely solely on colors for status.
+
+---
+
+# 50. PERFORMANCE TESTING
+
+Measure:
+
+- cold startup
+- warm startup
+- home load
+- menu load
+- cart load
+- checkout
+- order status update
+- AccountScreen
+- notification screen
+- review screen
+- admin dashboard
+
+Identify regressions.
+
+Document baseline vs final.
+
+---
+
+# 51. MEMORY & RESOURCE LEAK TESTING
+
+Check:
+
+- timers
+- streams
+- subscriptions
+- controllers
+- animations
+- listeners
+
+Verify they are disposed.
+
+Pay particular attention to:
+
+pickup countdown
+
+Firestore listeners
+
+notification listeners
+
+FCM listeners
+
+image caches
+
+---
+
+# 52. CRASH TESTING
+
+Verify Crashlytics receives:
+
+- controlled Flutter exception
+- async exception
+- platform exception
+- backend failure where appropriate
+
+Do not send test crash noise into production monitoring.
+
+Use a controlled test environment where possible.
+
+---
+
+# 53. SECURITY REGRESSION TESTS
+
+Attempt:
+
+- privilege escalation
+- unauthorized document writes
+- cross-student reads
+- cross-cafe admin access
+- client-side restriction bypass
+- client-side NO_SHOW bypass
+- fake collected status
+- fake cancellation
+- fake reliability
+- fake food disposition
+- fake notification creation
+
+All must fail appropriately.
+
+---
+
+# 54. PENETRATION-STYLE CLIENT TESTING
+
+Treat the Flutter client as untrusted.
+
+Attempt to manipulate:
+
+status
+
+timestamps
+
+reliability
+
+restrictions
+
+roles
+
+food dispositions
+
+admin fields
+
+notification recipients
+
+The backend must reject unauthorized changes.
+
+---
+
+# 55. DATABASE CONSISTENCY AUDIT
+
+Identify inconsistent documents such as:
+
+COLLECTED + noShowAt
+
+NO_SHOW + collectedAt
+
+CANCELLED + pickupDeadline state that incorrectly participates in no-show
+
+READY + collectedAt
+
+Excused no-show without noShowAt
+
+Invalid restriction level
+
+Invalid reliability status
+
+Do NOT automatically rewrite corrupted production data.
+
+Generate a report first.
+
+---
+
+# 56. MIGRATION SAFETY
+
+If schema changes are required:
+
+- do not perform destructive migration automatically
+- use backward-compatible fields
+- deploy readers before writers where appropriate
+- document migration order
+- provide rollback strategy
+
+---
+
+# 57. ROLLBACK PLAN
+
+Document rollback procedures for:
+
+Flutter release
+
+Cloud Functions
+
+Firestore Rules
+
+Cloudflare Worker
+
+Firestore indexes
+
+Notification changes
+
+Reliability changes
+
+Food disposition changes
+
+Do not deploy a change without knowing how to reverse it.
+
+---
+
+# 58. PRODUCTION CONFIGURATION AUDIT
+
+Verify production builds use:
+
+- release mode
+- correct Firebase project
+- correct Cloudflare endpoint
+- production Cloudinary configuration
+- production notification configuration
+- production API endpoints
+
+Ensure debug configuration cannot accidentally ship.
+
+---
+
+# 59. BUILD REPRODUCIBILITY
+
+Run the release workflow from a clean environment.
+
+Verify:
+
+- dependencies resolve
+- keystore is decoded
+- builds succeed
+- APKs are signed
+- release metadata is generated
+- checksums are generated
+- GitHub Release succeeds
+
+---
+
+# 60. FINAL FIRESTORE RULE DEPLOYMENT CHECK
+
+Before production:
+
+1. Deploy rules to staging/test project if available.
+2. Run security tests.
+3. Review diff.
+4. Confirm expected permissions.
+5. Deploy production rules only after approval.
+
+Do not deploy experimental rules directly to production.
+
+---
+
+# 61. FINAL CLOUD FUNCTION DEPLOYMENT CHECK
+
+Verify:
+
+- all required secrets exist
+- runtime supported
+- functions compile
+- no unused functions
+- correct region
+- correct service account permissions
+- retries configured appropriately
+- scheduled functions deployed
+- no test functions remain active
+
+---
+
+# 62. FINAL USER JOURNEY TEST
+
+Perform a complete student journey:
+
+Register
+
+↓
+
+Verify email
+
+↓
+
+Login
+
+↓
+
+Browse
+
+↓
+
+Search
+
+↓
+
+Add to cart
+
+↓
+
+Place order
+
+↓
+
+Cancellation window
+
+↓
+
+Admin accepts
+
+↓
+
+Preparing
+
+↓
+
+Ready
+
+↓
+
+Pickup countdown
+
+↓
+
+Grace period
+
+↓
+
+Collect OR no-show
+
+↓
+
+Reliability update
+
+↓
+
+Restriction if applicable
+
+↓
+
+Recovery through later collection
+
+↓
+
+Review
+
+↓
+
+Notification
+
+↓
+
+Update app
+
+Verify all transitions work.
+
+---
+
+# 63. FINAL ADMIN JOURNEY TEST
+
+Admin:
+
+Register/login
+
+↓
+
+Verify account
+
+↓
+
+Manage food
+
+↓
+
+Upload image
+
+↓
+
+Receive new order
+
+↓
+
+Accept
+
+↓
+
+Preparing
+
+↓
+
+Ready
+
+↓
+
+Collected/No-show
+
+↓
+
+Excuse no-show if legitimate
+
+↓
+
+Record food disposition
+
+↓
+
+View audit trail
+
+↓
+
+Receive notifications
+
+Verify all transitions work.
+
+---
+
+# 64. DOCUMENTATION
+
+Update:
+
+README.md
+
+ARCHITECTURE.md
+
+DATABASE.md
+
+BUSINESS_RULES.md
+
+ROADMAP.md
+
+SECURITY.md
+
+DEPLOYMENT.md
+
+TROUBLESHOOTING.md
+
+Include:
+
+- architecture
+- Firestore structure
+- security model
+- reliability model
+- restriction model
+- no-show workflow
+- cancellation workflow
+- admin intervention
+- food disposition
+- notification system
+- FCM
 - update system
+- release workflow
+- environment setup
+
+Do not document secrets.
+
+---
+
+# 65. PRODUCTION CHECKLIST
+
+Create:
+
+PRODUCTION_CHECKLIST.md
+
+Include:
+
+- tests passed
+- security rules reviewed
+- Cloud Functions deployed
+- indexes deployed
+- secrets verified
+- Cloudinary verified
+- FCM verified
+- Crashlytics verified
+- update proxy verified
+- APK signatures verified
+- release notes verified
+- rollback plan verified
+- smoke tests completed
+
+---
+
+# 66. RELEASE CANDIDATE
+
+Create a release candidate build.
+
+Do not immediately publish as final release.
+
+Perform:
+
+- manual smoke testing
+- automated tests
+- security tests
+- performance tests
+- update tests
+
+Only promote after all release gates pass.
+
+---
+
+# 67. FINAL ACCEPTANCE CRITERIA
+
+Phase I is complete only when:
+
+✓ All previous phases work together.
+
+✓ No old strike engine remains.
+
+✓ Order cancellation is secure.
+
+✓ 2-minute cancellation cutoff is enforced.
+
+✓ Pickup deadline is authoritative.
+
+✓ Grace period works.
+
+✓ NO_SHOW is automatic and idempotent.
+
+✓ COLLECTED vs NO_SHOW race handling is correct.
+
+✓ Reliability is calculated correctly.
+
+✓ Reliability recovery works.
+
+✓ Restrictions are proportional and recoverable.
+
+✓ Admin excuse is secure and audited.
+
+✓ Food disposition is secure and audited.
+
+✓ Reliability is not affected by food disposition.
+
+✓ Notifications are correct.
+
+✓ FCM works.
+
+✓ Security rules pass testing.
+
+✓ Cloud Functions pass testing.
+
+✓ No sensitive data is exposed.
+
+✓ Privacy principles are respected.
+
+✓ Firestore costs are reviewed.
+
+✓ No unnecessary polling exists.
+
+✓ No per-second Firestore writes exist.
+
+✓ Firestore queries are indexed and bounded.
+
+✓ Crash reporting works.
+
+✓ Monitoring works.
+
+✓ Update system works.
+
+✓ APK integrity verification works.
+
+✓ Production builds are signed.
+
+✓ Documentation is complete.
+
+✓ Rollback procedures are documented.
+
+✓ Release candidate passes smoke testing.
+
+---
+
+# 68. BLOCKING ISSUES
+
+The agent MUST classify findings as:
+
+CRITICAL
+
+HIGH
+
+MEDIUM
+
+LOW
+
+Examples of CRITICAL:
+
+- unauthorized admin access
+- students can modify reliability
+- students can modify order status
+- incorrect authentication bypass
+- APK integrity failure
+- corrupt order lifecycle
+- data leakage
+- duplicated financial/order state
+
+A CRITICAL issue blocks release.
+
+HIGH issues should normally block release unless explicitly accepted.
+
+MEDIUM/LOW issues may be documented as technical debt.
+
+---
+
+# 69. FINAL REPORT
+
+At the end of Phase I provide:
+
+## A. Summary
+
+What was tested and hardened.
+
+## B. Files modified
+
+Complete list.
+
+## C. Tests
+
+Automated tests.
+
+Integration tests.
+
+Security tests.
+
+Performance tests.
+
+Manual smoke tests.
+
+## D. Firestore Analysis
+
+Reads.
+
+Writes.
+
+Indexes.
+
+Potential cost risks.
+
+## E. Security Findings
+
+Severity.
+
+Issue.
+
+Fix.
+
+Remaining risk.
+
+## F. Privacy Findings
+
+Data collected.
+
+Data retained.
+
+Data exposed.
+
+Changes made.
+
+## G. Performance Findings
+
+Before/after measurements.
+
+## H. Release Validation
+
+APK versions.
+
+APK signatures.
+
+Checksums.
+
+Update system.
+
+## I. Remaining Technical Debt
+
+Anything that should be addressed after release.
+
+## J. Final Recommendation
+
+One of:
+
+READY FOR PRODUCTION
+
+READY WITH ACCEPTED RISKS
+
+NOT READY
+
+If:
+
+NOT READY
+
+clearly list the blocking issues.
+
+---
+
+# 70. IMPORTANT STOP CONDITION
+
+This is the final hardening phase.
+
+Do not add new product features.
+
+Do not redesign business rules.
 
 Do not reintroduce the old strike system.
 
----
+Do not implement new restrictions.
 
-# 44. DO NOT IMPLEMENT FUTURE PHASES
+Do not implement experimental functionality.
 
-STOP after Phase H.
+Fix defects and improve production readiness only.
 
-Do NOT implement:
-
-❌ advanced food-waste analytics
-❌ financial loss calculations
-❌ food rescue marketplace
-❌ automatic discounting
-❌ automatic donation matching
-❌ student resale
-❌ loyalty rewards
-❌ reliability notifications
-❌ new punishment systems
-
-These belong to future phases.
-
----
-
-# 45. FINAL ACCEPTANCE CRITERIA
-
-Phase H is complete only when:
-
-✓ NO_SHOW orders can receive a food disposition.
-
-✓ Only authorized cafe admins can set disposition.
-
-✓ Students cannot modify disposition.
-
-✓ Cafe isolation is enforced.
-
-✓ NO_SHOW remains the order status.
-
-✓ Reliability remains unchanged by disposition.
-
-✓ Dispositions include UNRESOLVED, RESOLD, DISCOUNTED, DONATED, STAFF_USE, DISPOSED, OTHER.
-
-✓ Admin can correct an existing disposition.
-
-✓ Every successful disposition change is audited.
-
-✓ Audit logs are immutable.
-
-✓ Duplicate operations are prevented.
-
-✓ Concurrent updates are safe.
-
-✓ Dashboard can filter disposition status.
-
-✓ Dashboard queries are paginated/indexed.
-
-✓ No unnecessary historical scans are introduced.
-
-✓ No unnecessary Firestore writes are introduced.
-
-✓ No student location or unnecessary personal data is stored.
-
-✓ Existing order lifecycle remains functional.
-
-✓ Existing cancellation remains functional.
-
-✓ Existing grace period remains functional.
-
-✓ Existing reliability system remains functional.
-
-✓ Existing restrictions remain functional.
-
-✓ Existing admin intervention remains functional.
-
-✓ Existing notifications remain functional.
-
----
-
-# REQUIRED FINAL REPORT
-
-After implementation, provide:
-
-1. Files inspected.
-2. Files modified.
-3. Files created.
-4. Food disposition data model.
-5. Admin UI implementation.
-6. Backend authorization mechanism.
-7. Audit log implementation.
-8. Firestore security changes.
-9. Firestore indexes.
-10. Firestore reads introduced.
-11. Firestore writes introduced.
-12. Cost optimization analysis.
-13. Privacy considerations.
-14. Test results.
-15. Security test results.
-16. Remaining technical risks.
-
-STOP AFTER PHASE H.
-
-Do not begin the next phase.
+STOP after Phase I.
 
 ---
 
 # Phase Completion Criteria
 
-Phase H is complete when:
+Phase I is complete when:
 
 * The new features works well with past features.
 * App runs successfully.
