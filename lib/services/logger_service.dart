@@ -141,15 +141,17 @@ class LoggerService {
       (match) => _looksOpaque(match.group(0)!) ? '[token]' : match.group(0)!,
     );
 
-    // Bare Firebase-style UIDs (20–128-char opaque base64url tokens, not
-    // inside a users/ path) → [uid]. Catches Firestore auto-IDs, Firebase
-    // Auth UIDs and custom UIDs. An opaque mixed-character profile is
-    // required, so readable static labels such as `firebase_crashlytics`
-    // (single lowercase class) are preserved while genuine mixed-case
-    // tokens are redacted.
+    // Bare Firebase-style UIDs (20–128-char tokens, not inside a users/
+    // path) → [uid]. Catches Firestore auto-IDs (which are `[a-z0-9]{20}`
+    // and can be a single character class), Firebase Auth UIDs and custom
+    // UIDs. Every match is redacted unless it is an explicitly trusted
+    // static label in [_trustedTechnicalLabels]; the generic character-class
+    // heuristic is NOT used to decide what to redact.
     m = m.replaceAllMapped(
       RegExp(r'(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{20,128}(?![A-Za-z0-9_-])'),
-      (match) => _looksOpaque(match.group(0)!) ? '[uid]' : match.group(0)!,
+      (match) => _trustedTechnicalLabels.contains(match.group(0)!)
+          ? match.group(0)!
+          : '[uid]',
     );
 
     // Phone numbers (international +254…, parenthesized (415) 555-2671, or
@@ -168,10 +170,18 @@ class LoggerService {
     return m;
   }
 
+  /// Static technical labels that may legitimately appear in log messages
+  /// and must be preserved even though they match the bare-identifier regex.
+  /// Everything else matching that regex is treated as a UID. Keep this list
+  /// minimal and add only labels that are verifiably emitted by log call
+  /// sites — never user or generated data.
+  static const Set<String> _trustedTechnicalLabels = {'firebase_crashlytics'};
+
   /// Whether [value] looks like an opaque generated identifier rather than a
-  /// readable static label. Opaque identifiers mix at least two character
-  /// classes among uppercase, lowercase and digits; a single-class label such
-  /// as `firebase_crashlytics` (lowercase + separators only) is preserved.
+  /// readable static label (used by the long-token rule only). Opaque
+  /// identifiers mix at least two character classes among uppercase,
+  /// lowercase and digits; a single-class label such as `firebase_crashlytics`
+  /// (lowercase + separators only) is preserved.
   static bool _looksOpaque(String value) {
     var classes = 0;
     if (RegExp(r'[A-Z]').hasMatch(value)) classes++;
