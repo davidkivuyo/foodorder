@@ -1,6 +1,8 @@
 # future implementation plans
 
 # TODOS
+3. in myprofile screen screen add app appearance settings, your ratings, and allow users to update their details.
+
 1. apply ai to view and monitor images uploaded to be for food only no harm or dangerous materials
 
 2. Add a 'for' field on every food items which  is for univerisity with a value of "for university"
@@ -15,8 +17,6 @@
 6. create a new branch to add restaurants other than university ones
 * Their menu items will be able to link to whatsapp easily
 * Or start a messaging platform inside the app
-
-3. in myprofile screen screen add app appearance settings, your ratings.
 
 5. Make the student app and admin app choose which university there in and ensure that the FOOD ITEM and CAFE(add a field to specify which university there in) in university A is not shown or mixed into university B, including their orders.
 * Also add a university collection to list all available universities in which the app serve

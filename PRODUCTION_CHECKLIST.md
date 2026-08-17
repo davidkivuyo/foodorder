@@ -1,6 +1,6 @@
 # CampusBite — Production Release Checklist
 
-Release: **v** ___ | Build number: ___ | Date: ___
+Release: **v** 1.9.0 | Build number: 1.9.0 | Date: 23/08/2026
 
 Each gate must be verified before the release candidate is promoted.
 
@@ -9,7 +9,7 @@ Each gate must be verified before the release candidate is promoted.
 - [x] `flutter analyze` — 0 issues (customerview)
 - [x] `flutter analyze` — 0 issues (adminview)
 - [x] `flutter test` — 453/453 pass (customerview)
-- [ ] `flutter test` — 81/81 pass (adminview)
+- [x] `flutter test` — 81/81 pass (adminview)
 - [x] Emulator suites (functions): no-show 18, cancellation 31, reliability 39,
   ```
   phase-e 21, cafe-scoping 35, excuse 23, disposition 30 — all pass
@@ -23,11 +23,11 @@ Each gate must be verified before the release candidate is promoted.
 ## Firestore
 
 - [x] `firestore.rules` reviewed — no `allow read, write: if true`
-- [ ] Rules deployed to staging (if available) and tested
-- [ ] Rules diff reviewed and approved
-- [ ] Rules deployed to production
-- [ ] All 16 composite indexes deployed
-- [ ] No collection scans in client queries (indexed + bounded)
+- [x] Rules deployed to staging (if available) and tested
+- [x] Rules diff reviewed and approved
+- [x] Rules deployed to production
+- [x] All 16 composite indexes deployed
+- [x] No collection scans in client queries (indexed + bounded)
 
 
 
@@ -38,58 +38,58 @@ Each gate must be verified before the release candidate is promoted.
   `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`)
   ```
 - [x] Runtime (nodejs22) supported; functions compile
-- [ ] Functions deployed (callables App Check-enforced)
-- [ ] Scheduled functions deployed: `processExpiredPickups` (1 min),
+- [x] Functions deployed (callables App Check-enforced)
+- [x] Scheduled functions deployed: `processExpiredPickups` (1 min),
   ```
   `cleanupDeletedNotifications`, `cleanupInactiveTokens`,
   `migrateLegacyOrderFoodIds`, `migrateLegacyOrderCafes`,
   `auditReviewCreationRate`
   ```
-- [ ] No test functions remain active
-- [ ] Retries configured appropriately; idempotency markers verified
+- [x] No test functions remain active
+- [x] Retries configured appropriately; idempotency markers verified
 
 
 
 ## Security
 
-- [ ] App Check enabled for all callables
-- [ ] Admin operations cafe-scoped (cross-cafe denied in emulator tests)
-- [ ] Client cannot create orders, modify status/timestamps/reliability/
+- [x] App Check enabled for all callables
+- [x] Admin operations cafe-scoped (cross-cafe denied in emulator tests)
+- [x] Client cannot create orders, modify status/timestamps/reliability/
   ```
   restrictions/dispositions/audit logs (emulator-tested)
   ```
-- [ ] Cloudinary deletion backend-only; client has no secret
-- [ ] Crashlytics/Analytics/Performance carry no PII (log sanitize tested)
+- [x] Cloudinary deletion backend-only; client has no secret
+- [x] Crashlytics/Analytics/Performance carry no PII (log sanitize tested)
 
 
 
 ## Release pipeline
 
-- [ ] Git tag semver-greater than every previously shipped `-dev` tag
-- [ ] GitHub Release created: universal APK + arm64-v8a + armeabi-v7a + x86_64
-- [ ] APKs signed (`apksigner verify` passes)
-- [ ] `release.json` generated and validated against proxy allow-list
-- [ ] SHA-256 checksums generated and verified
-- [ ] Cloudflare Worker (`dl.larason.space`) deployed and serving `/latest`
-- [ ] In-app update flow verified: check → download → checksum → install
-- [ ] Rollback plan documented and rehearsed (DEPLOYMENT.md)
+- [x] Git tag semver-greater than every previously shipped `-dev` tag
+- [x] GitHub Release created: universal APK + arm64-v8a + armeabi-v7a + x86_64
+- [x] APKs signed (`apksigner verify` passes)
+- [x] `release.json` generated and validated against proxy allow-list
+- [x] SHA-256 checksums generated and verified
+- [x] Cloudflare Worker (`dl.larason.space`) deployed and serving `/latest`
+- [x] In-app update flow verified: check → download → checksum → install
+- [x] Rollback plan documented and rehearsed (DEPLOYMENT.md)
 
 
 
 ## Manual smoke testing
 
-- [ ] Student journey: register → verify email → login → browse → search →
+- [x] Student journey: register → verify email → login → browse → search →
   ```
   add to cart → place order → cancellation window → collect
   ```
-- [ ] Pickup flow: READY → countdown → grace period → collect (or NO_SHOW)
-- [ ] Reliability: score/status visible; restriction enforced by backend
+- [x] Pickup flow: READY → countdown → grace period → collect (or NO_SHOW)
+- [x] Reliability: score/status visible; restriction enforced by backend
 - [ ] Admin journey: login → menu management → receive order → accept →
   ```
   preparing → ready → collected → excuse no-show → food disposition →
   audit trail
   ```
-- [ ] Notifications: foreground, background, terminated; no duplicates
+- [x] Notifications: foreground, background, terminated; no duplicates
 - [ ] Offline: cached menu/orders; queue syncs on reconnect; limits not bypassed
 - [ ] No layout overflow, dialogs/snackbars work, accessibility basics pass
 
@@ -97,8 +97,8 @@ Each gate must be verified before the release candidate is promoted.
 
 ## Post-release
 
-- [ ] Release notes published
+- [x] Release notes published
 - [ ] Monitoring dashboards (Crashlytics/Performance) confirm healthy baseline
-- [ ] Any residual MEDIUM/LOW findings logged as technical debt in the report
+- [x] Any residual MEDIUM/LOW findings logged as technical debt in the report
 
-Sign-off: ___ (release engineer)
+Sign-off: The Larason (maintainer)
