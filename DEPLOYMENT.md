@@ -71,7 +71,7 @@ never published ahead of the backend tests.
 | Artifact | Procedure |
 |---|---|
 | Flutter release | Tag the previous version and push; in-app updater serves it (never lower than installed per semver — use a higher patch, e.g. revert with `vX.Y.(Z+1)`). |
-| Cloud Functions | `firebase functions:rollback <generation-id>` or redeploy the previous commit. |
+| Cloud Functions | Redeploy the previous commit — `git checkout <last-good-tag>` then `firebase deploy --only functions` (for gen-2, redeploy the previous container image). |
 | Firestore rules | Deploy the previous `firestore.rules` (rules are versioned in git). |
 | Firestore indexes | Remove new index entries from `firestore.indexes.json` and deploy; queries using them fail closed rather than corrupting data. |
 | Cloudflare Worker | `wrangler rollback` or redeploy the previous worker version. |

@@ -24,6 +24,11 @@
 | F — Reliability Recovery | Score-driven restriction relaxation | ✔ |
 | G — Admin Excusal | `excuseNoShow` callable, transactional correction + audit + outbox | ✔ |
 | H — Food Disposition | `setFoodDisposition` callable, disposition sheet, admin reports | ✔ |
+
+## In progress
+
+| Phase | Scope | Status |
+|---|---|---|
 | I — Testing & Production Hardening | validation, security/cost audits, documentation, release gate — see [PHASE_I_REPORT.md](PHASE_I_REPORT.md) | x |
 
 ## Legacy strike engine

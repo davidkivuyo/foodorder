@@ -15,8 +15,8 @@
   - `pickupReliability` — `{ eligibleOrders, collectedOrders, noShowOrders,
     collectionRate, recentEligibleOrders, recentCollectedOrders,
     recentNoShowOrders, recentCollectionRate, reliabilityScore,
-    reliabilityStatus (NEW | INSUFFICIENT_HISTORY | GOOD | NEEDS_IMPROVEMENT |
-    LIMITED | HIGHLY_LIMITED), restrictionLevel (NORMAL | LIMITED |
+    status (NEW | INSUFFICIENT_HISTORY | EXCELLENT | GOOD |
+    NEEDS_IMPROVEMENT | POOR | CRITICAL), restrictionLevel (NORMAL | LIMITED |
     HIGHLY_LIMITED), recentPickupHistory[], reliabilityProcessed,
     reliabilityOutcome, updatedAt }`.
   - `accountStatus` — only admin callables (`reactivateStudent`) flip it.
@@ -49,9 +49,19 @@
   orderId, eventId, deepLink, metadata, read, readAt, deleted, deletedAt,
   createdAt, createdBy }`. `eventId` is the idempotency key; FCM push happens
   in the `onNewNotification` trigger.
-- `reviews` — deterministic doc ID per `(userId, orderId, foodId)`; public
-  reads for non-deleted reviews; author/admin access to deleted ones.
-- `audit_logs` — **backend-only** (no client create/update/delete). Records:
+- `reviews` — deterministic doc ID per `(userId, orderId, foodId)`; **one
+  live review per `(userId, foodId)`** is enforced transactionally at create
+  via the `review_guards` guard below — never a racy client-side query.
+  Public reads for non-deleted reviews; author/admin access to deleted ones.
+- `review_guards` — deterministic doc ID per `(userId, foodId)`; claimed
+  atomically with the review (create/revive) and released on soft-delete, so
+  a second live review for the same meal via a different order is impossible
+  even under concurrency. Owner read/create/delete only; no client updates.
+- `audit_logs` — **backend-only** (no client create/update/delete). Automatic
+  engine writes are **system** actions with no admin identity:
+  `automatic_no_show` `{ action, orderId, studentId, performedBy: "system",
+  reason: "pickup_deadline_expired", timestamp }` (no `cafeId`/`adminId`).
+  Admin-performed records carry the actor identity and cafe:
   `NO_SHOW_EXCUSED` `{ action, orderId, studentId, cafeId, adminId, reason,
   note, timestamp }`; `FOOD_DISPOSITION` `{ action, orderId, studentId,
   cafeId, adminId, previousDisposition, newDisposition, note, timestamp }`;

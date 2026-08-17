@@ -49,7 +49,7 @@ persisted in `users/{uid}.pickupReliability`:
 - **Eligible** = terminal pickup outcomes (COLLECTED or NO_SHOW, non-cancelled,
   non-excused-from-failure). **Lifetime** counts cover all history; **recent**
   counts cover the latest 10 eligible terminal events.
-- **Score** = 60% lifetime collection rate + 40% recent collection rate,
+- **Score** = 70% lifetime collection rate + 30% recent collection rate,
   rounded for storage/display. New users (0 eligible) get `NEW`; 1–2 eligible
   orders get `INSUFFICIENT_HISTORY`; otherwise a 0–100 score.
 - **Restrictions** (Phase E): score 50–100 → `NORMAL` (no limit), 25–49 →
@@ -60,7 +60,12 @@ persisted in `users/{uid}.pickupReliability`:
   on-time collections raise the score and relax the limit; there are no bonus
   recovery points.
 - **Excused no-shows** (Phase G) are excluded from failure counts; the summary
-  and restriction recompute atomically with the excuse.
+  and restriction recompute atomically with the excuse. If the student's user
+  document is absent at excuse time, a `reliabilityExcusePending`
+  reconciliation marker is committed in the same transaction and the scheduled
+  processor applies the correction once the user document exists (giving up
+  explicitly and audibly after the retry window) — an excuse is never committed
+  with a silently skipped reliability update.
 - **Food disposition** (Phase H) never affects reliability — it is an
   operational record only.
 
@@ -70,7 +75,10 @@ persisted in `users/{uid}.pickupReliability`:
   NO_SHOW order with `noShowAt`, once. Reason is a predefined enum (free-text
   only via Other), note ≤ 200 chars, no URLs/HTML. Commits order state +
   reliability correction + audit record + notification outbox event in one
-  transaction.
+  transaction. The reliability correction is guaranteed: if the student's user
+  document is absent, the transaction persists a `reliabilityExcusePending`
+  marker and the scheduled processor applies the correction once the document
+  exists.
 - **Food disposition**: ACTIVE, cafe-scoped admin records the outcome of a
   NO_SHOW order's prepared food — `UNRESOLVED | RESOLD | DISCOUNTED | DONATED |
   STAFF_USE | DISPOSED | OTHER`. The order stays NO_SHOW; corrections append a
@@ -90,7 +98,11 @@ delivered post-commit by `onNewNotification`, deduplicated by `eventId`.
 
 - One live review per (student, food): a second review for the same meal is
   refused; the UI always offers "Edit Review" once reviewed. Eligibility
-  requires a collected order containing the food.
+  requires a collected order containing the food. The (student, food)
+  uniqueness is enforced transactionally at create via a
+  `review_guards/{userId}:{foodId}` guard committed atomically with the
+  review (the deterministic review doc ID remains per
+  `(userId, orderId, foodId)`).
 - Favourites are derived from collected order history (top 5 food IDs cached in
   the user document).
 

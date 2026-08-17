@@ -765,3 +765,144 @@ describe("Phase G — request validation & rules protection", () => {
     );
   });
 });
+
+describe("Phase G — deferred reliability correction when users/{studentId} is absent", () => {
+  it("excusing a counted no-show with a missing user doc commits a reconciliation marker, never a silent skip", async () => {
+    // Remove the student's user document so the inline correction cannot run.
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("users").doc("student1").delete();
+    });
+    // Counted NO_SHOW (the engine wrote reliabilityProcessed + outcome).
+    await seedOrder("g-deferred-1", validOrderPayload({
+      status: "no_show",
+      reliabilityProcessed: true,
+      reliabilityOutcome: "NO_SHOW",
+      noShowAt: new Date(),
+    }));
+
+    const result = await excuseNoShow("admin1", {
+      orderId: "g-deferred-1",
+      reason: "Student reported emergency",
+    });
+    assert.equal(result.success, true, "excuse still succeeds");
+
+    // The excuse committed WITH a guaranteed-correction marker.
+    const order = await orderById("g-deferred-1");
+    assert.equal(order.noShowExcused, true);
+    assert.equal(order.reliabilityExcusePending, true,
+      "correction marker persisted, not silently skipped");
+    assert.ok(
+      order.reliabilityExcusePendingSince instanceof admin.firestore.Timestamp,
+      "marker timestamp recorded");
+    assert.equal(await userReliability(), undefined,
+      "no summary exists while the user doc is absent");
+
+    // Audit + notification still commit atomically with the excuse.
+    assert.equal((await auditLog("g-deferred-1")).action, "NO_SHOW_EXCUSED");
+    assert.equal(await countNotifications("g-deferred-1"), 1);
+  });
+
+  it("the scheduled processor applies the deferred correction once the user doc appears", async () => {
+    // Same starting state as the previous test: counted NO_SHOW, no user doc.
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("users").doc("student1").delete();
+    });
+    await seedOrder("g-deferred-2", validOrderPayload({
+      status: "no_show",
+      reliabilityProcessed: true,
+      reliabilityOutcome: "NO_SHOW",
+      noShowAt: new Date(),
+    }));
+    await excuseNoShow("admin1", {
+      orderId: "g-deferred-2",
+      reason: "System/application issue",
+    });
+    let order = await orderById("g-deferred-2");
+    assert.equal(order.reliabilityExcusePending, true);
+
+    // The user document is restored WITH the pre-excuse summary that still
+    // counts the excused no-show.
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      const ref = ctx.firestore().collection("users").doc("student1");
+      await ref.set({
+        fullName: "Test Student",
+        email: "student1@test.com",
+        role: "student",
+        accountStatus: "ACTIVE",
+        createdAt: new Date(),
+        pickupReliability: {
+          eligibleOrders: 3,
+          collectedOrders: 2,
+          noShowOrders: 1,
+          collectionRate: 66.7,
+          recentEligibleOrders: 3,
+          recentCollectedOrders: 2,
+          recentNoShowOrders: 1,
+          recentCollectionRate: 66.7,
+          reliabilityScore: 40,
+          status: "POOR",
+          restrictionLevel: "LIMITED",
+          restrictionReason: "Low pickup reliability",
+          recentPickupHistory: [
+            { orderId: "g-deferred-2", outcome: "NO_SHOW", timestamp: new Date() },
+            { orderId: "g-other-1", outcome: "COLLECTED", timestamp: new Date() },
+            { orderId: "g-other-2", outcome: "COLLECTED", timestamp: new Date() },
+          ],
+        },
+      });
+    });
+
+    // The scheduled processor reconciles the deferred correction.
+    await functionsModule.processExpiredPickups.run({});
+
+    order = await orderById("g-deferred-2");
+    assert.equal(order.reliabilityExcusePending, undefined,
+      "marker cleared after reconciliation");
+    assert.equal(order.reliabilityExcuseSkippedReason, undefined,
+      "no skip recorded — the correction was applied");
+    const s = await userReliability();
+    assert.equal(s.eligibleOrders, 2, "eligible decremented by reconcile");
+    assert.equal(s.noShowOrders, 0, "no-show excluded by reconcile");
+    assert.equal(s.collectedOrders, 2, "collected unchanged");
+    assert.equal(s.recentEligibleOrders, 2);
+    assert.equal(s.recentNoShowOrders, 0);
+    assert.ok(
+      !s.recentPickupHistory.some((e) => e.orderId === "g-deferred-2"),
+      "excused order removed from recent history by reconcile");
+  });
+
+  it("the deferred correction gives up explicitly when the user doc never returns", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("users").doc("student1").delete();
+    });
+    const oldSince = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
+    // Simulate an excuse committed long ago whose marker is still pending
+    // (user doc never restored).
+    await seedOrder("g-giveup-1", validOrderPayload({
+      status: "no_show",
+      reliabilityProcessed: true,
+      reliabilityOutcome: "NO_SHOW",
+      noShowAt: oldSince,
+      noShowExcused: true,
+      excusedAt: oldSince,
+      excusedBy: "admin1",
+      excuseReason: "Student reported emergency",
+      excuseNote: null,
+      reliabilityExcusePending: true,
+      reliabilityExcusePendingSince: oldSince,
+    }));
+
+    await functionsModule.processExpiredPickups.run({});
+
+    const order = await orderById("g-giveup-1");
+    assert.equal(order.reliabilityExcusePending, undefined,
+      "marker cleared after the retry window");
+    assert.equal(order.reliabilityExcuseSkippedReason, "MISSING_USER",
+      "explicit, auditable give-up recorded");
+    assert.ok(
+      order.reliabilityExcuseSkippedAt instanceof admin.firestore.Timestamp,
+      "give-up timestamp recorded");
+    assert.equal(await userReliability(), undefined,
+      "no summary written for a never-restored user");
+  });
+});

@@ -177,7 +177,7 @@ Before the deadline passes, a student can tap **"Extend pickup by 10 min"** on a
 All checks run inside a Firestore transaction, so two concurrent taps cannot both consume the extension.
 
 ### 3. No-Show Processing (`processExpiredPickups`)
-A scheduled Cloud Function runs every 5 minutes and marks any ready order whose `pickupDeadline` has passed as `no_show` (`deadlineStatus = "EXPIRED"`), then sends the student an `ORDER_NO_SHOW` notification. It also sends `PICKUP_REMINDER` notifications for orders nearing their deadline.
+A scheduled Cloud Function runs every minute and marks eligible ready orders as `no_show` (`deadlineStatus = "EXPIRED"`) only after `pickupDeadline` plus the 5-minute grace period, then sends the student an `ORDER_NO_SHOW` notification. It also sends `PICKUP_REMINDER` notifications for orders nearing their deadline.
 
 **The automatic strike engine has been removed from the customer app and its backend.** No strikes are issued and accounts are never auto-suspended for missed pickups; only the no-show notification remains. Strike management is exclusively an admin-app concern.
 
@@ -185,7 +185,7 @@ A scheduled Cloud Function runs every 5 minutes and marks any ready order whose 
 The `onOrderStatusChanged` trigger feeds a server-side reliability engine that measures — never punishes — how consistently a student collects their food:
 - **Eligible events only:** an order counts only when it reaches `COLLECTED` (success) or `NO_SHOW` (miss). Cancelled, rejected, or never-`READY` orders never affect reliability.
 - **Idempotent & atomic:** each order carries a `reliabilityProcessed` marker written in the **same Firestore transaction** as the summary update, so redelivered or concurrent events can never double-count.
-- **Never silently dropped:** if a terminal event arrives before the student's `users/{uid}` document exists (e.g. restored account), the event is **deferred** — a `reliabilityPending` + `reliabilityPendingSince` marker is recorded, the trigger retries, and the event is counted once the user doc appears. Because Cloud Functions only redelivers a failed trigger for a bounded window, the 5-minute scheduled processor also **reconciles** pending orders (`reconcilePendingReliabilityOrders`): it counts them when the user doc appears and retries the rest, so an event can never be stranded. Only after 7 days (`RELIABILITY_MISSING_USER_RETRY_MS`) does the engine give up **explicitly and audibly** (`reliabilitySkippedReason: "MISSING_USER"` + `reliabilitySkippedAt`), never by silently marking the order processed.
+- **Never silently dropped:** if a terminal event arrives before the student's `users/{uid}` document exists (e.g. restored account), the event is **deferred** — a `reliabilityPending` + `reliabilityPendingSince` marker is recorded, the trigger retries, and the event is counted once the user doc appears. Because Cloud Functions only redelivers a failed trigger for a bounded window, the 1-minute scheduled processor also **reconciles** pending orders (`reconcilePendingReliabilityOrders`): it counts them when the user doc appears and retries the rest, so an event can never be stranded. Only after 7 days (`RELIABILITY_MISSING_USER_RETRY_MS`) does the engine give up **explicitly and audibly** (`reliabilitySkippedReason: "MISSING_USER"` + `reliabilitySkippedAt`), never by silently marking the order processed.
 - **No history scans:** updates are event-driven; the account screen reads the existing `users/{uid}` document (≈1 read) — reliability is never recomputed by scanning order history.
 - **Recent window:** the last 10 eligible outcomes are kept in `recentPickupHistory` (bounded, per-order unique).
 - **Score:** `reliabilityScore = collectionRate × 0.70 + recentCollectionRate × 0.30` (rounded to 1 decimal).
@@ -371,7 +371,7 @@ The customer app surfaces this as the one-tap **"Extend pickup by 10 min"** butt
 
 3. processExpiredPickups
 
-Runs every 5 minutes and marks orders whose pickup deadline has passed as `no_show` (`deadlineStatus = "EXPIRED"`), then sends the student an `ORDER_NO_SHOW` notification. It also sends `PICKUP_REMINDER` notifications for orders nearing their deadline. **The automatic strike engine has been removed** — expired orders are never linked to strikes or auto-suspension here; strike management is exclusively an admin-app concern.
+Runs every minute and marks eligible ready orders as `no_show` (`deadlineStatus = "EXPIRED"`) only after `pickupDeadline` plus the 5-minute grace period, then sends the student an `ORDER_NO_SHOW` notification. It also sends `PICKUP_REMINDER` notifications for orders nearing their deadline. **The automatic strike engine has been removed** — expired orders are never linked to strikes or auto-suspension here; strike management is exclusively an admin-app concern.
 
 4. setFoodDisposition
 
@@ -386,7 +386,7 @@ Admin-only callable that records what happened to the prepared food of a NO_SHOW
 
 `firestore.rules` grants **no** client create/update/delete on `audit_logs` — audit records are backend-only (AGENTS.md §23).
 
-5. reactivateStudentAccount
+5. reactivateStudent
 
 
 Admin-only callable that reactivates a genuinely SUSPENDED student account:
@@ -460,7 +460,7 @@ CampusBite dynamically computes a student's top favorite food items to provide a
 To ensure genuine feedback and maintain quality standards, CampusBite features a structured review and rating system:
 1. **Eligibility Check:** Only students who have successfully ordered and collected a meal can write a review for that food item, preventing review spam and fake ratings.
 2. **Review Integrity:** Students can only edit or delete their own reviews. They cannot modify review data or ratings written by others.
-3. **One Review Per Meal:** A student has at most one live review per food item. Once a meal is reviewed, the app always offers "Edit Review" (never "Write a Review") and `ReviewService.createReview` refuses to create a second live review for the same meal via a different order, so `reviewCount` and the rating distribution can never be inflated by duplicates.
+3. **One Review Per Meal:** A student has at most one live review per food item. Once a meal is reviewed, the app always offers "Edit Review" (never "Write a Review") and `ReviewService.createReview` refuses to create a second live review for the same meal via a different order, so `reviewCount` and the rating distribution can never be inflated by duplicates. The (student, food) uniqueness is enforced transactionally: the create/revive transaction also claims a `review_guards/{userId}:{foodId}` guard document in the same mutation, released only on soft-delete, so concurrent or forged duplicate writes cannot race past the check (the review doc ID remains the deterministic `(userId, orderId, foodId)` composite).
 4. **Firestore Enforcement:** Rules explicitly prevent writing rating values outside the 1–5 range, or writing reviews for items the user has not collected.
 5. **Cafeteria Quality Control:** The average rating of each item is dynamically visible to help cafeteria staff maintain standard dining options.
 
@@ -524,7 +524,7 @@ Create these collections manually in the Firestore Console (or through the admin
 - **`users/{userId}/cart`** — `{ foodItemId, quantity, cafe }`
 - **`users/{userId}/plans`** — `{ title, note, totalAmount, plannedDate, createdAt, items }`
 - **`notifications`** — `{ recipientId, recipientRole, type, title, message, orderId, eventId, deepLink, metadata, read, readAt, deleted, deletedAt, createdAt, createdBy }`
-- **`audit_logs`** — backend-only (no client create/update/delete). Records carry `{action, orderId, studentId, cafeId, adminId, timestamp}` plus action-specific fields: `NO_SHOW_EXCUSED` adds `{reason, note}`; `FOOD_DISPOSITION` adds `{previousDisposition, newDisposition, note}`; `REACTIVATE` and `CREATE_ADMIN` add student/actor fields; `cloudinary_image_deleted` records the public ID. Admin reads are scoped to the caller's cafe
+- **`audit_logs`** — backend-only (no client create/update/delete). Automatic engine writes are system actions with no admin identity: `automatic_no_show` `{action, orderId, studentId, performedBy: "system", reason: "pickup_deadline_expired", timestamp}` (no `cafeId`/`adminId`). Admin-performed records carry `{action, orderId, studentId, cafeId, adminId, timestamp}` plus action-specific fields: `NO_SHOW_EXCUSED` adds `{reason, note}`; `FOOD_DISPOSITION` adds `{previousDisposition, newDisposition, note}`; `REACTIVATE` and `CREATE_ADMIN` add student/actor fields; `cloudinary_image_deleted` records the public ID. Admin reads are scoped to the caller's cafe
 - **`cafes`** — `{ name, location, geopoint }`
 - **`section`** — `{ name }`
 - **`reviews`** — `{ userId, text, rating, ... }`

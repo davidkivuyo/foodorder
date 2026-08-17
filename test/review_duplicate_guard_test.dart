@@ -326,4 +326,124 @@ void main() {
       expect(docId, isNull);
     });
   });
+
+  group(
+    'ReviewRepository — transactional one-live-review-per-(user, food) guard',
+    () {
+      Map<String, dynamic> reviewData({
+        required String orderId,
+        required int rating,
+      }) {
+        return {
+          'userId': 'user_1',
+          'orderId': orderId,
+          'foodId': 'food_a',
+          'rating': rating,
+          'deleted': false,
+        };
+      }
+
+      test(
+        'create refuses a second live review via a different order (guard)',
+        () async {
+          final firestore = FakeFirebaseFirestore();
+          final repository = _FakeReviewRepository(
+            firestore: firestore,
+            reviews: const [],
+          );
+          // Bypass the service-level pre-check entirely: write the first
+          // review directly through the repository, then attempt a second
+          // for the same meal via a different order.
+          final firstId = await repository.create(
+            reviewData(orderId: 'order_1', rating: 5),
+          );
+          expect(firstId, 'user_1:order_1:food_a');
+
+          final secondId = await repository.create(
+            reviewData(orderId: 'order_2', rating: 4),
+          );
+          expect(
+            secondId,
+            isNull,
+            reason: 'the (user, food) guard must block the duplicate create',
+          );
+          final written = await firestore.collection('reviews').get();
+          expect(written.docs.length, 1);
+          final guard = await firestore
+              .collection('review_guards')
+              .doc('user_1:food_a')
+              .get();
+          expect(guard.exists, isTrue, reason: 'guard claimed with the review');
+        },
+      );
+
+      test(
+        'soft-deleting the review releases the guard so a fresh review is allowed',
+        () async {
+          final firestore = FakeFirebaseFirestore();
+          final repository = _FakeReviewRepository(
+            firestore: firestore,
+            reviews: const [],
+          );
+          await repository.create(
+            reviewData(orderId: 'order_1', rating: 5),
+          );
+
+          await repository.softDelete('user_1:order_1:food_a');
+
+          final secondId = await repository.create(
+            reviewData(orderId: 'order_2', rating: 4),
+          );
+          expect(secondId, 'user_1:order_2:food_a');
+          final guard = await firestore
+              .collection('review_guards')
+              .doc('user_1:food_a')
+              .get();
+          expect(
+            guard.exists,
+            isTrue,
+            reason: 'guard re-claimed by the new live review',
+          );
+        },
+      );
+
+      test('reviving a soft-deleted review restores the guard atomically',
+          () async {
+        final firestore = FakeFirebaseFirestore();
+        final repository = _FakeReviewRepository(
+          firestore: firestore,
+          reviews: const [],
+        );
+        await firestore.collection('reviews').doc('user_1:order_1:food_a').set({
+          'userId': 'user_1',
+          'orderId': 'order_1',
+          'foodId': 'food_a',
+          'rating': 2,
+          'deleted': true,
+        });
+
+        final revived = await repository.revive(
+          'user_1:order_1:food_a',
+          {'deleted': false, 'rating': 4},
+        );
+        expect(revived, isTrue);
+        final guard = await firestore
+            .collection('review_guards')
+            .doc('user_1:food_a')
+            .get();
+        expect(
+          guard.exists,
+          isTrue,
+          reason: 'revive must restore the guard with the live review',
+        );
+
+        // The restored guard now blocks a duplicate for the same meal via
+        // another order, even without any service-level query.
+        final secondId = await repository.create(
+          reviewData(orderId: 'order_2', rating: 4),
+        );
+        expect(secondId, isNull);
+      });
+    },
+  );
 }

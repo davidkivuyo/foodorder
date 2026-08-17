@@ -685,7 +685,7 @@ recentCollectionRate
 
 reliabilityScore
 
-reliabilityStatus
+status
 
 Use known test datasets.
 
