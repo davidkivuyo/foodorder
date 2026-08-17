@@ -2044,7 +2044,7 @@ STOP after Phase I.
 
 # Phase Completion Criteria
 
-Phase H is complete when:
+Phase I is complete when:
 
 * The new features works well with past features.
 * App runs successfully.

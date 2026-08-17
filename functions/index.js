@@ -4046,17 +4046,18 @@ exports.createAdminAccount = onCall(
     }
 
     try {
+      // Profile matches the ADMIN_BOOTSTRAP.md admin document structure:
+      // role, accountStatus, fullName, email, cafeName, phoneNumber,
+      // createdAt (+ updatedAt). No student/strike-era fields are written
+      // (strikeCount/strikePercentage/lastStrikeAt/lastPardonAt) — admin
+      // gating treats an absent strikeCount as 0, so none are required.
       await admin.firestore().collection("users").doc(newUid).set({
-        fullName,
-        cafeName,
-        email,
-        phoneNumber: phoneNumber || null,
         role: "admin",
         accountStatus: "ACTIVE",
-        strikePercentage: 0,
-        strikeCount: 0,
-        lastStrikeAt: null,
-        lastPardonAt: null,
+        fullName,
+        email,
+        cafeName,
+        phoneNumber: phoneNumber || null,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       });

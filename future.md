@@ -10,6 +10,8 @@
 
 4. in each food description page add a arrow button to view through a popup the cafe/restaurant location on google maps and distance from where the student is.
 
+5. add a search to view if the written cafe is already in database to avoid duplication
+
 6. create a new branch to add restaurants other than university ones
 * Their menu items will be able to link to whatsapp easily
 * Or start a messaging platform inside the app
@@ -25,7 +27,7 @@
 // Row for deals outside campus cafes on home screnn
 * CardRowItems(title: "Deals outside campus cafes",items: offCampus,),
 // If cafe is 'offcampus', show 'OFF-CAMPUS', otherwise show 'CAFE(X)'
-* item.cafe.toLowerCase() == 'offcampus' ? '${item.rating} • offcampus' : '${item.rating} • CAFE(${item.cafe})',
+* item.cafe.toLowerCase() == 'offcampus' ? '${item.rating} • OFFCAMPUS' : '${item.rating} • CAFE(${item.cafe})',
 
 ---
 

@@ -470,21 +470,24 @@ To ensure genuine feedback and maintain quality standards, CampusBite features a
 
 ## Cloud Functions
 
-Located in `functions/index.js` (shared with the admin app).
+Located in `functions/index.js` (shared with the admin app). The full list with one-line purposes is in [ARCHITECTURE.md](ARCHITECTURE.md); the complete reference for the main callables and triggers:
 
-### 1. `onOrderStatusChanged` (Firestore Trigger)
-
-### 2. `deleteCloudinaryImage` (Callable Function)
-
-### 3. `processExpiredPickups` (Scheduled — every 5 minutes)
-
-### 4. `extendPickupDeadline` (Callable Function)
-
-### 5. `excuseNoShow` (Callable — Phase G admin intervention)
-
-### 6. `reactivateStudent` (Callable — admin account action)
-
-### 7. `setFoodDisposition` (Callable — Phase H food waste management)
+- `onNewOrder` (trigger) — authoritative `createdAt`/`cancellationDeadline`, food ID/pricing normalization, cafe derivation, NEW_ORDER notifications
+- `onOrderStatusChanged` (trigger) — READY deadline creation, terminal timestamps, reliability events
+- `onNewNotification` (trigger) — post-commit FCM delivery (eventId-deduped)
+- `processExpiredPickups` (scheduled — every 1 minute) — grace-period expiry, PICKUP_REMINDER/ORDER_NO_SHOW, deferred reliability reconciliation
+- `placeOrder` (callable) — server-authoritative order creation with active-order limit and one-cafe constraint
+- `cancelOrder` (callable) — 2-minute cancellation window
+- `extendPickupDeadline` (callable) — one-tap +10 min extension
+- `excuseNoShow` (callable — Phase G admin intervention)
+- `setFoodDisposition` (callable — Phase H food waste management)
+- `reactivateStudent` (callable — admin account action)
+- `createAdminAccount` (callable — admin provisioning)
+- `deleteCloudinaryImage` (callable — server-side Cloudinary deletion)
+- `onReviewChanged` (trigger) — rating aggregation/moderation
+- `cleanupDeletedNotifications` / `cleanupInactiveTokens` (scheduled) — retention & token hygiene
+- `migrateLegacyOrderFoodIds` / `migrateLegacyOrderCafes` (scheduled) — backward-compatible backfills
+- `auditReviewCreationRate` (scheduled) — review-rate abuse monitoring
 
 ### Deploying Functions
 
@@ -517,11 +520,11 @@ Create these collections manually in the Firestore Console (or through the admin
 - **`categories`** — `{ name, order }`
 - **`food_items`** — `{ title, subtitle, description, image, price, rating, category, availableCafes, section, time, available, featured, quantity, dietaryTags, keywords, searchPrefixes, createdAt, updatedAt }`
 - **`orders`** — `{ orderId, userId, userName, items, totalPrice, status, cafe, cafeId, cafes, cafeLocation, distanceMeters, distanceCalculated, pickupWindowMinutes, readyAt, pickupDeadline, deadlineStatus, noShowProcessed, noShowAt, noShowExcused, excusedAt, excusedBy, excuseReason, excuseNote, expiredAt, deadlineExtended, extensionAt, foodDisposition, foodDispositionAt, foodDispositionBy, foodDispositionNote, createdAt, updatedAt }`
-- **`users`** — `{ fullName, email, role, strikeCount, accountStatus, lastPardonAt, createdAt, updatedAt, pickupReliability }`
+- **`users`** — `{ fullName, email, role, accountStatus, createdAt, updatedAt, pickupReliability, favouriteFoodIds }` — reliability/restriction fields (`pickupReliability.*`) and `accountStatus` are server-owned; the legacy strike fields (`strikeCount`, `strikePercentage`) are no longer written
 - **`users/{userId}/cart`** — `{ foodItemId, quantity, cafe }`
 - **`users/{userId}/plans`** — `{ title, note, totalAmount, plannedDate, createdAt, items }`
 - **`notifications`** — `{ recipientId, recipientRole, type, title, message, orderId, eventId, deepLink, metadata, read, readAt, deleted, deletedAt, createdAt, createdBy }`
-- **`audit_logs`** -- `{action, studentId, orderId, adminId, cafeId, previousStrikeCount, newStrikeCount, previousStrike, newStrike, reason, note, timestamp}` — Phase H FOOD_DISPOSITION records carry `{action, orderId, studentId, cafeId, adminId, previousDisposition, newDisposition, note, timestamp}`
+- **`audit_logs`** — backend-only (no client create/update/delete). Records carry `{action, orderId, studentId, cafeId, adminId, timestamp}` plus action-specific fields: `NO_SHOW_EXCUSED` adds `{reason, note}`; `FOOD_DISPOSITION` adds `{previousDisposition, newDisposition, note}`; `REACTIVATE` and `CREATE_ADMIN` add student/actor fields; `cloudinary_image_deleted` records the public ID. Admin reads are scoped to the caller's cafe
 - **`cafes`** — `{ name, location, geopoint }`
 - **`section`** — `{ name }`
 - **`reviews`** — `{ userId, text, rating, ... }`
