@@ -3,6 +3,13 @@
 # TODOS
 1. apply ai to view and monitor images uploaded to be for food only no harm or dangerous materials
 
+2. Add a 'for' field on every food items which  is for univerisity with a value of "for university"
+* and food items for outer restaurants will have a value of "for restaurants"
+
+3. use n8n to automate creating newsletters for furnitures to subscribers in mailchimp
+
+4. in each food description page add a arrow button to view through a popup the cafe/restaurant location on google maps and distance from where the student is.
+
 6. create a new branch to add restaurants other than university ones
 * Their menu items will be able to link to whatsapp easily
 * Or start a messaging platform inside the app
