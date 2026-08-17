@@ -54,9 +54,12 @@
   via the `review_guards` guard below — never a racy client-side query.
   Public reads for non-deleted reviews; author/admin access to deleted ones.
 - `review_guards` — deterministic doc ID per `(userId, foodId)`; claimed
-  atomically with the review (create/revive) and released on soft-delete, so
-  a second live review for the same meal via a different order is impossible
-  even under concurrency. Owner read/create/delete only; no client updates.
+  atomically with the review (create/revive), so a second live review for the
+  same meal via a different order is impossible even under concurrency.
+  Release is **server-controlled**: the `onReviewChanged` trigger (Admin
+  SDK) deletes the guard when the review is soft-deleted; clients get
+  owner-only read/create and NO delete/update, so a client can never drop
+  its own guard to create a duplicate live review.
 - `audit_logs` — **backend-only** (no client create/update/delete). Automatic
   engine writes are **system** actions with no admin identity:
   `automatic_no_show` `{ action, orderId, studentId, performedBy: "system",

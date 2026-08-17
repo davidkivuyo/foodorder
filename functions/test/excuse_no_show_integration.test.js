@@ -905,4 +905,60 @@ describe("Phase G — deferred reliability correction when users/{studentId} is 
     assert.equal(await userReliability(), undefined,
       "no summary written for a never-restored user");
   });
+
+  it("initializes a missing pending timestamp so the retry window can eventually give up", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("users").doc("student1").delete();
+    });
+    // Counted NO_SHOW, excused, marker pending — but NO
+    // reliabilityExcusePendingSince (e.g. written before the timestamp
+    // existed). The reconciler must initialize it instead of pending
+    // forever without ever reaching the give-up path.
+    await seedOrder("g-init-1", validOrderPayload({
+      status: "no_show",
+      reliabilityProcessed: true,
+      reliabilityOutcome: "NO_SHOW",
+      noShowAt: new Date(),
+      noShowExcused: true,
+      excusedAt: new Date(),
+      excusedBy: "admin1",
+      excuseReason: "Student reported emergency",
+      excuseNote: null,
+      reliabilityExcusePending: true,
+    }));
+
+    await functionsModule.processExpiredPickups.run({});
+
+    let order = await orderById("g-init-1");
+    assert.equal(order.reliabilityExcusePending, true, "still pending");
+    assert.ok(
+      order.reliabilityExcusePendingSince instanceof admin.firestore.Timestamp,
+      "pending timestamp initialized by the reconciler");
+    assert.equal(order.reliabilityExcuseSkippedReason, undefined,
+      "no give-up yet — the retry window starts now");
+
+    // Simulate the retry window elapsing, then re-run: the give-up path
+    // must now be reachable thanks to the initialized timestamp.
+    const oldSince = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
+    await seedOrder("g-init-1", validOrderPayload({
+      status: "no_show",
+      reliabilityProcessed: true,
+      reliabilityOutcome: "NO_SHOW",
+      noShowAt: oldSince,
+      noShowExcused: true,
+      excusedAt: oldSince,
+      excusedBy: "admin1",
+      excuseReason: "Student reported emergency",
+      excuseNote: null,
+      reliabilityExcusePending: true,
+      reliabilityExcusePendingSince: oldSince,
+    }));
+    await functionsModule.processExpiredPickups.run({});
+
+    order = await orderById("g-init-1");
+    assert.equal(order.reliabilityExcusePending, undefined,
+      "marker cleared after the retry window");
+    assert.equal(order.reliabilityExcuseSkippedReason, "MISSING_USER",
+      "give-up reachable after the timestamp was initialized");
+  });
 });

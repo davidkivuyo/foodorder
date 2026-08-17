@@ -340,32 +340,17 @@ class ReviewRepository {
     return true;
   }
 
-  /// Soft-delete a review by setting `deleted = true` and release its
-  /// (user, food) guard atomically.
+  /// Soft-delete a review by setting `deleted = true`.
   ///
-  /// The guard must be removed so a later review of the same meal (via a
-  /// different order) is not blocked — soft-deleted reviews are invisible
-  /// and do not count toward "one live review per (user, food)".
+  /// The (user, food) guard is deliberately NOT released here — that is
+  /// server-controlled: the `onReviewChanged` Cloud Function deletes the
+  /// guard when `deleted` becomes true, so a client can never release its
+  /// own guard and create a duplicate live review for the same meal.
   Future<bool> softDelete(String reviewId) async {
-    final docRef = _firestore.collection(_collection).doc(reviewId);
-    final doc = await docRef.get();
-    final batch = _firestore.batch();
-    batch.update(docRef, {
+    await _firestore.collection(_collection).doc(reviewId).update({
       'deleted': true,
       'deletedAt': FieldValue.serverTimestamp(),
     });
-    if (doc.exists) {
-      final userId = doc.data()?['userId'] as String?;
-      final foodId = doc.data()?['foodId'] as String?;
-      if (userId != null && foodId != null) {
-        batch.delete(
-          _firestore
-              .collection(_guardCollection)
-              .doc(_compositeGuardId(userId: userId, foodId: foodId)),
-        );
-      }
-    }
-    await batch.commit();
     return true;
   }
 }

@@ -1504,10 +1504,23 @@ async function reconcilePendingExcuseCorrections() {
             pendingSince instanceof admin.firestore.Timestamp
               ? pendingSince
               : null;
+
+          if (pendingTimestamp == null) {
+            // No valid pending timestamp yet — initialize it with the
+            // current time (mirrors deferReliabilityEvent) so the retry
+            // window below can eventually trigger the explicit MISSING_USER
+            // give-up. Without this, a marker lacking a timestamp would
+            // pend forever and never reach the skip path.
+            transaction.update(orderSnapshot.ref, {
+              reliabilityExcusePendingSince: now,
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+            return "stillPending";
+          }
+
           if (
-            pendingTimestamp != null &&
             now.toMillis() - pendingTimestamp.toMillis() >=
-              RELIABILITY_MISSING_USER_RETRY_MS
+            RELIABILITY_MISSING_USER_RETRY_MS
           ) {
             // Explicit, auditable give-up after the retry window: record
             // WHY the correction was skipped, then clear the marker so the
@@ -5551,6 +5564,33 @@ async function applyReviewRatingChange(foodId, { removeRating, addRating }, even
   }, eventId);
 }
 
+/**
+ * Release the deterministic per-(user, food) review guard (Admin SDK).
+ *
+ * Server-controlled release: firestore.rules deny ALL client deletes on
+ * review_guards, so only this trigger can drop the guard — and only when
+ * the review actually becomes non-live (soft-delete or hard delete). Deleting
+ * a non-existent guard is a no-op, so redelivered events are idempotent.
+ * Best-effort: a failure must never block the rating-stats aggregation.
+ *
+ * @param {string} userId
+ * @param {string} foodId
+ */
+async function releaseReviewGuard(userId, foodId) {
+  if (typeof userId !== "string" || userId.length === 0 ||
+      typeof foodId !== "string" || foodId.length === 0) {
+    return;
+  }
+  try {
+    await db.collection("review_guards").doc(`${userId}:${foodId}`).delete();
+  } catch (err) {
+    console.warn(
+      `[onReviewChanged] Failed to release review guard for ` +
+      `(user ${userId}, food ${foodId}):`, err
+    );
+  }
+}
+
 /** Case 1: Review document created. */
 async function handleReviewCreated(ctx, event) {
   if (ctx.after.deleted) {
@@ -5573,6 +5613,9 @@ async function handleReviewDeleted(ctx, event) {
     );
     return;
   }
+  // Release the guard even on hard delete (Admin SDK only — rules deny
+  // client deletes) so a removed review can never orphan its guard.
+  await releaseReviewGuard(ctx.before.userId, ctx.before.foodId);
   await applyReviewRatingChange(ctx.foodId, {
     removeRating: ctx.beforeRating,
     addRating: null,
@@ -5589,6 +5632,14 @@ async function handleReviewUpdated(ctx, event) {
   }
 
   if (!ctx.before.deleted && ctx.after.deleted) {
+    // Server-controlled release: the client no longer deletes the guard;
+    // this trigger drops it when the review becomes soft-deleted, so a
+    // client can never release its own guard and create a duplicate live
+    // review for the same meal.
+    await releaseReviewGuard(
+      ctx.after.userId || ctx.before.userId,
+      ctx.after.foodId || ctx.before.foodId,
+    );
     await applyReviewRatingChange(ctx.foodId, {
       removeRating: ctx.beforeRating,
       addRating: null,

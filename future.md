@@ -38,4 +38,4 @@ Keep versions strictly increasing across channels — a production tag must alwa
 - Bad: dev  v1.1.0-dev ,  v1.8.0-dev  → production  v1.0.0  (downgrade in name)
 - Good: production  v1.9.0  → then dev  v1.10.0-dev  → production  v2.0.0  → dev  v2.1.0-dev  …
 
-Your pipeline already supports this cleanly — the  -prerelease  detection in the workflow ( IS_PRERELEASE ) publishes dev tags as GitHub prereleases, and the semver validation ensures tags are always well-formed. The only missing piece is the discipline of never letting a later tag carry a lower semver than an earlier one.
+Your pipeline enforces this automatically — the  -prerelease  detection in the workflow ( IS_PRERELEASE ) publishes dev tags as GitHub prereleases, the semver validation ensures tags are always well-formed, and a release-ordering gate in the Extract Version step rejects any tag that is not semver-greater than every previously published tag (excluding the candidate itself, so re-runs pass). No manual gate is needed; a lower tag simply fails the build.

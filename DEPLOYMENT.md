@@ -47,7 +47,9 @@ writers** for schema changes (see rollback below).
    - `git tag vX.Y.Z-rc.1` (pre-release) — publishes as a GitHub pre-release
    - **Versioning rule:** a production tag must be semver-greater than every
      `-dev` tag ever shipped, or existing installs will never see the update
-     (e.g. shipping `v1.0.0` after `v1.8.0-dev` strands testers).
+     (e.g. shipping `v1.0.0` after `v1.8.0-dev` strands testers). Enforced
+     automatically: the workflow's release-ordering gate rejects any tag that
+     is not semver-greater than every previously published tag.
 2. `git push origin vX.Y.Z` triggers `.github/workflows/release-apk.yml`:
    - Validates the tag as semver; derives `VERSION` and `IS_PRERELEASE`.
    - Builds `CampusBite-universal.apk` + per-ABI splits (`arm64-v8a`,

@@ -378,7 +378,7 @@ void main() {
       );
 
       test(
-        'soft-deleting the review releases the guard so a fresh review is allowed',
+        'soft-delete does NOT release the guard client-side — only the backend trigger does',
         () async {
           final firestore = FakeFirebaseFirestore();
           final repository = _FakeReviewRepository(
@@ -391,11 +391,35 @@ void main() {
 
           await repository.softDelete('user_1:order_1:food_a');
 
+          // Server-controlled release: the client soft-delete must leave the
+          // guard in place, so a client can never drop its own guard and
+          // create a duplicate live review for the same meal.
+          var guard = await firestore
+              .collection('review_guards')
+              .doc('user_1:food_a')
+              .get();
+          expect(guard.exists, isTrue, reason: 'guard survives client soft-delete');
+          final blocked = await repository.create(
+            reviewData(orderId: 'order_2', rating: 4),
+          );
+          expect(
+            blocked,
+            isNull,
+            reason: 'create still blocked while the guard is held',
+          );
+
+          // The onReviewChanged trigger (Admin SDK) releases the guard when
+          // deleted becomes true — simulate that backend step here.
+          await firestore
+              .collection('review_guards')
+              .doc('user_1:food_a')
+              .delete();
+
           final secondId = await repository.create(
             reviewData(orderId: 'order_2', rating: 4),
           );
           expect(secondId, 'user_1:order_2:food_a');
-          final guard = await firestore
+          guard = await firestore
               .collection('review_guards')
               .doc('user_1:food_a')
               .get();
