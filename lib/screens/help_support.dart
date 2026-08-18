@@ -153,7 +153,7 @@ class ContactScreen extends StatelessWidget {
 
   /// whatsapp
   Future<void> _openWhatsApp() async {
-    final String phoneNumber = "255671035765";
+    final String phoneNumber = "255781710688";
     final String message =
         "Hello! I am contacting you from the Campus Bite app.";
     final Uri whatsappUri = Uri.parse(
