@@ -14,6 +14,7 @@ This version is production release
 - Account profile customization information
 - Cafe details viewing
 - Seamless In app updates
+- Cafe/restaurants information
 
 ## Special thanks
 To all app contributors, the app is open source under Apache 2.0 License.

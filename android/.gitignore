@@ -4,6 +4,11 @@
 GeneratedPluginRegistrant.java
 .cxx/
 
+# Local dev dependency-locking state (LENIENT, single-ABI builds).
+# The committed CI lockfile is app/gradle.lockfile; dev writes go here.
+gradle.dev.lockfile
+**/gradle.dev.lockfile
+
 # Remember to never publicly share your keystore.
 # See https://flutter.dev/to/reference-keystore
 key.properties
