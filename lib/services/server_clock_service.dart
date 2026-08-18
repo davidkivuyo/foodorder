@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import 'dart:async';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'app_log.dart';
 
@@ -25,6 +26,13 @@ import 'app_log.dart';
 class ServerClockService {
   final FirebaseFunctions? _functions;
 
+  // Expected failures (offline/timeout/unavailable) are logged at warning
+  // level and rate-limited, so a long outage or the periodic screen refresh
+  // does not flood the error log. Unexpected failures and malformed responses
+  // still log at error level.
+  static const Duration _expectedFailureLogCooldown = Duration(minutes: 5);
+  DateTime? _lastExpectedFailureLoggedAt;
+
   ServerClockService({FirebaseFunctions? functions})
       : _functions = functions; // ignore: prefer_initializing_formals
 
@@ -37,11 +45,49 @@ class ServerClockService {
           .call<Map<String, dynamic>>()
           .timeout(const Duration(seconds: 5));
       final nowMillis = result.data['nowMillis'];
-      if (nowMillis is! num) return null;
+      if (nowMillis is! num) {
+        AppLog.e('[ServerClockService] getServerTime malformed response');
+        return null;
+      }
       return DateTime.fromMillisecondsSinceEpoch(nowMillis.toInt(), isUtc: true);
+    } on TimeoutException {
+      _logExpectedFailure('timeout');
+      return null;
+    } on FirebaseFunctionsException catch (e) {
+      if (_isExpectedFailureCode(e.code)) {
+        _logExpectedFailure('code=${e.code}');
+      } else {
+        AppLog.e('[ServerClockService] getServerTime error: code=${e.code}', e);
+      }
+      return null;
     } catch (e) {
       AppLog.e('[ServerClockService] getServerTime error: type=${e.runtimeType}');
       return null;
     }
+  }
+
+  /// Transient/expected callable codes that merely mean "server clock
+  /// unavailable right now" — the caller already fails closed on `null`.
+  static bool _isExpectedFailureCode(String code) {
+    return switch (code) {
+      'unavailable' ||
+      'deadline-exceeded' ||
+      'cancelled' ||
+      'aborted' ||
+      'unauthenticated' =>
+        true,
+      _ => false,
+    };
+  }
+
+  void _logExpectedFailure(String detail) {
+    final now = DateTime.now();
+    final last = _lastExpectedFailureLoggedAt;
+    if (last != null &&
+        now.difference(last) < _expectedFailureLogCooldown) {
+      return;
+    }
+    _lastExpectedFailureLoggedAt = now;
+    AppLog.w('[ServerClockService] getServerTime unavailable: $detail');
   }
 }

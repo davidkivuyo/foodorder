@@ -632,27 +632,33 @@ service cloud.firestore {
           || request.resource.data.order is number);
     }
 
+    // Operating hours contract (mirrors CafeHours.minutesOfDayValue): a
+    // timezone-free "H:mm" or "HH:mm" string — hour 00-23 (leading zero
+    // optional), minute 00-59 (exactly two digits). A Timestamp cannot carry
+    // a time-of-day without a timezone, so it is never accepted. Malformed,
+    // non-string, or out-of-range values are rejected; "00:00"/"23:59" and
+    // "8:05"-style boundary values are preserved.
+    function validOperatingHour(value) {
+      return value is string
+        && value.matches('^([0-9]|[01][0-9]|2[0-3]):[0-5][0-9]$');
+    }
+
     function validCafeWrite() {
-      let allowed = ['name', 'location', 'createdAt', 'createdBy',
-        'updatedAt', 'phone', 'email', 'openAt', 'closingAt'];
+      let allowed = ['name', 'location', 'geoLocation', 'createdAt',
+        'createdBy', 'updatedAt', 'phone', 'email', 'openAt', 'closingAt'];
       return request.resource.data.keys().hasOnly(allowed)
         && request.resource.data.name is string
         && request.resource.data.name.size() > 0
         && request.resource.data.name.size() < 200
         && (!('location' in request.resource.data)
           || request.resource.data.location is string)
-        // Operating hours: timezone-free "HH:mm" strings in the cafe's local
-        // time-of-day. A Timestamp cannot carry a time-of-day without a
-        // timezone, so only compact hour strings are accepted; content is
-        // range-validated by the client on read.
+        // geoLocation must be a GeoPoint (latlng), never an arbitrary value.
+        && (!('geoLocation' in request.resource.data)
+          || request.resource.data.geoLocation is latlng)
         && (!('openAt' in request.resource.data)
-          || (request.resource.data.openAt is string
-            && request.resource.data.openAt.size() >= 4
-            && request.resource.data.openAt.size() <= 5))
+          || validOperatingHour(request.resource.data.openAt))
         && (!('closingAt' in request.resource.data)
-          || (request.resource.data.closingAt is string
-            && request.resource.data.closingAt.size() >= 4
-            && request.resource.data.closingAt.size() <= 5));
+          || validOperatingHour(request.resource.data.closingAt));
     }
 
     function validDeviceTokenCreate() {

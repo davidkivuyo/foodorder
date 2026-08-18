@@ -34,7 +34,8 @@ class CafeDetailsScreen extends StatefulWidget {
   State<CafeDetailsScreen> createState() => _CafeDetailsScreenState();
 }
 
-class _CafeDetailsScreenState extends State<CafeDetailsScreen> {
+class _CafeDetailsScreenState extends State<CafeDetailsScreen>
+    with WidgetsBindingObserver {
   /// Stable, OSM-policy-compliant tile User-Agent; version is resolved from
   /// the installed build so identification stays distinct and up to date.
   static const String _tileUserAgentFallback =
@@ -51,22 +52,66 @@ class _CafeDetailsScreenState extends State<CafeDetailsScreen> {
   // screen never falls back to the device clock.
   DateTime? _serverNow;
 
+  // Periodic server-clock refresh while the screen is visible, so a timeout or
+  // transient offline window recovers instead of leaving the status permanently
+  // unknown. Refreshes pause while the app is backgrounded.
+  static const Duration _serverTimeRefreshInterval = Duration(minutes: 1);
+  Timer? _serverTimeRefreshTimer;
+  bool _fetchingServerTime = false;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _calculateDistance();
     _resolveTileUserAgent();
     _fetchServerTime();
+    _startServerTimeRefresh();
   }
 
-  /// Fetches the server clock once so the open/closed badge is based on
-  /// server time rather than the device clock.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _fetchServerTime();
+      _startServerTimeRefresh();
+    } else {
+      _serverTimeRefreshTimer?.cancel();
+      _serverTimeRefreshTimer = null;
+    }
+  }
+
+  void _startServerTimeRefresh() {
+    _serverTimeRefreshTimer?.cancel();
+    _serverTimeRefreshTimer = Timer.periodic(
+      _serverTimeRefreshInterval,
+      (_) => _fetchServerTime(),
+    );
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _serverTimeRefreshTimer?.cancel();
+    super.dispose();
+  }
+
+  /// Fetches the server clock so the open/closed badge is based on server
+  /// time rather than the device clock. Refreshes on a timer and on app
+  /// resume; a later failure keeps the last-known-good time.
   Future<void> _fetchServerTime() async {
-    final serverTime = await _serverClockService.getServerTime();
-    if (!mounted) return;
-    setState(() {
-      _serverNow = serverTime;
-    });
+    if (_fetchingServerTime) return;
+    _fetchingServerTime = true;
+    try {
+      final serverTime = await _serverClockService.getServerTime();
+      if (!mounted) return;
+      if (serverTime != null) {
+        setState(() {
+          _serverNow = serverTime;
+        });
+      }
+    } finally {
+      _fetchingServerTime = false;
+    }
   }
 
   Future<void> _resolveTileUserAgent() async {
@@ -272,7 +317,6 @@ class _CafeDetailsScreenState extends State<CafeDetailsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Header Image
                 if (imageUrl.isNotEmpty)
                   SizedBox(
                     height: 200,
@@ -299,7 +343,6 @@ class _CafeDetailsScreenState extends State<CafeDetailsScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Cafe Name and Status
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
@@ -350,7 +393,6 @@ class _CafeDetailsScreenState extends State<CafeDetailsScreen> {
                       // Distance & Hours Info Cards
                       Row(
                         children: [
-                          // Distance card
                           Expanded(
                             child: Container(
                               padding: const EdgeInsets.all(12),
@@ -404,7 +446,6 @@ class _CafeDetailsScreenState extends State<CafeDetailsScreen> {
                           ),
                           const SizedBox(width: 12),
 
-                          // Hours card
                           Expanded(
                             child: Container(
                               padding: const EdgeInsets.all(12),
@@ -483,7 +524,6 @@ class _CafeDetailsScreenState extends State<CafeDetailsScreen> {
                       ),
                       const SizedBox(height: 12),
 
-                      // OpenStreetMap Section
                       if (geoPoint != null) ...[
                         ClipRRect(
                           borderRadius: BorderRadius.circular(16),
