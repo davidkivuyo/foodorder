@@ -11,7 +11,7 @@
 - Public identity: `fullName`, `email`, `role` (`student` | `admin`),
   `accountStatus` (`ACTIVE` | `SUSPENDED`), `createdAt`, `updatedAt`.
 - Student favourites: `favouriteFoodIds` (≤ 5, server-validated list).
-- **Server-owned** (client writes denied by rules):
+- **Server-owned** (client writes denied):
   - `pickupReliability` — `{ eligibleOrders, collectedOrders, noShowOrders,
     collectionRate, recentEligibleOrders, recentCollectedOrders,
     recentNoShowOrders, recentCollectionRate, reliabilityScore,
@@ -24,7 +24,7 @@
   written; the reliability summary replaced them.
 
 ### `orders/{orderId}`
-- Client-created via the `placeOrder` callable only — rules deny direct client
+- Client-created via the `placeOrder` callable only — deny direct client
   `create`.
 - **Server-owned fields** (client updates rejected): `status` transitions,
   `createdAt`, `cancellationDeadline` (createdAt + exactly 2 min),
