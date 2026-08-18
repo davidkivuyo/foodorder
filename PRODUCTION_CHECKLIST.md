@@ -1,6 +1,6 @@
 # CampusBite — Production Release Checklist
 
-Release: **v** 1.9.0 | Build number: 1.9.0 | Date: 23/08/2026
+Release: **v** 1.9.0 | Build number: 1.9.0 | Date: 18/08/2026
 
 Each gate must be verified before the release candidate is promoted.
 
@@ -84,21 +84,21 @@ Each gate must be verified before the release candidate is promoted.
   ```
 - [x] Pickup flow: READY → countdown → grace period → collect (or NO_SHOW)
 - [x] Reliability: score/status visible; restriction enforced by backend
-- [ ] Admin journey: login → menu management → receive order → accept →
+- [x] Admin journey: login → menu management → receive order → accept →
   ```
   preparing → ready → collected → excuse no-show → food disposition →
   audit trail
   ```
 - [x] Notifications: foreground, background, terminated; no duplicates
-- [ ] Offline: cached menu/orders; queue syncs on reconnect; limits not bypassed
-- [ ] No layout overflow, dialogs/snackbars work, accessibility basics pass
+- [x] Offline: cached menu/orders; queue syncs on reconnect; limits not bypassed
+- [x] No layout overflow, dialogs/snackbars work, accessibility basics pass
 
 
 
 ## Post-release
 
 - [x] Release notes published
-- [ ] Monitoring dashboards (Crashlytics/Performance) confirm healthy baseline
+- [x] Monitoring dashboards (Crashlytics/Performance) confirm healthy baseline
 - [x] Any residual MEDIUM/LOW findings logged as technical debt in the report
 
 Sign-off: The Larason (maintainer)
