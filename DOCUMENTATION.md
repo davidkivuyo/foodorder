@@ -344,6 +344,20 @@ Students can pre-schedule meals for upcoming study sessions, exam weeks, or dail
 
 ---
 
+## Cafe Details Screen & OpenStreetMap Integration
+
+To provide students with comprehensive cafeteria information without incurring Google Maps API costs, CampusBite features a dedicated **Cafe Details Screen** accessible directly from the food details screen:
+
+1. **Interactive Navigation:** Tapping any cafeteria listed under the "Available At" section on a food item's detail page navigates to `CafeDetailsScreen(cafeName)`.
+2. **OpenStreetMap Integration & Compliance:** Uses `flutter_map` (v8.3.1) and `latlong2` to render raster PNG tiles from OpenStreetMap's standard tile endpoint (`https://tile.openstreetmap.org/{z}/{x}/{y}.png`). Adheres strictly to the [OSMF Tile Usage Policy](https://operations.osmfoundation.org/policies/tiles/):
+   - **Descriptive User-Agent:** Every tile request carries a distinct, stable `User-Agent` naming the app, its version, and contact details — `CampusBite/<version> (+https://foodapp.larason.space; contact: lembotor6@gmail.com)` — with `<version>` resolved from the installed build at runtime (`PackageInfo`) so identification updates as new releases publish. It is sent via `NetworkTileProvider` HTTP headers (and mirrored in `userAgentPackageName`) and never falls back to a library-generic default.
+   - **Referer (web):** Tile requests are never proxied or rewritten, so on web the browser's own `Referer` (the app host) is sent intact; no `Referer` stripping or shared-anonymous-identity tunneling occurs.
+   - **In-Map Attribution:** Displays required, visible in-map attribution via `RichAttributionWidget` with `TextSourceAttribution('OpenStreetMap contributors')` plus a static `Map data © OpenStreetMap contributors` caption below the map, in compliance with OSM copyright terms.
+   - **Tile Caching:** `NetworkTileProvider` enables flutter_map's built-in persistent cache by default (`BuiltInMapCachingProvider`): on native (non-web) platforms, downloaded tiles are stored as files in the app's cache directory, so already-loaded tiles are reused across sessions — avoiding unnecessary repeated tile requests, bandwidth, and server load. The built-in cache is a no-op on web, where the browser's own HTTP cache applies.
+   - **Direction Indicator:** Displays a direct in-map line (`PolylineLayer`) between the student's current location and the cafe marker — a straight connecting line, not turn-by-turn walking directions.
+3. **Ephemeral Device Distance:** Uses `Geolocator` and `PickupWindowService.calculateDistance` to calculate real-time walking distance from the student's current position to the cafe. To uphold strict privacy guidelines, user location coordinates are kept ephemeral in memory and are never saved or logged.
+4. **Live Streamed Operating Hours:** Streams real-time `openAt` and `closingAt` fields from the `cafes` document in Firestore to display whether the cafeteria is currently **Open Now** or **Closed**, alongside its opening and closing hours.
+
 ## Cloud functions
 
 1. onOrderStatusChanged

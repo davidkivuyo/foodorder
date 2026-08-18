@@ -13,6 +13,7 @@
     "node-fetch": "^2.7.0"
   },
   "devDependencies": {
+    "@firebase/firestore": "4.17.0",
     "@firebase/rules-unit-testing": "^5.0.1",
     "firebase-functions-test": "^3.4.0",
     "firebase-tools": "^15.24.0"
@@ -24,6 +25,7 @@
     "test:phase-e:integration": "cd .. && firebase emulators:exec --only firestore --project demo-foodorder \"node --test functions/test/phase_e_restriction_integration.test.js\"",
     "test:cafe-scoping:integration": "cd .. && firebase emulators:exec --only firestore --project demo-foodorder \"node --test functions/test/order_cafe_scoping_integration.test.js\"",
     "test:excuse:integration": "cd .. && firebase emulators:exec --only firestore --project demo-foodorder \"node --test functions/test/excuse_no_show_integration.test.js\"",
-    "test:disposition:integration": "cd .. && firebase emulators:exec --only firestore --project demo-foodorder \"node --test functions/test/food_disposition_integration.test.js\""
+    "test:disposition:integration": "cd .. && firebase emulators:exec --only firestore --project demo-foodorder \"node --test functions/test/food_disposition_integration.test.js\"",
+    "test:cafe-hours:integration": "cd .. && firebase emulators:exec --only firestore --project demo-foodorder \"node --test functions/test/cafe_hours_rules_integration.test.js\""
   }
 }

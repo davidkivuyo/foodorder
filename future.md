@@ -1,8 +1,6 @@
 # future implementation plans
 
 # TODOS
-3. in myprofile screen screen add app appearance settings, your ratings, and allow users to update their details.
-
 1. apply ai to view and monitor images uploaded to be for food only no harm or dangerous materials
 
 2. Add a 'for' field on every food items which  is for univerisity with a value of "for university"

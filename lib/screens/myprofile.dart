@@ -15,6 +15,8 @@
 import 'package:campusbite/models/pickup_reliability.dart';
 import 'package:campusbite/models/user_profile.dart';
 import 'package:campusbite/services/auth_service.dart';
+import 'package:campusbite/services/app_log.dart';
+import 'package:campusbite/services/firestore_profile_service.dart';
 import 'package:campusbite/services/input_validator.dart';
 import 'package:campusbite/widgets/pickup_reliability_card.dart';
 import 'package:campusbite/widgets/restriction_notice.dart';
@@ -24,11 +26,40 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../widgets/logout_confirmation_dialog.dart';
 
-class MyProfileScreen extends StatelessWidget {
+class MyProfileScreen extends StatefulWidget {
   const MyProfileScreen({super.key});
 
-  // Instantiate the auth service to access signOut and currentUser
+  @override
+  State<MyProfileScreen> createState() => _MyProfileScreenState();
+}
+
+class _MyProfileScreenState extends State<MyProfileScreen> {
   static final _authService = AuthService();
+  static final _firestoreProfileService = FirestoreProfileService();
+
+  // Edit mode state
+  bool _isEditing = false;
+  final _nameController = TextEditingController();
+  String? _errorMessage;
+  bool _isSaving = false;
+
+  // Current profile values (updated by StreamBuilder, used to seed controllers)
+  String _currentFullName = '';
+
+  @override
+  void initState() {
+    super.initState();
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    super.dispose();
+  }
+
+  // -------------------------------------------------------------------------
+  // Logout
+  // -------------------------------------------------------------------------
 
   void _handleLogout(BuildContext context) async {
     final confirmed = await showDialog<bool>(
@@ -66,6 +97,10 @@ class MyProfileScreen extends StatelessWidget {
       );
     }
   }
+
+  // -------------------------------------------------------------------------
+  // Password reset
+  // -------------------------------------------------------------------------
 
   void _handleResetPassword(BuildContext context) async {
     // Always reset using the canonical FirebaseAuth email — never the
@@ -141,83 +176,85 @@ class MyProfileScreen extends StatelessWidget {
     );
   }
 
-  void _showReliabilityDetailModal(BuildContext context, UserProfile profile) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (modalContext) {
-        return Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade300,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                PickupReliabilityCard(summary: profile.pickupReliability),
-                const SizedBox(height: 20),
-                Text(
-                  'About Pickup Reliability',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.grey.shade900,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'CampusBite tracks your pickup history to ensure food prepared by cafeterias is collected promptly and food waste is minimized. '
-                  'Your status updates automatically as you complete orders.',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey.shade700,
-                    height: 1.4,
-                  ),
-                ),
-                const SizedBox(height: 24),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () => Navigator.pop(modalContext),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF168039),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                    child: const Text(
-                      'Close',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
+  // -------------------------------------------------------------------------
+  // Profile save
+  // -------------------------------------------------------------------------
+
+  Future<void> _saveProfile() async {
+    if (_isSaving) return;
+    setState(() {
+      _isSaving = true;
+      _errorMessage = null;
+    });
+
+    final currentUser = _authService.currentUser;
+    if (currentUser == null) {
+      setState(() {
+        _isSaving = false;
+        _errorMessage = 'You are not signed in. '
+            'Please sign in again and retry.';
+      });
+      return;
+    }
+    if (currentUser.email == null || currentUser.email!.isEmpty) {
+      setState(() {
+        _isSaving = false;
+        _errorMessage = 'Profile cannot be saved without an authenticated '
+            'email. Please sign in with an email account and retry.';
+      });
+      return;
+    }
+
+    // Sanitize and validate name
+    final rawName = _nameController.text.trim();
+    final sanitizedName = InputValidator.sanitizeName(rawName);
+    if (sanitizedName.isEmpty) {
+      setState(() {
+        _isSaving = false;
+        _errorMessage = 'Name is invalid. Please enter a valid name.';
+      });
+      return;
+    }
+
+    // Email is immutable and can never be edited. Only the name changes here;
+    // the Firestore email is kept in sync with the authenticated account email.
+    try {
+      await _firestoreProfileService
+          .updateProfile(
+            userId: currentUser.uid,
+            fullName: sanitizedName,
+            email: currentUser.email!,
+          )
+          // Bound the write so an offline/pending Future cannot hang the
+          // save flow indefinitely; on timeout the catch below resets
+          // _isSaving and invites a retry.
+          .timeout(const Duration(seconds: 15));
+
+      if (!mounted) return;
+      setState(() {
+        _isEditing = false;
+        _isSaving = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Profile updated successfully.'),
+          backgroundColor: Color(0xFF168039),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } on Exception catch (e) {
+      AppLog.e('[MyProfileScreen] _saveProfile error', e);
+      if (!mounted) return;
+      setState(() {
+        _isSaving = false;
+        _errorMessage = 'Failed to update profile. Please try again.';
+      });
+    }
   }
+
+  // -------------------------------------------------------------------------
+  // Widget build
+  // -------------------------------------------------------------------------
 
   @override
   Widget build(BuildContext context) {
@@ -231,9 +268,9 @@ class MyProfileScreen extends StatelessWidget {
         child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
           stream: currentUser != null
               ? FirebaseFirestore.instance
-                    .collection('users')
-                    .doc(currentUser.uid)
-                    .snapshots()
+                  .collection('users')
+                  .doc(currentUser.uid)
+                  .snapshots()
               : null,
           builder: (context, snapshot) {
             UserProfile userProfile;
@@ -256,6 +293,9 @@ class MyProfileScreen extends StatelessWidget {
             final displayEmail = userProfile.email.isNotEmpty
                 ? userProfile.email
                 : (currentUser?.email ?? 'No email found');
+
+            // Store for use by edit-mode controllers
+            _currentFullName = displayName;
             final statusLabel = userProfile.pickupReliability != null
                 ? PickupReliabilityCard.getStatusLabel(
                     userProfile.pickupReliability!.status,
@@ -301,45 +341,35 @@ class MyProfileScreen extends StatelessWidget {
                         ),
                         const SizedBox(height: 20),
 
-                        // Profile Avatar with Edit Badge
+                        // Profile Avatar
                         Center(
-                          child: Stack(
-                            children: [
-                              UserInitialsAvatar(
-                                initials: initialsFromName(displayName),
-                                color: avatarColorFromName(displayName),
-                                size: 84,
-                              ),
-                              Positioned(
-                                bottom: 2,
-                                right: 2,
-                                child: Container(
-                                  padding: const EdgeInsets.all(6),
-                                  decoration: const BoxDecoration(
-                                    color: Color(0xFF212121),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: const Icon(
-                                    Icons.edit,
-                                    size: 14,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ),
-                            ],
+                          child: UserInitialsAvatar(
+                            initials: initialsFromName(displayName),
+                            color: avatarColorFromName(displayName),
+                            size: 84,
                           ),
                         ),
                         const SizedBox(height: 12),
 
-                        // User Name
-                        Text(
-                          displayName,
-                          style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.black87,
-                          ),
-                        ),
+                        // User Name - editable or display
+                        _isEditing
+                            ? TextField(
+                                controller: _nameController,
+                                autofocus: false,
+                                decoration: const InputDecoration(
+                                  hintText: 'Full name',
+                                  border: UnderlineInputBorder(),
+                                ),
+                                onChanged: (_) => setState(() {}),
+                              )
+                            : Text(
+                                displayName,
+                                style: const TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.black87,
+                                ),
+                              ),
 
                         const SizedBox(height: 16),
                       ],
@@ -349,26 +379,86 @@ class MyProfileScreen extends StatelessWidget {
                   // Personal Info Section
                   _buildSectionHeader('Personal info'),
 
-                  _buildSettingTile(
-                    title: 'Profile Picture',
-                    subtitle: 'Update or change avatar',
-                    onTap: () {},
-                  ),
-                  _buildDivider(),
-                  _buildSettingTile(
+                  _buildProfileEditTile(
                     title: 'Name',
-                    subtitle: displayName,
-                    onTap: () {},
+                    subtitle: _isEditing
+                        ? _nameController.text.isNotEmpty
+                            ? _nameController.text
+                            : displayName
+                        : displayName,
+                    onTap: _onEditingTap,
                   ),
                   _buildDivider(),
+                  // Email is immutable — display only, never editable.
                   _buildSettingTile(
                     title: 'Email',
                     subtitle: displayEmail,
                     subtitleColor: brandGreen,
                     trailingIcon: Icons.check_circle_outline,
                     trailingIconColor: Colors.black87,
-                    onTap: () {},
                   ),
+
+                  // Save / Cancel buttons when in edit mode
+                  if (_isEditing) ...[
+                    _buildSectionGap(),
+                    if (_errorMessage != null)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
+                        child: Text(
+                          _errorMessage!,
+                          style: const TextStyle(
+                            color: Colors.red,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                    Container(
+                      width: double.infinity,
+                      color: Colors.white,
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: TextButton(
+                              onPressed: _isSaving
+                                  ? null
+                                  : () {
+                                      setState(() {
+                                        _isEditing = false;
+                                        _nameController.clear();
+                                        _errorMessage = null;
+                                      });
+                                    },
+                              child: const Text('Cancel'),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: _isSaving ? null : _saveProfile,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF168039),
+                                foregroundColor: Colors.white,
+                              ),
+                              child: _isSaving
+                                  ? const SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        color: Colors.white,
+                                        strokeWidth: 2.5,
+                                      ),
+                                    )
+                                  : const Text('Save'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    _buildSectionGap(),
+                  ], // if _isEditing
 
                   // Section Separator
                   _buildSectionGap(),
@@ -447,6 +537,10 @@ class MyProfileScreen extends StatelessWidget {
     );
   }
 
+  // -------------------------------------------------------------------------
+  // Helper methods
+  // -------------------------------------------------------------------------
+
   Widget _buildSectionHeader(String title) {
     return Container(
       width: double.infinity,
@@ -466,7 +560,7 @@ class MyProfileScreen extends StatelessWidget {
   Widget _buildSettingTile({
     required String title,
     required String subtitle,
-    required VoidCallback onTap,
+    VoidCallback? onTap,
     Color? subtitleColor,
     IconData trailingIcon = Icons.chevron_right,
     Color trailingIconColor = Colors.black87,
@@ -524,6 +618,92 @@ class MyProfileScreen extends StatelessWidget {
       height: 12,
       width: double.infinity,
       color: const Color(0xFFF7F7F9),
+    );
+  }
+
+
+  void _onEditingTap() {
+    if (_isEditing) return;
+    _nameController.text = _currentFullName;
+    setState(() {
+      _isEditing = true;
+      _errorMessage = null;
+    });
+  }
+
+  Widget _buildProfileEditTile({
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+    Color? subtitleColor,
+    IconData trailingIcon = Icons.chevron_right,
+    Color trailingIconColor = Colors.black87,
+  }) {
+    return _buildSettingTile(
+      title: title,
+      subtitle: subtitle,
+      onTap: onTap,
+      subtitleColor: subtitleColor,
+      trailingIcon: trailingIcon,
+      trailingIconColor: trailingIconColor,
+    );
+  }
+
+  void _showReliabilityDetailModal(BuildContext context, UserProfile profile) {
+    final reliability = profile.pickupReliability;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.7,
+          minChildSize: 0.4,
+          maxChildSize: 0.95,
+          expand: false,
+          builder: (context, scrollController) {
+            return SingleChildScrollView(
+              controller: scrollController,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        margin: const EdgeInsets.only(bottom: 16),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade300,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    const Text(
+                      'Pickup Reliability',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    if (reliability != null)
+                      PickupReliabilityCard(summary: reliability)
+                    else
+                      const Text(
+                        'No reliability data yet. Your record will appear after your first order.',
+                        style: TextStyle(color: Colors.grey),
+                      ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 }
