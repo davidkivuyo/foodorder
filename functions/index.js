@@ -53,6 +53,26 @@ admin.initializeApp();
 const db = admin.firestore();
 const PICKUP_WINDOW_MINUTES = 20;
 
+// ── getServerTime (Callable — authenticated clients) ────────────────────────
+// Returns the authoritative Cloud Functions clock so clients can evaluate
+// time-of-day rules (e.g. cafe open/closed) without trusting the device clock.
+// Deliberately tiny: no secrets, no Firestore access, no per-invocation cost
+// beyond the call itself.
+exports.getServerTime = onCall(
+  {
+    authPolicy: "required",
+    enforceAppCheck: true,
+    region: "us-central1",
+  },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError("unauthenticated", "User must be authenticated.");
+    }
+    return { nowMillis: Date.now() };
+  }
+);
+
+
 /**
  * Configurable grace period after pickupDeadline before automatic NO_SHOW.
  * Initial default: 5 minutes.

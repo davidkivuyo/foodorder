@@ -630,13 +630,25 @@ service cloud.firestore {
 
     function validCafeWrite() {
       let allowed = ['name', 'location', 'createdAt', 'createdBy',
-        'updatedAt', 'phone', 'email'];
+        'updatedAt', 'phone', 'email', 'openAt', 'closingAt'];
       return request.resource.data.keys().hasOnly(allowed)
         && request.resource.data.name is string
         && request.resource.data.name.size() > 0
         && request.resource.data.name.size() < 200
         && (!('location' in request.resource.data)
-          || request.resource.data.location is string);
+          || request.resource.data.location is string)
+        // Operating hours: timezone-free "HH:mm" strings in the cafe's local
+        // time-of-day. A Timestamp cannot carry a time-of-day without a
+        // timezone, so only compact hour strings are accepted; content is
+        // range-validated by the client on read.
+        && (!('openAt' in request.resource.data)
+          || (request.resource.data.openAt is string
+            && request.resource.data.openAt.size() >= 4
+            && request.resource.data.openAt.size() <= 5))
+        && (!('closingAt' in request.resource.data)
+          || (request.resource.data.closingAt is string
+            && request.resource.data.closingAt.size() >= 4
+            && request.resource.data.closingAt.size() <= 5));
     }
 
     function validDeviceTokenCreate() {

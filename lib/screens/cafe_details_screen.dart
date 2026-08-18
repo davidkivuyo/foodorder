@@ -21,6 +21,8 @@ import 'package:latlong2/latlong.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import '../services/pickup_window_service.dart';
 import '../services/app_log.dart';
+import '../services/cafe_hours.dart';
+import '../services/server_clock_service.dart';
 import '../widgets/monitored_network_image.dart';
 
 class CafeDetailsScreen extends StatefulWidget {
@@ -39,15 +41,31 @@ class _CafeDetailsScreenState extends State<CafeDetailsScreen> {
       'CampusBite/unknown (+https://foodapp.larason.space; contact: lembotor6@gmail.com)';
 
   String _tileUserAgent = _tileUserAgentFallback;
+  final ServerClockService _serverClockService = ServerClockService();
   double? _distanceMeters;
   bool _calculatingDistance = true;
   LatLng? _userPosition;
+
+  // Authoritative server clock; null until fetched. When null (offline or the
+  // function is unavailable) the screen falls back to the device clock.
+  DateTime? _serverNow;
 
   @override
   void initState() {
     super.initState();
     _calculateDistance();
     _resolveTileUserAgent();
+    _fetchServerTime();
+  }
+
+  /// Fetches the server clock once so the open/closed badge is based on
+  /// server time rather than the device clock.
+  Future<void> _fetchServerTime() async {
+    final serverTime = await _serverClockService.getServerTime();
+    if (!mounted) return;
+    setState(() {
+      _serverNow = serverTime;
+    });
   }
 
   Future<void> _resolveTileUserAgent() async {
@@ -125,7 +143,7 @@ class _CafeDetailsScreenState extends State<CafeDetailsScreen> {
     return '${meters.round()} m away';
   }
 
-  String _formatOperatingHours(String openAt, String closingAt) {
+  String _formatOperatingHours(dynamic openAt, dynamic closingAt) {
     String openStr = _parseTimeString(openAt);
     String closeStr = _parseTimeString(closingAt);
     if (openStr.isEmpty && closeStr.isEmpty) {
@@ -136,42 +154,26 @@ class _CafeDetailsScreenState extends State<CafeDetailsScreen> {
 
   String _parseTimeString(dynamic value) {
     if (value == null) return '';
+    // Canonical storage is a timezone-free "HH:mm" string in the cafe's local
+    // time. No Timestamp branch: reading time-of-day off a Timestamp would
+    // apply the device's timezone, not the cafe's.
     if (value is String) return value.trim();
-    if (value is Timestamp) {
-      final dt = value.toDate();
-      final hour = dt.hour.toString().padLeft(2, '0');
-      final minute = dt.minute.toString().padLeft(2, '0');
-      return '$hour:$minute';
-    }
     return value.toString().trim();
   }
 
-  bool _isCurrentlyOpen(String openAt, String closingAt) {
-    final openStr = _parseTimeString(openAt);
-    final closeStr = _parseTimeString(closingAt);
-    if (openStr.isEmpty || closeStr.isEmpty) return true;
-
-    try {
-      final now = DateTime.now();
-      final nowMinutes = now.hour * 60 + now.minute;
-
-      final openParts = openStr.split(':');
-      final openMinutes =
-          int.parse(openParts[0]) * 60 + int.parse(openParts[1]);
-
-      final closeParts = closeStr.split(':');
-      final closeMinutes =
-          int.parse(closeParts[0]) * 60 + int.parse(closeParts[1]);
-
-      if (closeMinutes >= openMinutes) {
-        return nowMinutes >= openMinutes && nowMinutes <= closeMinutes;
-      } else {
-        // Overnight hours
-        return nowMinutes >= openMinutes || nowMinutes <= closeMinutes;
-      }
-    } catch (_) {
-      return true;
-    }
+  /// Whether the cafe is open at [now]. [now] must be server time — never the
+  /// device clock. Returns `null` (unknown) when the state cannot be
+  /// determined: [now] is unavailable or either operating hour is missing or
+  /// malformed. Missing hours yield unknown, never "open".
+  bool? _isCurrentlyOpen(dynamic openAt, dynamic closingAt, DateTime now) {
+    final openMinutes = CafeHours.minutesOfDayValue(openAt);
+    final closeMinutes = CafeHours.minutesOfDayValue(closingAt);
+    if (openMinutes == null || closeMinutes == null) return null;
+    return CafeHours.isOpenAt(
+      CafeHours.minutesOfDay(now),
+      openMinutes,
+      closeMinutes,
+    );
   }
 
   @override
@@ -248,10 +250,19 @@ class _CafeDetailsScreenState extends State<CafeDetailsScreen> {
               cafeData['imageUrl'] as String? ??
               '';
           final GeoPoint? geoPoint = cafeData['geoLocation'] as GeoPoint?;
-          final openAt = cafeData['openAt']?.toString() ?? '';
-          final closingAt = cafeData['closingAt']?.toString() ?? '';
+          final openAt = cafeData['openAt'];
+          final closingAt = cafeData['closingAt'];
 
-          final isOpen = _isCurrentlyOpen(openAt, closingAt);
+          // Fail closed on the open/closed decision: without authoritative
+          // server time we never decide from the device clock. The badge
+          // shows a neutral state instead. Stored hours are timezone-free
+          // "HH:mm" in the cafe's time-of-day, so the comparison "now" must be
+          // in the cafe's zone — a single-campus app assumes the device's zone
+          // matches the cafe's.
+          final DateTime? serverNow = _serverNow;
+          final bool? isOpen = serverNow == null
+              ? null
+              : _isCurrentlyOpen(openAt, closingAt, serverNow.toLocal());
           final hoursText = _formatOperatingHours(openAt, closingAt);
 
           return SingleChildScrollView(
@@ -305,15 +316,23 @@ class _CafeDetailsScreenState extends State<CafeDetailsScreen> {
                               vertical: 4,
                             ),
                             decoration: BoxDecoration(
-                              color: isOpen
+                              color: isOpen == null
+                                  ? Colors.grey.shade100
+                                  : isOpen
                                   ? const Color(0xFFE8F5E9)
                                   : const Color(0xFFFFEBEE),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Text(
-                              isOpen ? 'Open Now' : 'Closed',
+                              isOpen == null
+                                  ? 'Status unavailable'
+                                  : isOpen
+                                  ? 'Open Now'
+                                  : 'Closed',
                               style: TextStyle(
-                                color: isOpen
+                                color: isOpen == null
+                                    ? Colors.grey.shade600
+                                    : isOpen
                                     ? const Color(0xFF2E7D32)
                                     : const Color(0xFFC62828),
                                 fontWeight: FontWeight.bold,
