@@ -8,6 +8,7 @@ image: ghcr.io/cirruslabs/flutter:stable
 variables:
   GRADLE_OPTS: "-Dorg.gradle.daemon=false"
   FLUTTER_VERSION: "3.44.6"
+  ORG_GRADLE_PROJECT_lockMode: "STRICT"
 
 cache:
   key: "$CI_COMMIT_REF_SLUG"
@@ -47,20 +48,61 @@ build_apk:
     - fvm flutter pub get --enforce-lockfile
 
     # Phase 15 — require the security & unit test suite to pass BEFORE
-    # building and signing any APK. auth_hardening_test.dart contains
-    # guardrail tests that verify Cloud Functions, App Check, Firestore
-    # rules and update-system security invariants; a regression must fail
-    # the release, not ship.
+    # building and signing any APK.
     - fvm flutter test
 
+    # Verify Gradle Dependency Lockfile
+    - |
+      if [ ! -f android/app/gradle.lockfile ]; then
+        echo "app/gradle.lockfile is missing."
+        exit 1
+      fi
+      (cd android && ./gradlew --no-daemon :app:dependencies > /dev/null)
+
+    # Build Universal APK
+    - |
+      fvm flutter build apk \
+        --release \
+        --obfuscate \
+        --split-debug-info=build/debug-info \
+        --build-name="$VERSION" \
+        --build-number="$CI_PIPELINE_IID"
+
+    # Build Split APKs
     - |
       fvm flutter build apk \
         --release \
         --split-per-abi \
-        --build-name=$VERSION \
-        --build-number=$CI_PIPELINE_IID \
         --obfuscate \
-        --split-debug-info=build/debug-info
+        --split-debug-info=build/debug-info \
+        --build-name="$VERSION" \
+        --build-number="$CI_PIPELINE_IID"
+
+    # Organize Release Files
+    - |
+      mkdir -p release
+      cp build/app/outputs/flutter-apk/app-release.apk release/CampusBite-universal.apk
+      cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk release/CampusBite-arm64-v8a.apk
+      cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk release/CampusBite-armeabi-v7a.apk
+      cp build/app/outputs/flutter-apk/app-x86_64-release.apk release/CampusBite-x86_64.apk
+
+    # Generate SHA256 Checksums
+    - |
+      cd release
+      sha256sum CampusBite-universal.apk > CampusBite-universal.apk.sha256
+      sha256sum CampusBite-arm64-v8a.apk > CampusBite-arm64-v8a.apk.sha256
+      sha256sum CampusBite-armeabi-v7a.apk > CampusBite-armeabi-v7a.apk.sha256
+      sha256sum CampusBite-x86_64.apk > CampusBite-x86_64.apk.sha256
+      cd ..
+
+    # Generate release.json from template
+    - |
+      apt-get update && apt-get install -y gettext-base python3
+      VERSION="$VERSION" REPOSITORY="$CI_PROJECT_PATH" TAG="$CI_COMMIT_TAG" \
+        envsubst '${VERSION} ${REPOSITORY} ${TAG}' \
+        < .github/release-template.json \
+        > release/release.json
+      python3 -m json.tool release/release.json > /dev/null
 
   after_script:
     - rm -f android/app/release.jks
@@ -68,7 +110,7 @@ build_apk:
   artifacts:
     name: "CampusBite-$CI_COMMIT_TAG"
     paths:
-      - build/app/outputs/flutter-apk/
+      - release/
       - build/debug-info/
 
 package_apk:
@@ -84,15 +126,13 @@ package_apk:
 
   script:
     - |
-      for apk in build/app/outputs/flutter-apk/*.apk; do
-        filename=$(basename "$apk")
-
+      for file in release/*; do
+        filename=$(basename "$file")
         echo "Uploading $filename..."
-
         curl \
           --fail \
           --header "JOB-TOKEN: $CI_JOB_TOKEN" \
-          --upload-file "$apk" \
+          --upload-file "$file" \
           "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/campus-bite/${CI_COMMIT_TAG}/${filename}"
       done
 
@@ -115,29 +155,27 @@ create_release:
 
     name: "Campus Bite $CI_COMMIT_TAG"
 
-    description: |
-      ## Campus Bite
-
-      ### Release $CI_COMMIT_TAG
-
-      Automatically built using GitLab CI/CD.
-
-      #### Available APKs
-
-      - ARM64 (Most Android phones)
-      - ARMv7 (Older Android phones)
-      - x86_64 (Emulators and Intel devices)
+    description: '.github/release-notes.md'
 
     assets:
       links:
-        - name: "App release apk (ARM64-v8a)"
-          url: "${CI_SERVER_URL}/api/v4/projects/${CI_PROJECT_ID}/packages/generic/campus-bite/${CI_COMMIT_TAG}/app-arm64-v8a-release.apk"
+        - name: "CampusBite Universal APK"
+          url: "${CI_SERVER_URL}/api/v4/projects/${CI_PROJECT_ID}/packages/generic/campus-bite/${CI_COMMIT_TAG}/CampusBite-universal.apk"
           link_type: package
 
-        - name: "App release apk (ARMv7)"
-          url: "${CI_SERVER_URL}/api/v4/projects/${CI_PROJECT_ID}/packages/generic/campus-bite/${CI_COMMIT_TAG}/app-armeabi-v7a-release.apk"
+        - name: "CampusBite ARM64-v8a APK"
+          url: "${CI_SERVER_URL}/api/v4/projects/${CI_PROJECT_ID}/packages/generic/campus-bite/${CI_COMMIT_TAG}/CampusBite-arm64-v8a.apk"
           link_type: package
 
-        - name: "App release apk (x86_64)"
-          url: "${CI_SERVER_URL}/api/v4/projects/${CI_PROJECT_ID}/packages/generic/campus-bite/${CI_COMMIT_TAG}/app-x86_64-release.apk"
+        - name: "CampusBite ARMv7 APK"
+          url: "${CI_SERVER_URL}/api/v4/projects/${CI_PROJECT_ID}/packages/generic/campus-bite/${CI_COMMIT_TAG}/CampusBite-armeabi-v7a.apk"
           link_type: package
+
+        - name: "CampusBite x86_64 APK"
+          url: "${CI_SERVER_URL}/api/v4/projects/${CI_PROJECT_ID}/packages/generic/campus-bite/${CI_COMMIT_TAG}/CampusBite-x86_64.apk"
+          link_type: package
+
+        - name: "release.json"
+          url: "${CI_SERVER_URL}/api/v4/projects/${CI_PROJECT_ID}/packages/generic/campus-bite/${CI_COMMIT_TAG}/release.json"
+          link_type: package
+
