@@ -25,12 +25,17 @@ dependencyLocking {
     }
 }
 
+// Subproject Flutter plugins (e.g. cloud_firestore) dynamically resolve Android SDK APIs
+// and local resources. Applying lockAllConfigurations() to subprojects causes strict-mode
+// missing lock exceptions during plugin task execution (e.g. :cloud_firestore:androidApis).
 subprojects {
-    dependencyLocking {
-        lockAllConfigurations()
-        lockMode = if (isStrictLocking) LockMode.STRICT else LockMode.LENIENT
-        if (!isStrictLocking) {
-            lockFile = layout.projectDirectory.file("gradle.dev.lockfile")
+    if (name == "app") {
+        dependencyLocking {
+            lockAllConfigurations()
+            lockMode = if (isStrictLocking) LockMode.STRICT else LockMode.LENIENT
+            if (!isStrictLocking) {
+                lockFile = layout.projectDirectory.file("gradle.dev.lockfile")
+            }
         }
     }
 }
