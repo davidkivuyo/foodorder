@@ -47,19 +47,34 @@ class FirestoreProfileService {
       await docRef.update({
         'fullName': fullName,
         'email': email,
+        // Server-authoritative timestamp; the rules accept it only when it
+        // equals request.time (the server timestamp sentinel).
+        'updatedAt': FieldValue.serverTimestamp(),
       });
     } on FirebaseException catch (e) {
       // A missing user document (never-created or legacy profile) cannot be
-      // updated. Create it with the full student shape so the write satisfies
-      // validUserCreateRequest (role, strike defaults, accountStatus) instead
-      // of failing. Normal profiles take the fast update path above.
-      if (e.code == 'not-found') {
-        await docRef.set(
-          UserProfile(fullName: fullName, email: email).toFirestoreCreate(),
-        );
-        return;
-      }
-      rethrow;
+      // updated. Recheck inside a transaction so a document created by another
+      // writer between the failed update and this retry is preserved: only a
+      // still-absent document is created (with the full student shape required
+      // by validUserCreateRequest), and an existing one is partially updated —
+      // never overwritten with toFirestoreCreate defaults that could clobber
+      // server-authoritative fields (pickupReliability, accountStatus, ...).
+      if (e.code != 'not-found') rethrow;
+      await _firestore.runTransaction((txn) async {
+        final snapshot = await txn.get(docRef);
+        if (snapshot.exists) {
+          txn.update(docRef, {
+            'fullName': fullName,
+            'email': email,
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+        } else {
+          txn.set(
+            docRef,
+            UserProfile(fullName: fullName, email: email).toFirestoreCreate(),
+          );
+        }
+      });
     }
   }
 }

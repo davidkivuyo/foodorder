@@ -14,8 +14,8 @@ allprojects {
 //     (e.g. -Ptarget-platform=android-x64) and legitimately resolves only that
 //     ABI's engine artifacts; a separate dev lockfile keeps those resolutions
 //     out of the committed CI lockfile while pinning versions where possible.
-val lockMode = (findProperty("lockMode") as String?) ?: "LENIENT"
-val isStrictLocking = lockMode.equals("STRICT", ignoreCase = true)
+val requestedLockMode = (findProperty("lockMode") as String?) ?: "LENIENT"
+val isStrictLocking = requestedLockMode.equals("STRICT", ignoreCase = true)
 
 dependencyLocking {
     lockAllConfigurations()

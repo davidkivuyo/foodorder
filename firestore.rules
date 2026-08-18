@@ -291,7 +291,7 @@ service cloud.firestore {
     // ── User validation ─────────────────────────────────────────────────
 
     function studentNotModifyingProtectedFields() {
-      let allowed = ['fullName', 'email', 'phoneNumber', 'cafeName'];
+      let allowed = ['fullName', 'email', 'phoneNumber', 'cafeName', 'updatedAt'];
       let changed = request.resource.data.diff(resource.data).affectedKeys();
       // Phase B.2 — pickupReliability is server-authoritative: students may
       // READ their own summary (via the users/{uid} read rule) but never
@@ -317,7 +317,11 @@ service cloud.firestore {
             && request.resource.data.phoneNumber.size() < 20))
         && (!('cafeName' in changed)
           || (request.resource.data.cafeName is string
-            && request.resource.data.cafeName.size() < 100));
+            && request.resource.data.cafeName.size() < 100))
+        && (!('updatedAt' in changed)
+          // Only the server timestamp sentinel is accepted; a client may not
+          // supply an arbitrary updatedAt value.
+          || request.resource.data.updatedAt == request.time);
     }
 
     function validUserCreateRequest() {

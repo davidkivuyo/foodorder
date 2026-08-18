@@ -245,13 +245,16 @@ void main() {
         expect(
           fn,
           contains(
-            "let allowed = ['fullName', 'email', 'phoneNumber', 'cafeName'];",
+            "let allowed = ['fullName', 'email', 'phoneNumber', 'cafeName', "
+            "'updatedAt'];",
           ),
         );
         // role / strikeCount / accountStatus must NOT be student-writable.
         expect(fn, isNot(contains("'role'")));
         expect(fn, isNot(contains("'strikeCount'")));
         expect(fn, isNot(contains("'accountStatus'")));
+        // updatedAt is refreshable only via the server timestamp sentinel.
+        expect(fn, contains('request.resource.data.updatedAt == request.time'));
         // A changed email must equal the verified ID-token email claim.
         expect(
           fn,

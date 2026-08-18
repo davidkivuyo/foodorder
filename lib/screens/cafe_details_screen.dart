@@ -46,8 +46,9 @@ class _CafeDetailsScreenState extends State<CafeDetailsScreen> {
   bool _calculatingDistance = true;
   LatLng? _userPosition;
 
-  // Authoritative server clock; null until fetched. When null (offline or the
-  // function is unavailable) the screen falls back to the device clock.
+  // Authoritative server clock; null until fetched. A null value (offline or
+  // the function unavailable) means the open/closed status is UNKNOWN — the
+  // screen never falls back to the device clock.
   DateTime? _serverNow;
 
   @override
@@ -149,16 +150,18 @@ class _CafeDetailsScreenState extends State<CafeDetailsScreen> {
     if (openStr.isEmpty && closeStr.isEmpty) {
       return 'Operating hours not specified';
     }
+    if (openStr.isEmpty) return closeStr;
+    if (closeStr.isEmpty) return openStr;
     return '$openStr - $closeStr';
   }
 
   String _parseTimeString(dynamic value) {
-    if (value == null) return '';
     // Canonical storage is a timezone-free "HH:mm" string in the cafe's local
-    // time. No Timestamp branch: reading time-of-day off a Timestamp would
-    // apply the device's timezone, not the cafe's.
-    if (value is String) return value.trim();
-    return value.toString().trim();
+    // time. Only strings are valid: any other type (e.g. a Timestamp) yields an
+    // empty string, consistent with CafeHours.minutesOfDayValue treating
+    // non-strings as unknown.
+    if (value is! String) return '';
+    return value.trim();
   }
 
   /// Whether the cafe is open at [now]. [now] must be server time — never the
@@ -492,22 +495,14 @@ class _CafeDetailsScreenState extends State<CafeDetailsScreen> {
                             ),
                             child: FlutterMap(
                               options: MapOptions(
-                                initialCenter: _userPosition != null
-                                    ? LatLng(
-                                        (geoPoint.latitude +
-                                                _userPosition!.latitude) /
-                                            2,
-                                        (geoPoint.longitude +
-                                                _userPosition!.longitude) /
-                                            2,
-                                      )
-                                    : LatLng(
-                                        geoPoint.latitude,
-                                        geoPoint.longitude,
-                                      ),
-                                initialZoom: _userPosition != null
-                                    ? 15.0
-                                    : 16.5,
+                                // Center only on the cafe's geoPoint: the
+                                // public viewport must never be derived from
+                                // user coordinates (_userPosition).
+                                initialCenter: LatLng(
+                                  geoPoint.latitude,
+                                  geoPoint.longitude,
+                                ),
+                                initialZoom: 16.5,
                               ),
                               children: [
                                 TileLayer(

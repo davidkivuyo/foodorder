@@ -191,6 +191,16 @@ class _MyProfileScreenState extends State<MyProfileScreen> {
     if (currentUser == null) {
       setState(() {
         _isSaving = false;
+        _errorMessage = 'You are not signed in. '
+            'Please sign in again and retry.';
+      });
+      return;
+    }
+    if (currentUser.email == null || currentUser.email!.isEmpty) {
+      setState(() {
+        _isSaving = false;
+        _errorMessage = 'Profile cannot be saved without an authenticated '
+            'email. Please sign in with an email account and retry.';
       });
       return;
     }
@@ -213,7 +223,7 @@ class _MyProfileScreenState extends State<MyProfileScreen> {
           .updateProfile(
             userId: currentUser.uid,
             fullName: sanitizedName,
-            email: currentUser.email ?? '',
+            email: currentUser.email!,
           )
           // Bound the write so an offline/pending Future cannot hang the
           // save flow indefinitely; on timeout the catch below resets
@@ -234,6 +244,7 @@ class _MyProfileScreenState extends State<MyProfileScreen> {
       );
     } on Exception catch (e) {
       AppLog.e('[MyProfileScreen] _saveProfile error', e);
+      if (!mounted) return;
       setState(() {
         _isSaving = false;
         _errorMessage = 'Failed to update profile. Please try again.';
@@ -417,6 +428,7 @@ class _MyProfileScreenState extends State<MyProfileScreen> {
                                       setState(() {
                                         _isEditing = false;
                                         _nameController.clear();
+                                        _errorMessage = null;
                                       });
                                     },
                               child: const Text('Cancel'),
@@ -609,12 +621,14 @@ class _MyProfileScreenState extends State<MyProfileScreen> {
     );
   }
 
-  // Tapping the name label when not editing does nothing;
-  // the save/cancel buttons handle the flow.
+
   void _onEditingTap() {
     if (_isEditing) return;
     _nameController.text = _currentFullName;
-    setState(() => _isEditing = true);
+    setState(() {
+      _isEditing = true;
+      _errorMessage = null;
+    });
   }
 
   Widget _buildProfileEditTile({

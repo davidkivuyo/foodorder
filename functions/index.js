@@ -60,7 +60,6 @@ const PICKUP_WINDOW_MINUTES = 20;
 // beyond the call itself.
 exports.getServerTime = onCall(
   {
-    authPolicy: "required",
     enforceAppCheck: true,
     region: "us-central1",
   },

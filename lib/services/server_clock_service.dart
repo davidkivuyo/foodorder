@@ -19,8 +19,9 @@ import 'app_log.dart';
 /// time-of-day rules (e.g. cafe open/closed) without trusting the device clock.
 ///
 /// The callable is deliberately cheap and has no Firestore access. Callers
-/// should treat a `null` result (offline, timeout, disabled function) as "no
-/// server time available" and fall back to the device clock.
+/// MUST treat a `null` result (offline, timeout, disabled function) as
+/// "status unknown" and fail closed — they must never fall back to the device
+/// clock for a time-restricted decision.
 class ServerClockService {
   final FirebaseFunctions? _functions;
 
