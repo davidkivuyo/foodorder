@@ -13,6 +13,7 @@
 // limitations under the License.
 
 import 'dart:async';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/services.dart';
@@ -40,6 +41,44 @@ class FoodDetailsScreen extends StatefulWidget {
     required this.item,
     this.heroTagPrefix = 'home_',
   });
+
+  /// Opens [FoodDetailsScreen]. On Desktop PC, it uses a non-opaque route so the
+  /// underlying screen remains visible and is blurred by BackdropFilter.
+  static Future<T?> open<T>(
+    BuildContext context,
+    FoodItem item, {
+    String heroTagPrefix = 'home_',
+  }) {
+    final bool isDesktop = MediaQuery.of(context).size.width >= 850;
+    if (isDesktop) {
+      return Navigator.push<T>(
+        context,
+        PageRouteBuilder<T>(
+          opaque: false,
+          barrierDismissible: true,
+          barrierColor: Colors.transparent,
+          transitionDuration: const Duration(milliseconds: 200),
+          reverseTransitionDuration: const Duration(milliseconds: 150),
+          pageBuilder: (_, __, ___) => FoodDetailsScreen(
+            item: item,
+            heroTagPrefix: heroTagPrefix,
+          ),
+          transitionsBuilder: (_, animation, __, child) {
+            return FadeTransition(opacity: animation, child: child);
+          },
+        ),
+      );
+    }
+    return Navigator.push<T>(
+      context,
+      MaterialPageRoute<T>(
+        builder: (_) => FoodDetailsScreen(
+          item: item,
+          heroTagPrefix: heroTagPrefix,
+        ),
+      ),
+    );
+  }
 
   @override
   State<FoodDetailsScreen> createState() => _FoodDetailsScreenState();
@@ -238,7 +277,295 @@ class _FoodDetailsScreenState extends State<FoodDetailsScreen> {
   @override
   Widget build(BuildContext context) {
     final item = widget.item;
+    final bool isDesktop = MediaQuery.of(context).size.width >= 850;
 
+    // --- DESKTOP PC VIEW: Compact, Centered Card Modal with Blurred Background ---
+    if (isDesktop) {
+      return Material(
+        color: Colors.transparent,
+        child: Stack(
+          children: [
+            // Full-screen blurred backdrop — shows home page content behind, blurred
+            Positioned.fill(
+              child: GestureDetector(
+                onTap: () => Navigator.of(context).pop(),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+                  child: Container(
+                    color: Colors.black.withValues(alpha: 0.30),
+                  ),
+                ),
+              ),
+            ),
+
+            // Centered Modal Card
+            Center(
+              child: Container(
+                width: 520,
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(context).size.height * 0.88,
+                ),
+                margin: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.25),
+                      blurRadius: 25,
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(24),
+                  child: Scaffold(
+                    backgroundColor: Colors.white,
+                    appBar: AppBar(
+                      backgroundColor: Colors.white,
+                      elevation: 0,
+                      centerTitle: true,
+                      title: Text(
+                        item.title,
+                        style: const TextStyle(
+                          color: Colors.black87,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
+                        ),
+                      ),
+                      leading: IconButton(
+                        icon: const Icon(Icons.close, color: Colors.black87),
+                        onPressed: () => Navigator.of(context).pop(),
+                      ),
+                    ),
+                    body: SingleChildScrollView(
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          // Centered Minimized Food Image
+                          Center(
+                            child: Stack(
+                              alignment: Alignment.topRight,
+                              children: [
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(16),
+                                  child: Hero(
+                                    tag: '${widget.heroTagPrefix}${item.displayCafe}_${item.title}_${item.image}',
+                                    child: item.buildImage(
+                                      width: 300,
+                                      height: 180,
+                                      fit: BoxFit.cover,
+                                    ),
+                                  ),
+                                ),
+                                StockOverlayBadge(inStock: item.available),
+                                if (item.featured)
+                                  Positioned(
+                                    top: 12,
+                                    right: 12,
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: Colors.orange.shade700,
+                                        borderRadius: BorderRadius.circular(16),
+                                      ),
+                                      child: const Text(
+                                        'Bestseller',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 11,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+
+                          // Title & Price
+                          Text(
+                            item.title,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black87,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            'TZS ${item.price}',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.orange,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+
+                          // Subtitle & Ratings
+                          if (item.subtitle.isNotEmpty) ...[
+                            Text(
+                              item.subtitle,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                            ),
+                            const SizedBox(height: 6),
+                          ],
+
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(Icons.star_rounded, color: Colors.amber, size: 18),
+                              const SizedBox(width: 4),
+                              Text(
+                                _displayRating.toStringAsFixed(1),
+                                style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black87),
+                              ),
+                              if (item.time.isNotEmpty) ...[
+                                const SizedBox(width: 6),
+                                Text(' • ${item.time}', style: const TextStyle(color: Colors.grey, fontSize: 13)),
+                              ],
+                            ],
+                          ),
+                          if (!item.available) ...[
+                            const SizedBox(height: 8),
+                            StockBadge(inStock: item.available, fontSize: 12),
+                          ],
+                          const SizedBox(height: 16),
+
+                          // Description
+                          if (item.description.isNotEmpty) ...[
+                            Text(
+                              item.description,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(color: Colors.black54, height: 1.4, fontSize: 13),
+                            ),
+                            const SizedBox(height: 16),
+                          ],
+
+                          // Available Cafes & Dietary Info
+                          if (item.availableCafes.isNotEmpty) ...[
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.storefront_outlined, size: 16, color: Colors.grey.shade600),
+                                const SizedBox(width: 6),
+                                Text(
+                                  'Available at: ${item.displayCafe}',
+                                  style: const TextStyle(fontSize: 13, color: Colors.black87, fontWeight: FontWeight.w500),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                          ],
+
+                          if (item.dietaryTags.isNotEmpty) ...[
+                            Wrap(
+                              alignment: WrapAlignment.center,
+                              spacing: 6,
+                              runSpacing: 6,
+                              children: item.dietaryTags.map((tag) {
+                                return Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFE8F5E9),
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                  child: Text(
+                                    tag,
+                                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: Color(0xFF2E7D32)),
+                                  ),
+                                );
+                              }).toList(),
+                            ),
+                            const SizedBox(height: 16),
+                          ],
+
+                          // Review Section
+                          if (_displayReviewCount > 0) ...[
+                            _buildReviewSummaryRow(),
+                            const SizedBox(height: 12),
+                          ],
+                          if (!_checkingEligibility && _isReviewable) ...[
+                            _buildReviewButton(),
+                            const SizedBox(height: 16),
+                          ],
+                        ],
+                      ),
+                    ),
+                    bottomNavigationBar: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        border: Border(top: BorderSide(color: Colors.grey.shade200)),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade200,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Row(
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.remove, size: 18),
+                                  onPressed: () {
+                                    if (quantity > 1) setState(() => quantity--);
+                                  },
+                                ),
+                                Text(
+                                  quantity.toString(),
+                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.add, size: 18),
+                                  onPressed: () {
+                                    final maxQty = item.quantity > 0 ? item.quantity : 99;
+                                    if (quantity < maxQty) setState(() => quantity++);
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              onPressed: item.available
+                                  ? () => addToCartWithCafeCheck(context, item, quantity: quantity)
+                                  : null,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: item.available ? Colors.orange : Colors.grey.shade400,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                elevation: 0,
+                              ),
+                              icon: Icon(item.available ? Icons.shopping_cart_outlined : Icons.block, size: 18),
+                              label: Text(
+                                item.available ? 'Add to Cart • TZS ${(item.price * quantity)}' : 'Unavailable',
+                                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // --- MOBILE VIEW: Full Screen CustomScrollView ---
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
       body: AnnotatedRegion<SystemUiOverlayStyle>(

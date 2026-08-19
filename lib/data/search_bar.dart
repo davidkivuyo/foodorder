@@ -153,7 +153,7 @@ class _SearchBarScreenState extends State<SearchBarScreen> {
             onSubmitted: _performSearch,
             style: const TextStyle(fontSize: 16, color: Colors.black87),
             decoration: InputDecoration(
-              hintText: '  Dishes, tags, category',
+              hintText: 'Search',
               hintStyle: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.normal,
