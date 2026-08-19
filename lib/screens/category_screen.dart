@@ -258,14 +258,10 @@ class FoodCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(16),
                 child: GestureDetector(
                   onTap: () {
-                    Navigator.push(
+                    FoodDetailsScreen.open(
                       context,
-                      MaterialPageRoute(
-                        builder: (_) => FoodDetailsScreen(
-                          item: item,
-                          heroTagPrefix: 'category_',
-                        ),
-                      ),
+                      item,
+                      heroTagPrefix: 'category_',
                     );
                   },
                   child: Hero(

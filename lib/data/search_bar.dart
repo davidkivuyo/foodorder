@@ -154,7 +154,7 @@ class _SearchBarScreenState extends State<SearchBarScreen> {
             textAlignVertical: TextAlignVertical.center,
             style: const TextStyle(fontSize: 16, color: Colors.black87),
             decoration: InputDecoration(
-              hintText: 'Menu, categories, tags',
+              hintText: 'Search',
               hintStyle: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.normal,

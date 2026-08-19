@@ -164,83 +164,77 @@ class HomeScreen extends StatelessWidget {
                         ),
                       ),
                     ),
-                    Padding(
-                      padding: EdgeInsets.only(
-                        top: statusBarHeight + 5,
-                        bottom: 8.0,
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Search bar
+                  );
+                }
+
+                final allItems = foodSnapshot.data ?? [];
+                // Phase 13: warm the image cache for the first items shown.
+                _precacheImages(allItems, context);
+                final validSections =
+                    sections
+                        .where((s) => allItems.any((f) => f.section == s.name))
+                        .toList()
+                      ..sort((a, b) {
+                        if (a.name == 'other') return 1;
+                        if (b.name == 'other') return -1;
+                        return 0;
+                      });
+
+                final isDesktop = MediaQuery.of(context).size.width >= 850;
+
+                return SingleChildScrollView(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 8.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Search bar — Shown only on mobile (desktop has top header search bar)
+                        if (!isDesktop) ...[
                           Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8.0,
-                            ),
-                            child: Material(
-                              color: Colors.transparent,
-                              child: InkWell(
-                                borderRadius: BorderRadius.circular(
-                                  28,
-                                ), // Fixed ripple effect to match container pill shape
-                                onTap: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => const SearchBarScreen(),
-                                    ),
-                                  );
-                                },
-                                // Ink (not Container) paints the fill onto the
-                                // Material so the InkWell ripple renders visibly
-                                // over the field instead of behind the opaque
-                                // background.
-                                child: Ink(
-                                  height:
-                                      50, // Proportional height matching Deliveroo's standard search bar
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
+                            padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(10),
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => const SearchBarScreen(),
                                   ),
-                                  decoration: BoxDecoration(
-                                    color: Colors
-                                        .grey
-                                        .shade100, // Off-white/white interior fill
-                                    border: Border.all(
-                                      color: Colors
-                                          .grey
-                                          .shade300, // Light grey outline matching the screenshot
-                                      width: 1,
+                                );
+                              },
+                              child: Container(
+                                height: 56,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 18,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.grey.shade200,
+                                  borderRadius: BorderRadius.circular(28),
+                                ),
+                                child: const Row(
+                                  children: [
+                                    Icon(
+                                      Icons.search,
+                                      color: Colors.black87,
+                                      size: 24,
                                     ),
-                                    borderRadius: BorderRadius.circular(28),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Icon(
-                                        Icons.search,
-                                        color: Colors.grey.shade700,
-                                        size: 24,
-                                      ),
-                                      const SizedBox(width: 12),
-                                      Expanded(
-                                        child: Text(
-                                          "Menu, categories, tags", // Updated placeholder text
-                                          style: TextStyle(
-                                            fontSize: 15,
-                                            fontWeight: FontWeight.w400,
-                                            color: Colors
-                                                .grey
-                                                .shade600, // Styled as placeholder hint text
-                                          ),
+                                    SizedBox(width: 12),
+                                    Expanded(
+                                      child: Text(
+                                        "Search ",
+                                        style: TextStyle(
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w500,
                                         ),
                                       ),
-                                    ],
-                                  ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ),
                           ),
-
-                          const SizedBox(height: 24),
+                          const SizedBox(height: 18),
+                        ],
 
                           // Promotional banner carousel
                           SpecialBannerCard(
@@ -256,35 +250,24 @@ class HomeScreen extends StatelessWidget {
                             },
                           ),
 
-                          const SizedBox(height: 8),
+                        const SizedBox(height: 18),
 
-                          // ── Your Favourites section ───────────────────
-                          // Appears only when favourites exist, before all
-                          // other sections.  Uses the existing CardRowItems.
-                          const _YourFavouritesSection(),
+                        // ── Your Favourites section ───────────────────
+                        // Appears only when favourites exist, before all
+                        // other sections. Uses the existing CardRowItems.
+                        const _YourFavouritesSection(),
 
-                          // Dynamic sections from firestore
-                          ...validSections.expand((section) {
-                            final sectionItems = allItems
-                                .where((f) => f.section == section.name)
-                                .toList();
-                            if (sectionItems.isEmpty) return <Widget>[];
-                            return [
-                              CardRowItems(
-                                title: _formatTitle(section.name),
-                                items: sectionItems,
-                                heroTagPrefix: 'section_${section.name}_',
-                              ),
-                              // Minimal gap between consecutive horizontal
-                              // section lists — thin hairline (4px) matching
-                              // Uber Eats / Deliveroo compact section spacing
-                              const Divider(height: 12, thickness: 0.5),
-                            ];
-                          }),
-                          const SizedBox(height: 8),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8.0,
+                        // Dynamic sections from firestore
+                        ...validSections.expand((section) {
+                          final sectionItems = allItems
+                              .where((f) => f.section == section.name)
+                              .toList();
+                          if (sectionItems.isEmpty) return <Widget>[];
+                          return [
+                            CardRowItems(
+                              title: _formatTitle(section.name),
+                              items: sectionItems,
+                              heroTagPrefix: 'section_${section.name}_',
                             ),
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -336,9 +319,10 @@ class CardRowItems extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final bool isDesktop = MediaQuery.of(context).size.width >= 850;
     final displayedItems = flipItems
-        ? items.reversed.take(maxItems).toList()
-        : items.take(maxItems).toList();
+        ? items.reversed.take(isDesktop ? 8 : maxItems).toList()
+        : items.take(isDesktop ? 8 : maxItems).toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -353,11 +337,10 @@ class CardRowItems extends StatelessWidget {
               Flexible(
                 child: Text(
                   title,
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: -0.4,
-                    color: Colors.black,
+                  style: TextStyle(
+                    fontSize: isDesktop ? 22 : 18,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.black87,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -398,12 +381,11 @@ class CardRowItems extends StatelessWidget {
             ],
           ),
         ),
-
         const SizedBox(height: 4),
 
-        // Horizontal Cards List — Compact Uber Eats height (205px eliminates empty space)
+        // Cards Presentation (Desktop Responsive Row / Carousel with hover styling)
         SizedBox(
-          height: 205,
+          height: isDesktop ? 230 : 200,
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -412,153 +394,110 @@ class CardRowItems extends StatelessWidget {
               final item = displayedItems[index];
               return HoverCardScale(
                 child: Container(
-                  width: 270, // Uber Eats horizontal card width aspect ratio
-                  margin: const EdgeInsets.only(right: 14),
-                  child: Card(
-                    elevation: 0,
-                    color: Colors.transparent,
-                    margin: EdgeInsets.zero,
-                    child: Column(
+                  width: isDesktop ? 260 : 230,
+                  margin: const EdgeInsets.only(right: 12),
+                  decoration: BoxDecoration(
+                    color: isDesktop ? Colors.white : Colors.transparent,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: isDesktop
+                        ? [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.04),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
+                            ),
+                          ]
+                        : null,
+                  ),
+                  child: Padding(
+                    padding: EdgeInsets.all(isDesktop ? 8.0 : 4.0),
+                                child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        // Food Image Stack
+                        // Food Image
                         Stack(
                           children: [
                             ClipRRect(
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: BorderRadius.circular(14),
                               child: GestureDetector(
                                 onTap: () {
-                                  Navigator.push(
+                                  FoodDetailsScreen.open(
                                     context,
-                                    MaterialPageRoute(
-                                      builder: (_) => FoodDetailsScreen(
-                                        item: item,
-                                        heroTagPrefix: heroTagPrefix,
-                                      ),
-                                    ),
+                                    item,
+                                    heroTagPrefix: heroTagPrefix,
                                   );
                                 },
                                 child: Hero(
                                   tag:
                                       '$heroTagPrefix${item.displayCafe}_${item.title}_${item.image}',
                                   child: item.buildImage(
-                                    height:
-                                        130, // Uber Eats proportioned image height
+                                    height: isDesktop ? 130 : 120,
                                     width: double.infinity,
                                     fit: BoxFit.cover,
                                   ),
                                 ),
                               ),
                             ),
-
-                            // Delivery Time Badge Overlay
-                            Positioned(
-                              bottom: 8,
-                              right: 8,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 4,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(16),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withValues(
-                                        alpha: 0.12,
-                                      ),
-                                      blurRadius: 4,
-                                      offset: const Offset(0, 2),
-                                    ),
-                                  ],
-                                ),
-                                child: Text(
-                                  item.time,
-                                  style: const TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w700,
-                                    color: Colors.black87,
-                                  ),
-                                ),
-                              ),
-                            ),
-
                             // Stock overlay badge
                             StockOverlayBadge(inStock: item.available),
                           ],
                         ),
 
-                        const SizedBox(height: 1),
-
-                        // Card Text Details
+                        // Card Details
                         Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 2),
+                          padding: const EdgeInsets.all(6),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              // Title & Quick-Add Button Row
                               Row(
-                                crossAxisAlignment: CrossAxisAlignment.center,
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
                                   Expanded(
                                     child: Text(
                                       item.title,
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        color: Colors.black,
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 15,
-                                        letterSpacing: -0.2,
+                                      style: TextStyle(
+                                        color: Colors.black87,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: isDesktop ? 15 : 14,
                                       ),
                                     ),
                                   ),
-                                  const SizedBox(width: 6),
-                                  IconButton(
-                                    onPressed: item.available
+                                  GestureDetector(
+                                    onTap: item.available
                                         ? () => addToCartWithCafeCheck(
                                             context,
                                             item,
                                           )
                                         : null,
-                                    tooltip: item.available
-                                        ? 'Add ${item.title} to cart'
-                                        : '${item.title} is unavailable',
-                                    icon: Icon(
-                                      item.available
-                                          ? Icons.add_rounded
-                                          : Icons.block,
-                                      color: item.available
-                                          ? Colors.white
-                                          : Colors.grey.shade500,
-                                      size: 20,
-                                    ),
-                                    style: IconButton.styleFrom(
-                                      backgroundColor: item.available
-                                          ? Colors.orange
-                                          : Colors.grey.shade300,
-                                      disabledBackgroundColor:
-                                          Colors.grey.shade300,
-                                      shape: const CircleBorder(),
+                                    child: Container(
                                       padding: const EdgeInsets.all(4),
-                                      iconSize: 15,
-                                      // Compact visual footprint: the 48×48 tap target comes
-                                      // from the padded tap-target size (which expands the hit
-                                      // area without growing the visible circle), not from the
-                                      // visual minimum.
-                                      minimumSize: const Size.square(24),
-                                      tapTargetSize:
-                                          MaterialTapTargetSize.padded,
+                                      decoration: BoxDecoration(
+                                        color: item.available
+                                            ? Colors.orange
+                                            : Colors.grey.shade300,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: Icon(
+                                        item.available
+                                            ? Icons.add_rounded
+                                            : Icons.block,
+                                        color: item.available
+                                            ? Colors.white
+                                            : Colors.grey.shade500,
+                                        size: 16,
+                                        semanticLabel: 'add item',
+                                      ),
+                                      blurRadius: 4,
+                                      offset: const Offset(0, 2),
                                     ),
                                   ),
                                 ],
                               ),
+                              const SizedBox(height: 2),
 
-                              const SizedBox(height: 1),
-
-                              // Rating & Cafe Subtitle Row
+                              // Rating star & cafe name
                               Row(
                                 children: [
                                   const Icon(
@@ -566,25 +505,29 @@ class CardRowItems extends StatelessWidget {
                                     color: Colors.amber,
                                     size: 15,
                                   ),
-                                  const SizedBox(width: 3),
+                                  const SizedBox(width: 2),
                                   Text(
                                     item.averageRating > 0
                                         ? item.averageRating.toStringAsFixed(1)
-                                        : '0',
+                                        : '0.0',
                                     style: const TextStyle(
                                       fontSize: 12,
-                                      fontWeight: FontWeight.w600,
+                                      fontWeight: FontWeight.bold,
                                       color: Colors.black87,
                                     ),
                                   ),
                                   const SizedBox(width: 4),
-                                  Expanded(
+                                  Icon(
+                                    Icons.storefront_outlined,
+                                    size: 13,
+                                    color: Colors.grey.shade500,
+                                  ),
+                                  const SizedBox(width: 2),
+                                  Flexible(
                                     child: Text(
-                                      '• ${item.displayCafe}',
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
+                                      item.displayCafe,
                                       style: TextStyle(
-                                        fontSize: 12,
+                                        fontSize: 11,
                                         color: Colors.grey.shade600,
                                       ),
                                     ),
@@ -607,11 +550,6 @@ class CardRowItems extends StatelessWidget {
   }
 }
 
-/// Renders the "Your Favourites" section on the Home Screen.
-///
-/// Fetches favourite food items via [FavoriteService] and displays
-/// them in the existing [CardRowItems] horizontal carousel.
-/// The section is hidden when no favourites exist (stream is empty).
 class _YourFavouritesSection extends StatelessWidget {
   const _YourFavouritesSection();
 
@@ -624,7 +562,6 @@ class _YourFavouritesSection extends StatelessWidget {
       builder: (context, snapshot) {
         final items = snapshot.data ?? [];
 
-        // Hide the section completely when no favourites exist.
         if (items.isEmpty) return const SizedBox.shrink();
 
         return CardRowItems(
@@ -632,7 +569,6 @@ class _YourFavouritesSection extends StatelessWidget {
           items: items,
           maxItems: 5,
           heroTagPrefix: 'fav_',
-          // Override the default arrow to navigate to YourFavouritesScreen.
           arrowBuilder: () => Navigator.push(
             context,
             MaterialPageRoute(builder: (_) => const YourFavouritesScreen()),
@@ -652,74 +588,87 @@ class CategoriesTitles extends StatelessWidget {
     super.key,
     required this.title,
     required this.items,
-    this.heroTagPrefix = 'cat_title_',
+    this.heroTagPrefix = 'cat_',
   });
 
   @override
   Widget build(BuildContext context) {
+    final bool isDesktop = MediaQuery.of(context).size.width >= 850;
+
     return Scaffold(
+      backgroundColor: isDesktop ? const Color(0xFFF8F9FA) : Colors.white,
       appBar: AppBar(
-        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-        leading: IconButton(
-          icon: const Icon(Icons.close),
-          onPressed: () {
-            Navigator.pop(context);
-          },
-        ),
+        title: Text(title,
+            style: const TextStyle(color: Colors.black87, fontWeight: FontWeight.bold)),
+        centerTitle: isDesktop,
+        backgroundColor: Colors.white,
+        elevation: isDesktop ? 1 : 0,
+        iconTheme: const IconThemeData(color: Colors.black87),
       ),
       floatingActionButton: const CartFab(),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-      body: ListView.builder(
-        padding: const EdgeInsets.all(10.0),
-        itemCount: items.length,
-        itemBuilder: (context, index) {
-          final item = items[index];
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 24.0),
-            child: HoverCardScale(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Stack(
-                    children: [
-                      AspectRatio(
-                        aspectRatio: 2.2,
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(16),
-                          child: GestureDetector(
-                            onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => FoodDetailsScreen(
-                                    item: item,
-                                    heroTagPrefix: heroTagPrefix,
+      body: Center(
+        child: Container(
+          constraints: BoxConstraints(maxWidth: isDesktop ? 700 : double.infinity),
+          child: ListView.builder(
+            padding: const EdgeInsets.all(16.0),
+            itemCount: items.length,
+            itemBuilder: (context, index) {
+              final item = items[index];
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 20.0),
+                child: HoverCardScale(
+                  child: Container(
+                    padding: EdgeInsets.all(isDesktop ? 16.0 : 12.0),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.05),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: isDesktop
+                          ? CrossAxisAlignment.center
+                          : CrossAxisAlignment.start,
+                      children: [
+                        // Decreased & Centered Image on White Background Card
+                        Center(
+                          child: Stack(
+                            alignment: Alignment.topRight,
+                            children: [
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(16),
+                                child: GestureDetector(
+                                  onTap: () {
+                                    FoodDetailsScreen.open(
+                                      context,
+                                      item,
+                                      heroTagPrefix: heroTagPrefix,
+                                    );
+                                  },
+                                  child: Hero(
+                                    tag:
+                                        '$heroTagPrefix${item.displayCafe}_${item.title}_${item.image}',
+                                    child: item.buildImage(
+                                      height: isDesktop ? 170 : 140,
+                                      width: isDesktop ? 280 : double.infinity,
+                                      fit: BoxFit.cover,
+                                    ),
                                   ),
                                 ),
-                              );
-                            },
-                            child: Hero(
-                              tag:
-                                  '$heroTagPrefix${item.displayCafe}_${item.title}_${item.image}',
-                              child: item.buildImage(
-                                height: 100,
-                                width: double.infinity,
-                                fit: BoxFit.cover,
                               ),
-                            ),
+                              StockOverlayBadge(inStock: item.available),
+                            ],
                           ),
                         ),
-                      ),
-                      // Stock overlay badge
-                      StockOverlayBadge(inStock: item.available),
-                    ],
-                  ),
+                        const SizedBox(height: 12),
 
-                  Padding(
-                    padding: const EdgeInsets.all(4),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
+                        // Title, Price & Details
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
@@ -728,11 +677,22 @@ class CategoriesTitles extends StatelessWidget {
                                 item.title,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
+                                textAlign:
+                                    isDesktop ? TextAlign.center : TextAlign.start,
                                 style: const TextStyle(
-                                  color: Colors.black,
+                                  color: Colors.black87,
                                   fontWeight: FontWeight.bold,
-                                  fontSize: 16,
+                                  fontSize: 17,
                                 ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Text(
+                              'TZS ${item.price}',
+                              style: const TextStyle(
+                                color: Colors.orange,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
                               ),
                             ),
                             const SizedBox(width: 8),
@@ -741,7 +701,7 @@ class CategoriesTitles extends StatelessWidget {
                                   ? () => addToCartWithCafeCheck(context, item)
                                   : null,
                               child: Container(
-                                padding: const EdgeInsets.all(6),
+                                padding: const EdgeInsets.all(8),
                                 decoration: BoxDecoration(
                                   color: item.available
                                       ? Colors.orange
@@ -755,58 +715,47 @@ class CategoriesTitles extends StatelessWidget {
                                   color: item.available
                                       ? Colors.white
                                       : Colors.grey.shade500,
-                                  size: 18,
-                                  semanticLabel: 'add item',
+                                  size: 20,
                                 ),
                               ),
                             ),
                           ],
                         ),
+                        const SizedBox(height: 6),
 
                         Row(
+                          mainAxisAlignment: isDesktop
+                              ? MainAxisAlignment.center
+                              : MainAxisAlignment.start,
                           children: [
-                            const Icon(
-                              Icons.star_rounded,
-                              color: Colors.amber,
-                              size: 16,
-                            ),
+                            const Icon(Icons.star_rounded,
+                                color: Colors.amber, size: 16),
+                            const SizedBox(width: 4),
                             Text(
                               '${item.averageRating > 0 ? item.averageRating.toStringAsFixed(1) : '0'} • ',
                               style: const TextStyle(
-                                fontSize: 12,
-                                color: Colors.black,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                                  fontSize: 13,
+                                  color: Colors.black87,
+                                  fontWeight: FontWeight.w600),
                             ),
-                            const SizedBox(width: 2),
-                            Icon(
-                              Icons.storefront_outlined,
-                              size: 14,
-                              color: Colors.grey.shade400,
-                            ),
-                            const SizedBox(width: 2),
-                            Flexible(
-                              child: Text(
-                                item.displayCafe,
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.black,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
+                            Icon(Icons.storefront_outlined,
+                                size: 14, color: Colors.grey.shade500),
+                            const SizedBox(width: 4),
+                            Text(
+                              item.displayCafe,
+                              style: TextStyle(
+                                  fontSize: 13, color: Colors.grey.shade600),
                             ),
                           ],
                         ),
                       ],
                     ),
                   ),
-                ],
-              ),
-            ),
-          );
-        },
+                ),
+              );
+            },
+          ),
+        ),
       ),
     );
   }
