@@ -62,11 +62,9 @@ CampusBite solves common problems at university cafeterias:
 | Problem | Solution |
 |---|---|
 | Long queues at meal times | Students order in advance from their phone |
-| No visibility into today's menu | Live menu synced from Firestore in real-time |
-| Abandoned orders causing food waste | Pickup deadline engine with countdown timers |
-| No accountability for no-shows | Missed pickups are marked as no-show and the student is notified |
+| No wonder what into today's menu? | Live menu synced from Firestore in real-time |
 
-The system consists of **three components** only the foodorder student app is in this directory but all two share a single Firebase project:
+The system consists of **three components** only the foodorder student app is in this directory:
 
 ```
 foodorder/   ← Student Flutter App (this repo)
@@ -108,13 +106,11 @@ foodorder/   ← Student Flutter App (this repo)
 ```
 
 **Data flow:**
-1. Admin creates/updates food items → Firestore `food_items` collection
-2. Student app streams `food_items` in real-time → displays live menu
-3. Student places order → writes to `orders` collection
-4. Admin updates order status to "ready" → Cloud Function triggers
-5. Cloud Function computes `readyAt`, `pickupDeadline` → writes back to order
-6. Student app displays countdown timer from Firestore data
-7. If student doesn't collect → order marked no-show and student notified
+1. Admin creates/updates food items
+2. Student app streams food items in real-time → displays live menu
+3. Student places order
+4. Admin updates order status to "ready"
+5. Student app displays countdown timer from Firestore data
 
 ---
 
@@ -286,7 +282,6 @@ The student app uses `go_router` with authentication-aware redirects:
 - **New Order Alerts** — Automatic notification of incoming student orders in real time.
 - **Order Flow Manager** — Control order stages from pending, accepted, preparing, to ready for collection.
 - **No-Show Tracking** — Missed pickups are automatically marked `no_show` and logged to `audit_logs`; no strikes are issued by the customer backend.
-- **Account Management** — Reactivate a genuinely suspended student account via the backend `reactivateStudent` callable: the ACTIVE flip and the immutable `audit_logs` REACTIVATE record are written server-side (audit_logs are backend-only — no client create/update/delete).
 
 ---
 
