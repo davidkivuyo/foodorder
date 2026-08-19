@@ -97,6 +97,57 @@ class NotificationRepository {
     }
   }
 
+  /// Create a notification under a deterministic document ID derived from
+  /// [eventId], so concurrent deliveries of the same event cannot produce
+  /// duplicate documents.
+  ///
+  /// The write runs inside a transaction that reads the target document
+  /// first: it is created only when it does not already exist, and an
+  /// existing document is never overwritten (returns `null`, matching the
+  /// duplicate-skip behaviour of the service pre-check). A concurrent writer
+  /// that wins the race causes this transaction to retry and observe the
+  /// existing document, so at most one notification exists per eventId.
+  ///
+  /// Returns the document ID of the created notification, `null` when it
+  /// already exists, or `null` on failure.
+  Future<String?> createWithEventId(
+    String eventId,
+    Map<String, dynamic> data,
+  ) async {
+    try {
+      final docRef = _firestore
+          .collection(_collection)
+          .doc(_sanitizeEventId(eventId));
+      var created = false;
+      await _firestore.runTransaction<void>((tx) async {
+        // Reset per attempt: a retry must not inherit the previous attempt's
+        // flag — the final attempt's read decides the outcome.
+        created = false;
+        final snapshot = await tx.get(docRef);
+        if (snapshot.exists) {
+          // Concurrent/redelivered duplicate — abort without overwriting.
+          return;
+        }
+        tx.set(docRef, data);
+        created = true;
+      });
+      if (!created) return null;
+      return docRef.id;
+    } on Exception catch (e) {
+      AppLog.e('[NotificationRepository] createWithEventId error', e);
+      return null;
+    }
+  }
+
+  /// Map an eventId to a Firestore-safe document ID.
+  ///
+  /// Firestore document IDs may not contain `/` (and a few other reserved
+  /// patterns); app-generated eventIds only contain letters, digits,
+  /// underscores and hyphens, so this sanitisation is collision-free for
+  /// them and merely guards against unusual caller-supplied values.
+  static String _sanitizeEventId(String eventId) =>
+      eventId.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
+
   /// Mark a single notification as read.
   Future<bool> markAsRead(String notificationId) async {
     try {

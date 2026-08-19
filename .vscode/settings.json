@@ -4,5 +4,8 @@
       ".gitlab-ci.yml",
       "*.gitlab-ci.yml"
     ]
-  }
+  },
+  "github-actions.workflows.pinned.workflows": [
+    ".github/workflows/release-apk.yml"
+  ]
 }

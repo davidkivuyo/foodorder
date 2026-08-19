@@ -16,6 +16,7 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../data/food_data.dart';
+import 'analytics_service.dart';
 import 'app_log.dart';
 
 /// Maximum number of favourite food IDs to cache.
@@ -69,7 +70,7 @@ class FavoriteService {
   Stream<List<FoodItem>>? _cachedFavoriteStream;
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _userDocSub;
   final List<StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>>
-      _foodSubs = [];
+  _foodSubs = [];
 
   /// Dispose all active subscriptions.
   void dispose() {
@@ -127,10 +128,7 @@ class FavoriteService {
       final foods = <FoodItem>[];
       for (final id in ids) {
         try {
-          final doc = await _firestore
-              .collection('food_items')
-              .doc(id)
-              .get();
+          final doc = await _firestore.collection('food_items').doc(id).get();
           if (doc.exists && doc.data() != null) {
             final item = FoodItem.fromMap(doc.data()!, id: id);
             if (item.available) {
@@ -173,25 +171,23 @@ class FavoriteService {
     }
 
     // Listen to the user doc for changes to the cached favourite IDs.
-    _userDocSub = _firestore
-        .collection('users')
-        .doc(userId)
-        .snapshots()
-        .listen((snapshot) {
-      if (!snapshot.exists) {
-        if (!controller.isClosed) controller.add([]);
-        return;
-      }
+    _userDocSub = _firestore.collection('users').doc(userId).snapshots().listen(
+      (snapshot) {
+        if (!snapshot.exists) {
+          if (!controller.isClosed) controller.add([]);
+          return;
+        }
 
-      final favoriteIds =
-          (snapshot.data()?['favoriteMenu'] as List<dynamic>?)
-                  ?.whereType<String>()
-                  .where((id) => id.isNotEmpty)
-                  .toList() ??
-              [];
+        final favoriteIds =
+            (snapshot.data()?['favoriteMenu'] as List<dynamic>?)
+                ?.whereType<String>()
+                .where((id) => id.isNotEmpty)
+                .toList() ??
+            [];
 
-      setupFoodListeners(favoriteIds);
-    });
+        setupFoodListeners(favoriteIds);
+      },
+    );
 
     // Clean up all subscriptions when the stream is cancelled.
     controller.onCancel = () {
@@ -294,12 +290,18 @@ class FavoriteService {
   /// - Filters out empty strings
   /// - Caps at [kMaxFavoriteIds]
   ///
+  /// The Firestore rules are the stricter gate: `validFavoriteMenuList`
+  /// requires every element to be a non-empty string of at most 100
+  /// characters (food_items document IDs are well below this). Food IDs
+  /// always come from `food_items/{id}` doc IDs, so this bound is never
+  /// exceeded in practice.
+  ///
   /// Phase 13 (write optimization): if the sanitised list is unchanged from
   /// the last persisted value, no Firestore write is performed at all.
   Future<void> _cacheFavoriteIds(String userId, List<String> ids) async {
     final sanitised = ids
         .whereType<String>()
-        .where((id) => id.isNotEmpty)
+        .where((id) => id.isNotEmpty && id.length <= 100)
         .take(kMaxFavoriteIds)
         .toList();
 
@@ -352,6 +354,7 @@ class FavoriteService {
           }
 
           if (hasNewCollection) {
+            AnalyticsService.instance.logEvent(AnalyticsEvent.orderCollected);
             recalculateFavorites(userId: userId);
           }
         });

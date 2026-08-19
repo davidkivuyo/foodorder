@@ -91,7 +91,7 @@ class _LoginScreenState extends State<LoginScreen> {
           ClipRRect(
             borderRadius: BorderRadius.circular(10),
             child: Image.asset(
-              'designs/assets/screen.png',
+              'designs/assets/logo.png',
               height: 80,
               width: 80,
             ),
@@ -179,7 +179,9 @@ class _LoginScreenState extends State<LoginScreen> {
             child: ElevatedButton(
               onPressed: _isLoading ? null : _handleLogin,
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF116522),
+                backgroundColor: Color(
+                  0xFF116522,
+                ),
                 disabledBackgroundColor: const Color(
                   0xFF116522,
                 ).withValues(alpha: 0.6),
@@ -233,7 +235,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: const Text(
                   'Sign Up',
                   style: TextStyle(
-                    color: Color(0xFF116522),
+                    color: Colors.orange,
                     fontWeight: FontWeight.bold,
                     fontSize: 15,
                   ),

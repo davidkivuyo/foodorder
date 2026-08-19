@@ -98,22 +98,42 @@ class _PickupCountdownState extends State<PickupCountdown> {
       return const SizedBox.shrink();
     }
 
+    final inGrace = PickupDeadlineService.isInGracePeriod(widget.pickupDeadline);
+    final graceExpired = PickupDeadlineService.isGracePeriodExpired(widget.pickupDeadline);
+    final graceRemaining = PickupDeadlineService.gracePeriodRemainingDuration(widget.pickupDeadline);
+
     final color = PickupDeadlineService.countdownColor(_remaining);
     final text = PickupDeadlineService.formatCountdown(_remaining);
 
-    final label = switch (widget.deadlineStatus) {
-      DeadlineStatus.collected => 'Collected',
-      DeadlineStatus.expired => 'Expired',
-      DeadlineStatus.active => text,
-      DeadlineStatus.notReady => '',
-    };
+    final String label;
+    final Color labelColor;
 
-    final labelColor = switch (widget.deadlineStatus) {
-      DeadlineStatus.collected => Colors.grey,
-      DeadlineStatus.expired => Colors.grey,
-      DeadlineStatus.active => color,
-      DeadlineStatus.notReady => Colors.grey,
-    };
+    switch (widget.deadlineStatus) {
+      case DeadlineStatus.collected:
+        label = 'Collected';
+        labelColor = Colors.grey;
+        break;
+      case DeadlineStatus.expired:
+        label = 'No-show recorded';
+        labelColor = Colors.grey;
+        break;
+      case DeadlineStatus.active:
+        if (graceExpired) {
+          label = 'Pickup window expired';
+          labelColor = Colors.grey;
+        } else if (inGrace) {
+          label = PickupDeadlineService.formatGraceCountdown(graceRemaining);
+          labelColor = Colors.orange;
+        } else {
+          label = text;
+          labelColor = color;
+        }
+        break;
+      case DeadlineStatus.notReady:
+        label = '';
+        labelColor = Colors.grey;
+        break;
+    }
 
     return GestureDetector(
       onLongPress: () {

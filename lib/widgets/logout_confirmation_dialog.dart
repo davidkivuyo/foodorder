@@ -20,16 +20,21 @@ class LogoutConfirmationDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Logout'),
-      content: const Text('Are you sure you want to logout?'),
+      title: const Text('Sign out'),
+      content: const Text('Are you sure you want to sign out?'),
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(false),
           child: const Text('No'),
         ),
-        TextButton(
+
+        ElevatedButton(
           onPressed: () => Navigator.of(context).pop(true),
-          child: const Text('Yes', style: TextStyle(color: Colors.red)),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.red,
+            foregroundColor: Colors.white,
+          ),
+          child: const Text('Yes'),
         ),
       ],
     );

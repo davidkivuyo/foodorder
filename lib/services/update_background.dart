@@ -25,12 +25,12 @@ const String kUpdateCheckTaskName = 'campusbite-update-check';
 
 /// How often the app re-checks while installed (not every launch).
 ///
-/// Deliberately shorter than [UpdateService.localCacheTtl] (12h): periodic
-/// execution can jitter around the scheduled time, and with equal intervals a
-/// run landing just before the cached metadata expires would force a network
-/// call at the next boundary. Being below the cache TTL leaves a safety
-/// margin while `checkForUpdate`'s cache gate still caps actual network calls
-/// at one per cache-validity window.
+/// Every `checkForUpdate()` now revalidates against the endpoint
+/// (stale-while-revalidate), so this interval is the heartbeat that keeps
+/// long-lived app processes current even when the user never cold-starts the
+/// app: a release published at any point is picked up by the next periodic
+/// run. The 12h local cache still provides the instant/offline decision path;
+/// the Worker's 5-minute edge cache absorbs the extra `/latest` reads.
 const Duration kUpdateCheckInterval = Duration(hours: 8);
 
 /// Entry point executed by WorkManager in a background isolate.
@@ -64,6 +64,7 @@ void updateBackgroundDispatcher() {
 /// WorkManager task on platforms that can never install an APK is wasted work
 /// and may produce startup noise where WorkManager is unsupported.
 Future<void> registerPeriodicUpdateCheck() async {
+  if (!UpdateService.buildEnabled) return;
   if (!updatePlatform.supported) return;
   try {
     await Workmanager().initialize(updateBackgroundDispatcher);

@@ -33,7 +33,9 @@ import 'favorites_screen.dart';
 import 'food_details.dart';
 
 class HomeScreen extends StatelessWidget {
-  const HomeScreen({super.key});
+  final ScrollController? scrollController;
+
+  const HomeScreen({super.key, this.scrollController});
 
   /// Phase 13: precache the first [limit] unique food image URLs so the
   /// hero carousels render instantly instead of showing grey placeholders
@@ -82,10 +84,10 @@ class HomeScreen extends StatelessWidget {
 
   // THE SECTIONS COMES FROM FIRESTORE "section" COLLECTION
   static const Map<String, String> _sectionTitles = {
-    'campus_favourite': 'Favourite on campus',
-    'todays_deals': "Today's Deals",
-    'drinks': 'Drinks Deals!',
-    'other': 'Other meal deals',
+    'campus_favourite': 'Campus favourites',
+    'todays_deals': "Today's menu",
+    'drinks': 'Drinks Deals',
+    'other': 'Hot spots',
   };
 
   String _formatTitle(String name) {
@@ -98,31 +100,68 @@ class HomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final double statusBarHeight = MediaQuery.of(context).padding.top;
+
     return Scaffold(
-      body: SafeArea(
-        child: StreamBuilder<List<Section>>(
-          stream: FoodData.sectionsStream,
-          builder: (context, sectionsSnapshot) {
-            if (sectionsSnapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
-            }
+      body: StreamBuilder<List<Section>>(
+        stream: FoodData.sectionsStream,
+        builder: (context, sectionsSnapshot) {
+          if (sectionsSnapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
 
-            final sections = sectionsSnapshot.data ?? [];
+          final sections = sectionsSnapshot.data ?? [];
 
-            return StreamBuilder<List<FoodItem>>(
-              stream: FoodData.foodItemsStream,
-              builder: (context, foodSnapshot) {
-                if (foodSnapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (foodSnapshot.hasError) {
-                  return Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(32.0),
-                      child: Text(
-                        'Error loading meals: ${foodSnapshot.error}',
-                        style: const TextStyle(color: Colors.red),
-                        textAlign: TextAlign.center,
+          return StreamBuilder<List<FoodItem>>(
+            stream: FoodData.foodItemsStream,
+            builder: (context, foodSnapshot) {
+              if (foodSnapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (foodSnapshot.hasError) {
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(32.0),
+                    child: Text(
+                      'Error loading meals: ${foodSnapshot.error}',
+                      style: const TextStyle(color: Colors.red),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                );
+              }
+
+              final allItems = foodSnapshot.data ?? [];
+              // Phase 13: warm the image cache for the first items shown.
+              _precacheImages(allItems, context);
+              final validSections =
+                  sections
+                      .where((s) => allItems.any((f) => f.section == s.name))
+                      .toList()
+                    ..sort((a, b) {
+                      if (a.name == 'other') return 1;
+                      if (b.name == 'other') return -1;
+                      return 0;
+                    });
+
+              return SingleChildScrollView(
+                controller: scrollController,
+                child: Stack(
+                  children: [
+                    // ── 1. Orange Header Overlay Background ──────────────────
+                    // Spans from notification status bar at top edge down to center of special banner card
+                    Positioned(
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      height: statusBarHeight + 5 + 50 + 8 + 3,
+                      child: Container(
+                        decoration: const BoxDecoration(
+                          color: Colors.orange,
+                          borderRadius: BorderRadius.vertical(
+                            bottom: Radius.circular(16),
+                          ), // Accent orange color
+                        ),
                       ),
                     ),
                   );
@@ -197,19 +236,19 @@ class HomeScreen extends StatelessWidget {
                           const SizedBox(height: 18),
                         ],
 
-                        // Promotional banner carousel
-                        SpecialBannerCard(
-                          imageUrls: const [
-                            'https://res.cloudinary.com/nrwglbxh/image/upload/v1785401129/juicebanner_scbixp.png',
-                            'https://res.cloudinary.com/nrwglbxh/image/upload/v1784272803/grilledmeat_dwcofz.png',
-                            'https://res.cloudinary.com/nrwglbxh/image/upload/v1783345398/banner2_mjqb1u.png',
-                          ],
-                          onTap: (index) {
-                            AppLog.d(
-                              "Promotional Banner at index $index clicked!",
-                            );
-                          },
-                        ),
+                          // Promotional banner carousel
+                          SpecialBannerCard(
+                            imageUrls: const [
+                              'https://res.cloudinary.com/nrwglbxh/image/upload/v1785401129/juicebanner_scbixp.png',
+                              'https://res.cloudinary.com/nrwglbxh/image/upload/v1784272803/grilledmeat_dwcofz.png',
+                              'https://res.cloudinary.com/nrwglbxh/image/upload/v1783345398/banner2_mjqb1u.png',
+                            ],
+                            onTap: (index) {
+                              AppLog.d(
+                                "Promotional Banner at index $index clicked!",
+                              );
+                            },
+                          ),
 
                         const SizedBox(height: 18),
 
@@ -230,36 +269,31 @@ class HomeScreen extends StatelessWidget {
                               items: sectionItems,
                               heroTagPrefix: 'section_${section.name}_',
                             ),
-                            const Divider(),
-                          ];
-                        }),
-
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                'Common loved foods',
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  'Common loved foods',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 18),
-                        const CommonFood(),
-                        const SizedBox(height: 24),
-                      ],
+                          const SizedBox(height: 8),
+                          const CommonFood(),
+                          const SizedBox(height: 12),
+                        ],
+                      ),
                     ),
-                  ),
-                );
-              },
-            );
-          },
-        ),
+                  ],
+                ),
+              );
+            },
+          );
+        },
       ),
     );
   }
@@ -292,10 +326,11 @@ class CardRowItems extends StatelessWidget {
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
       children: [
-        // Menu Header Row
+        // Menu Header Row — Uber Eats style title & action button
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8.0),
+          padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -331,8 +366,16 @@ class CardRowItems extends StatelessWidget {
                   semanticLabel: 'more items',
                 ),
                 style: IconButton.styleFrom(
+                  backgroundColor: Colors.grey.shade100,
+                  foregroundColor: Colors.black,
                   padding: EdgeInsets.zero,
-                  iconSize: 19,
+                  iconSize: 18,
+                  // Compact visual footprint: the 48×48 tap target comes from
+                  // the padded tap-target size (which expands the hit area
+                  // without growing the visible circle), not from the visual
+                  // minimum.
+                  minimumSize: const Size.square(36),
+                  tapTargetSize: MaterialTapTargetSize.padded,
                 ),
               ),
             ],
@@ -345,6 +388,7 @@ class CardRowItems extends StatelessWidget {
           height: isDesktop ? 230 : 200,
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 8),
             itemCount: displayedItems.length,
             itemBuilder: (context, index) {
               final item = displayedItems[index];
@@ -445,6 +489,8 @@ class CardRowItems extends StatelessWidget {
                                         size: 16,
                                         semanticLabel: 'add item',
                                       ),
+                                      blurRadius: 4,
+                                      offset: const Offset(0, 2),
                                     ),
                                   ),
                                 ],
@@ -484,8 +530,6 @@ class CardRowItems extends StatelessWidget {
                                         fontSize: 11,
                                         color: Colors.grey.shade600,
                                       ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
                                 ],
@@ -688,7 +732,7 @@ class CategoriesTitles extends StatelessWidget {
                                 color: Colors.amber, size: 16),
                             const SizedBox(width: 4),
                             Text(
-                              '${item.averageRating > 0 ? item.averageRating.toStringAsFixed(1) : '0.0'} • ',
+                              '${item.averageRating > 0 ? item.averageRating.toStringAsFixed(1) : '0'} • ',
                               style: const TextStyle(
                                   fontSize: 13,
                                   color: Colors.black87,

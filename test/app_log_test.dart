@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:campusbite/services/app_log.dart';
+import 'package:campusbite/services/logger_service.dart';
 
 void main() {
   group('AppLog.sanitize — sensitive data categories', () {
@@ -97,6 +97,35 @@ void main() {
       final out = AppLog.sanitize('user $uid failed');
       expect(out, 'user [uid] failed');
     });
+
+    test('preserves static technical labels like firebase_crashlytics', () {
+      // Explicitly allowlisted in _trustedTechnicalLabels (static plugin
+      // name), so it is preserved despite matching the bare-identifier regex.
+      final out = AppLog.sanitize('plugin firebase_crashlytics initialized');
+      expect(out, 'plugin firebase_crashlytics initialized');
+    });
+
+    test('redacts single-class lowercase bare identifiers (not allowlisted)', () {
+      // 20 lowercase chars — a single character class, no allowlist entry.
+      // Firestore auto-IDs are [a-z0-9]{20}, so this must be redacted like
+      // any other UID.
+      const id = 'abcdefghijklmnopqrst';
+      expect(id.length, 20);
+      final out = AppLog.sanitize('user $id failed');
+      expect(out, 'user [uid] failed');
+    });
+
+    test('preserves long lowercase technical identifiers', () {
+      // Lowercase + separators only, >128 chars — beyond the bare-UID range
+      // (20–128), so the long-token rule's single-class heuristic keeps it
+      // readable instead of redacting it.
+      const label =
+          'com_example_flutter_application_phase_seventeen_monitoring_module_'
+          'with_longer_technical_context_for_emission_testing_and_extra_context';
+      expect(label.length, greaterThan(128));
+      final out = AppLog.sanitize('module $label loaded');
+      expect(out, 'module $label loaded');
+    });
   });
 
   group('AppLog.sanitize — unsafe free-form input', () {
@@ -124,18 +153,16 @@ void main() {
 
   group('AppLog emission behavior', () {
     final captured = <String>[];
-    late DebugPrintCallback originalDebugPrint;
+    late void Function(String) originalSink;
 
     setUp(() {
-      originalDebugPrint = debugPrint;
+      originalSink = LoggerService.outputSink;
       captured.clear();
-      debugPrint = (String? message, {int? wrapWidth}) {
-        captured.add(message ?? '');
-      };
+      LoggerService.outputSink = captured.add;
     });
 
     tearDown(() {
-      debugPrint = originalDebugPrint;
+      LoggerService.outputSink = originalSink;
     });
 
     test(

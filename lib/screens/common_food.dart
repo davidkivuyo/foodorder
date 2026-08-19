@@ -288,34 +288,35 @@ class _CommonFoodList extends StatelessWidget {
                           ),
                         )
                       : isDesktop
-                          ? GridView.builder(
-                              padding: const EdgeInsets.all(16.0),
-                              itemCount: filtered.length,
-                              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                      ? GridView.builder(
+                          padding: const EdgeInsets.all(16.0),
+                          itemCount: filtered.length,
+                          gridDelegate:
+                              const SliverGridDelegateWithMaxCrossAxisExtent(
                                 maxCrossAxisExtent: 320,
                                 mainAxisSpacing: 16,
                                 crossAxisSpacing: 16,
                                 childAspectRatio: 1.35,
                               ),
-                              itemBuilder: (context, index) {
-                                return HoverCardScale(
-                                  child: _CommonFoodCard(item: filtered[index]),
-                                );
-                              },
-                            )
-                          : ListView.builder(
-                              padding: const EdgeInsets.all(10.0),
-                              itemCount: filtered.length,
-                              itemBuilder: (context, index) {
-                                final item = filtered[index];
-                                return Padding(
-                                  padding: const EdgeInsets.only(bottom: 24.0),
-                                  child: HoverCardScale(
-                                    child: _CommonFoodCard(item: item),
-                                  ),
-                                );
-                              },
-                            ),
+                          itemBuilder: (context, index) {
+                            return HoverCardScale(
+                              child: _CommonFoodCard(item: filtered[index]),
+                            );
+                          },
+                        )
+                      : ListView.builder(
+                          padding: const EdgeInsets.all(10.0),
+                          itemCount: filtered.length,
+                          itemBuilder: (context, index) {
+                            final item = filtered[index];
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 24.0),
+                              child: HoverCardScale(
+                                child: _CommonFoodCard(item: item),
+                              ),
+                            );
+                          },
+                        ),
                 ),
               ],
             );
@@ -353,9 +354,9 @@ class _CommonFoodCard extends StatelessWidget {
                       context,
                       MaterialPageRoute(
                         builder: (_) => FoodDetailsScreen(
-                              item: item,
-                              heroTagPrefix: 'common_',
-                            ),
+                          item: item,
+                          heroTagPrefix: 'common_',
+                        ),
                       ),
                     );
                   },
@@ -441,7 +442,7 @@ class _CommonFoodCard extends StatelessWidget {
                 children: [
                   const Icon(Icons.star_rounded, color: Colors.amber, size: 16),
                   Text(
-                    '${item.averageRating > 0 ? item.averageRating.toStringAsFixed(1) : '0.0'} • ',
+                    '${item.averageRating > 0 ? item.averageRating.toStringAsFixed(1) : '0'} • ',
                     style: const TextStyle(fontSize: 12, color: Colors.black),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,

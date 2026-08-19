@@ -25,6 +25,13 @@ class ReviewRepository {
 
   static const String _collection = 'reviews';
 
+  /// Deterministic per-(user, food) guard collection that makes "one live
+  /// review per (student, food)" race-free. The guard document is claimed
+  /// in the SAME transaction as the review (create/revive) and released on
+  /// soft-delete, so two concurrent creates for the same meal via different
+  /// orders cannot both pass.
+  static const String _guardCollection = 'review_guards';
+
   ReviewRepository({FirebaseFirestore? firestore})
     : _firestore = firestore ?? FirebaseFirestore.instance;
 
@@ -98,26 +105,6 @@ class ReviewRepository {
     }).toList();
 
     return MapEntry(reviews, snapshot.docs.lastOrNull);
-  }
-
-  /// Check if a review exists for a specific (foodId, orderId, userId) combination.
-  Future<Review?> findExistingReview({
-    required String foodId,
-    required String orderId,
-    required String userId,
-  }) async {
-    final snapshot = await _firestore
-        .collection(_collection)
-        .where('foodId', isEqualTo: foodId)
-        .where('orderId', isEqualTo: orderId)
-        .where('userId', isEqualTo: userId)
-        .where('deleted', isEqualTo: false)
-        .limit(1)
-        .get();
-
-    if (snapshot.docs.isEmpty) return null;
-    final data = snapshot.docs.first.data();
-    return Review.fromFirestore(snapshot.docs.first.id, data);
   }
 
   /// Get all reviews (including soft-deleted) by a user for a specific food item.
@@ -227,6 +214,17 @@ class ReviewRepository {
     return '$userId:$orderId:$foodId';
   }
 
+  /// Build the deterministic (userId, foodId) guard document ID.
+  ///
+  /// Mirrors the `:`-encoding of [_compositeReviewId] so the rules can
+  /// reproduce it (`userId + ':' + foodId`) in the review_guards create rule.
+  static String _compositeGuardId({
+    required String userId,
+    required String foodId,
+  }) {
+    return '$userId:$foodId';
+  }
+
   /// Fetch a review by its deterministic composite key, regardless of
   /// `deleted` status — unlike [findExistingReview] which filters
   /// out soft-deleted documents.
@@ -274,6 +272,9 @@ class ReviewRepository {
       foodId: foodId,
     );
     final docRef = _firestore.collection(_collection).doc(docId);
+    final guardRef = _firestore
+        .collection(_guardCollection)
+        .doc(_compositeGuardId(userId: userId, foodId: foodId));
 
     final alreadyExists = await _firestore.runTransaction<bool>((
       transaction,
@@ -282,11 +283,55 @@ class ReviewRepository {
       if (doc.exists) {
         return true; // Already reviewed (including soft-deleted)
       }
+      // One LIVE review per (user, food): the guard document exists whenever
+      // a live review for this meal exists. Reading it inside this same
+      // transaction makes the duplicate check atomic — two concurrent
+      // creates for the same meal via different orders cannot both pass.
+      final guard = await transaction.get(guardRef);
+      if (guard.exists) {
+        return true; // Another live review already exists for this meal
+      }
+      transaction.set(guardRef, {
+        'userId': userId,
+        'foodId': foodId,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
       transaction.set(docRef, data);
       return false; // Was created
     });
 
     return alreadyExists ? null : docId;
+  }
+
+  /// Revive a soft-deleted review, restoring the (user, food) guard
+  /// atomically with the field update so the invariant "a live review
+  /// implies a guard document" always holds. Without the guard, a
+  /// concurrent create for the same meal via a different order could race
+  /// past the duplicate check.
+  ///
+  /// Returns `false` when the review document does not exist.
+  Future<bool> revive(String reviewId, Map<String, dynamic> data) async {
+    final docRef = _firestore.collection(_collection).doc(reviewId);
+    return _firestore.runTransaction<bool>((transaction) async {
+      final doc = await transaction.get(docRef);
+      if (!doc.exists) return false;
+      transaction.update(docRef, data);
+      final userId = doc.data()?['userId'] as String?;
+      final foodId = doc.data()?['foodId'] as String?;
+      if (userId != null && foodId != null) {
+        transaction.set(
+          _firestore
+              .collection(_guardCollection)
+              .doc(_compositeGuardId(userId: userId, foodId: foodId)),
+          {
+            'userId': userId,
+            'foodId': foodId,
+            'createdAt': FieldValue.serverTimestamp(),
+          },
+        );
+      }
+      return true;
+    });
   }
 
   /// Update an existing review document.
@@ -296,6 +341,11 @@ class ReviewRepository {
   }
 
   /// Soft-delete a review by setting `deleted = true`.
+  ///
+  /// The (user, food) guard is deliberately NOT released here — that is
+  /// server-controlled: the `onReviewChanged` Cloud Function deletes the
+  /// guard when `deleted` becomes true, so a client can never release its
+  /// own guard and create a duplicate live review for the same meal.
   Future<bool> softDelete(String reviewId) async {
     await _firestore.collection(_collection).doc(reviewId).update({
       'deleted': true,

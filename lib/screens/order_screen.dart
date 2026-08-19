@@ -20,9 +20,15 @@ import '../models/cart_item.dart';
 import '../data/food_data.dart';
 import '../services/app_log.dart';
 import '../services/cart_service.dart';
+import '../services/order_cancellation_service.dart';
 import '../services/pickup_deadline_service.dart';
+import '../services/pickup_extension_service.dart';
+import '../viewmodels/orders_view_model.dart';
+import '../widgets/cancellation_countdown.dart';
+import '../widgets/extend_pickup_action.dart';
 import '../widgets/pickup_countdown.dart';
 import '../widgets/cart_bottom_sheet.dart';
+import '../widgets/no_show_notice.dart';
 
 class OrdersScreen extends StatefulWidget {
   const OrdersScreen({super.key});
@@ -37,18 +43,28 @@ class _OrdersScreenState extends State<OrdersScreen>
   Stream<QuerySnapshot<Map<String, dynamic>>>? _ordersStream;
   Stream<QuerySnapshot<Map<String, dynamic>>>? _plannedOrdersStream;
   late TabController _tabController;
+  late final OrdersViewModel _viewModel;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    _viewModel = OrdersViewModel();
+    _viewModel.addListener(_onViewModelChanged);
     _setupStream();
   }
 
   @override
   void dispose() {
+    _viewModel.removeListener(_onViewModelChanged);
+    _viewModel.dispose();
     _tabController.dispose();
     super.dispose();
+  }
+
+  void _onViewModelChanged() {
+    if (!mounted) return;
+    setState(() {});
   }
 
   void _setupStream() {
@@ -68,11 +84,71 @@ class _OrdersScreenState extends State<OrdersScreen>
     }
   }
 
+  /// Resolve the cafe a reordered item should be stored under.
+  ///
+  /// Prefers the order's stored [CartItem.selectedCafe]; legacy orders may
+  /// lack it, in which case the item's single canonical cafe (e.g. 'Cafe A')
+  /// is used so the cart doc key, one-cafe classification and server-side
+  /// cafes derivation stay consistent. Null is preserved only when the item
+  /// is genuinely cafeless or has no single canonical cafe.
+  String? _reorderItemCafe(CartItem item) {
+    final stored = item.selectedCafe;
+    if (stored != null && stored.trim().isNotEmpty) return stored.trim();
+    if (item.foodItem.availableCafes.length == 1) {
+      return item.foodItem.availableCafes.first;
+    }
+    return null;
+  }
+
   /// Reorder all items from a previous order
   Future<void> _handleReorder(FoodOrder order) async {
     final cartService = CartService();
     int addedCount = 0;
     int unavailableCount = 0;
+
+    // One cafe per order: the reordered items must resolve to EXACTLY one
+    // cafe class (a cafeless item resolves to '' — its own class). Legacy
+    // multi-cafe orders are rejected up front so they can never be partially
+    // reordered into a mixed cart, and the single cafe must match the cart's
+    // cafe when the cart already holds items.
+    final orderCafes = <String>{
+      for (final item in order.items) (_reorderItemCafe(item) ?? '').trim(),
+    };
+    if (orderCafes.length != 1) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'You can only order from one cafe per order. This order mixes '
+            'items from different cafes — please add them separately.',
+          ),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
+    final singleOrderCafe = orderCafes.first;
+    final currentCartCafe = cartService.cartItems.isEmpty
+        ? null
+        : cartService.cartItems.first.displayCafe.trim();
+    if (currentCartCafe != null && currentCartCafe != singleOrderCafe) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'You can only order from one cafe per order. Your cart already '
+            'has items from $currentCartCafe. Clear the cart or place a '
+            'separate order.',
+          ),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
 
     for (final item in order.items) {
       // Ensure the FoodItem has a non-empty document ID
@@ -93,12 +169,12 @@ class _OrdersScreenState extends State<OrdersScreen>
 
       if (targetFoodItem.available) {
         for (int i = 0; i < item.quantity; i++) {
-          await cartService.addToCart(
+          final added = await cartService.addToCart(
             targetFoodItem,
-            selectedCafe: item.selectedCafe,
+            selectedCafe: _reorderItemCafe(item),
           );
+          if (added) addedCount++;
         }
-        addedCount += item.quantity;
       } else {
         unavailableCount += item.quantity;
       }
@@ -198,6 +274,27 @@ class _OrdersScreenState extends State<OrdersScreen>
     }
   }
 
+  /// Extend the order's pickup deadline by 10 minutes (once per order).
+  ///
+  /// The eligibility check and the extension call both live in
+  /// [OrdersViewModel]; this handler only renders the outcome.
+  Future<void> _handleExtendPickup(FoodOrder order) async {
+    final result = await _viewModel.extendPickup(order.orderId);
+    if (!mounted) return;
+    final failure = result.failure;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          failure == null
+              ? 'Pickup extended by '
+                    '${PickupExtensionService.extensionMinutes} minutes!'
+              : _pickupExtensionErrorMessage(failure),
+        ),
+        backgroundColor: failure == null ? Colors.green.shade800 : Colors.red,
+      ),
+    );
+  }
+
   /// Delete a planned meal
   Future<void> _deletePlannedOrder(String docId) async {
     if (_userId == null) return;
@@ -211,6 +308,69 @@ class _OrdersScreenState extends State<OrdersScreen>
     } on Exception catch (e) {
       AppLog.e('[OrdersScreen] Delete planned order error', e);
     }
+  }
+
+  /// Cancel an order within the 2-minute cancellation window.
+  ///
+  /// Asks for a preset reason, then delegates the backend transition to
+  /// [OrdersViewModel.cancelOrder]. The eligibility check and the callable
+  /// invocation live in the ViewModel; this handler only renders the outcome.
+  Future<void> _handleCancelOrder(FoodOrder order) async {
+    final reason = await _promptCancellationReason();
+    if (reason == null || !mounted) return;
+
+    final result = await _viewModel.cancelOrder(order.orderId, reason: reason);
+    if (!mounted) return;
+    final failure = result.failure;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          failure == null
+              ? 'Order cancelled successfully.'
+              : _cancellationErrorMessage(failure),
+        ),
+        backgroundColor: failure == null ? Colors.green.shade800 : Colors.red,
+      ),
+    );
+  }
+
+  /// Shows the preset cancellation-reason chooser.
+  ///
+  /// Returns the chosen reason, or null when the student backs out.
+  Future<String?> _promptCancellationReason() {
+    return showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Padding(
+                padding: EdgeInsets.fromLTRB(20, 4, 20, 8),
+                child: Text(
+                  'Cancel order — why?',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+              ),
+              ...OrderCancellationService.cancellationReasons.map((reason) {
+                return ListTile(
+                  leading: const Icon(
+                    Icons.arrow_circle_right_outlined,
+                    color: Colors.orange,
+                    size: 20,
+                  ),
+                  title: Text(reason, style: const TextStyle(fontSize: 14)),
+                  onTap: () => Navigator.pop(context, reason),
+                );
+              }),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -230,7 +390,7 @@ class _OrdersScreenState extends State<OrdersScreen>
         bottom: TabBar(
           controller: _tabController,
           indicatorColor: Colors.orange,
-          labelColor: Colors.orange.shade900,
+          labelColor: Colors.orange,
           unselectedLabelColor: Colors.grey.shade600,
           labelStyle: const TextStyle(fontWeight: FontWeight.bold),
           tabs: const [
@@ -288,7 +448,8 @@ class _OrdersScreenState extends State<OrdersScreen>
                 (o) =>
                     o.status == OrderStatus.collected ||
                     o.status == OrderStatus.rejected ||
-                    o.status == OrderStatus.noShow,
+                    o.status == OrderStatus.noShow ||
+                    o.status == OrderStatus.cancelled,
               )
               .toList();
 
@@ -325,7 +486,7 @@ class _OrdersScreenState extends State<OrdersScreen>
                 shape: BoxShape.circle,
               ),
               child: const Icon(
-                Icons.takeout_dining,
+                Icons.timer_outlined,
                 size: 48,
                 color: Colors.orange,
               ),
@@ -752,7 +913,11 @@ class _OrdersScreenState extends State<OrdersScreen>
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
-                    '${visuals.icon} ${visuals.label}',
+                    // Phase G — an excused no-show stays NO_SHOW but shows
+                    // the excused treatment on the card.
+                    order.noShowExcused
+                        ? '${visuals.icon} ${visuals.label} · Excused'
+                        : '${visuals.icon} ${visuals.label}',
                     style: TextStyle(
                       color: visuals.color,
                       fontWeight: FontWeight.bold,
@@ -788,6 +953,25 @@ class _OrdersScreenState extends State<OrdersScreen>
             ),
             const SizedBox(height: 4),
 
+            // Cancellation window (pending orders) — cancel action + countdown.
+            // Every pending order carrying a server-written cancellationDeadline
+            // shows this section: while the window is open the student gets the
+            // live countdown + cancel action, and once it has closed the action
+            // renders the expired-window notice instead of silently omitting
+            // the cancellation UI. Legacy orders without a stored deadline
+            // keep the old behaviour (no cancellation UI).
+            if (order.status == OrderStatus.pending &&
+                order.cancellationDeadline != null) ...[
+              const SizedBox(height: 6),
+              _CancellationAction(
+                order: order,
+                canCancel: _viewModel.canCancelOrder(order),
+                isCancelling: _viewModel.isCancelling(order.orderId),
+                onCancel: () => _handleCancelOrder(order),
+              ),
+              const SizedBox(height: 4),
+            ],
+
             // Pickup deadline info if ready
             if (order.status == OrderStatus.ready && order.readyAt != null) ...[
               const SizedBox(height: 4),
@@ -809,6 +993,20 @@ class _OrdersScreenState extends State<OrdersScreen>
                   ),
                 ],
               ),
+              if (_viewModel.canExtendPickup(order) ||
+                  order.deadlineExtended) ...[
+                const SizedBox(height: 6),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: ExtendPickupAction(
+                    canExtend: _viewModel.canExtendPickup(order),
+                    extended: order.deadlineExtended,
+                    isExtending: _viewModel.isExtending(order.orderId),
+                    pickupDeadline: order.pickupDeadline,
+                    onExtend: () => _handleExtendPickup(order),
+                  ),
+                ),
+              ],
               const SizedBox(height: 4),
             ],
 
@@ -944,10 +1142,7 @@ class _OrdersScreenState extends State<OrdersScreen>
                           ),
                           minimumSize: Size.zero,
                           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          elevation: 1,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
+                          elevation: 0,
                         ),
                       ),
                   ],
@@ -973,194 +1168,346 @@ class _OrdersScreenState extends State<OrdersScreen>
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (context) {
-        return Container(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-          constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(context).size.height * 0.85,
-          ),
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Header: Order ID & Status
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        // Local to the sheet: `order` is a snapshot taken when the sheet
+        // opened, so the extend action tracks its own state here instead of
+        // relying on the parent's stream to rebuild this route. The pickup
+        // deadline starts from the snapshot and is refreshed from the
+        // extension response so the countdown stays accurate while the sheet
+        // is open.
+        bool sheetExtending = false;
+        bool sheetExtended = false;
+        bool sheetCancelling = false;
+        DateTime? sheetPickupDeadline = order.pickupDeadline;
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return Container(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(context).size.height * 0.85,
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: Text(
-                        'Order #${order.orderId}',
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: visuals.color.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        '${visuals.icon} ${visuals.label}',
-                        style: TextStyle(
-                          color: visuals.color,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Placed on ${_formatFullDateTime(order.orderTime)}',
-                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                ),
-                const SizedBox(height: 16),
-
-                // Status Timeline visualizer
-                _buildStatusTimeline(order.status),
-                const SizedBox(height: 20),
-
-                const Text(
-                  'Ordered Items',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 10),
-
-                ...order.items.map((item) {
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade50,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: Colors.grey.shade200),
-                    ),
-                    child: Row(
+                    // Header: Order ID & Status
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: item.foodItem.buildImage(
-                            width: 50,
-                            height: 50,
-                            fit: BoxFit.cover,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
                         Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                item.foodItem.title,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 14,
-                                ),
-                              ),
-                              if (item.selectedCafe != null)
-                                Text(
-                                  'Cafe: ${item.selectedCafe}',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey.shade600,
-                                  ),
-                                ),
-                              Text(
-                                'Tsh ${item.foodItem.price.toInt()} x ${item.quantity}',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey.shade700,
-                                ),
-                              ),
-                            ],
+                          child: Text(
+                            'Order #${order.orderId}',
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ),
-                        Text(
-                          'Tsh ${(item.foodItem.price * item.quantity).toInt()}',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14,
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: visuals.color.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            '${visuals.icon} ${visuals.label}',
+                            style: TextStyle(
+                              color: visuals.color,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ),
                       ],
                     ),
-                  );
-                }),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Placed on ${_formatFullDateTime(order.orderTime)}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
 
-                const SizedBox(height: 16),
-                const Divider(),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
+                    // No-show notice — mirrors the ORDER_NO_SHOW notification.
+                    // Phase G: an excused no-show renders the excused variant
+                    // (order stays NO_SHOW but is excluded from reliability).
+                    if (order.status == OrderStatus.noShow) ...[
+                      const SizedBox(height: 12),
+                      NoShowNotice(excused: order.noShowExcused),
+                    ],
+
+                    // Cancellation window (pending orders) — cancel action, or
+                    // the expired-window notice once the stored deadline has
+                    // passed. The sheet holds a snapshot of the order, so on
+                    // success it pops itself and lets the parent stream rebuild
+                    // the list.
+                    if (order.status == OrderStatus.pending &&
+                        order.cancellationDeadline != null) ...[
+                      const SizedBox(height: 12),
+                      _CancellationAction(
+                        order: order,
+                        canCancel: _viewModel.canCancelOrder(order),
+                        isCancelling:
+                            sheetCancelling ||
+                            _viewModel.isCancelling(order.orderId),
+                        onCancel: () async {
+                          final reason = await _promptCancellationReason();
+                          if (reason == null || !context.mounted) return;
+                          setSheetState(() => sheetCancelling = true);
+                          final result = await _viewModel.cancelOrder(
+                            order.orderId,
+                            reason: reason,
+                          );
+                          if (!context.mounted) return;
+                          final failure = result.failure;
+                          if (failure != null) {
+                            setSheetState(() => sheetCancelling = false);
+                          }
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                failure == null
+                                    ? 'Order cancelled successfully.'
+                                    : _cancellationErrorMessage(failure),
+                              ),
+                              backgroundColor: failure == null
+                                  ? Colors.green.shade800
+                                  : Colors.red,
+                            ),
+                          );
+                          if (failure == null) {
+                            Navigator.of(context).pop();
+                          }
+                        },
+                      ),
+                    ],
+
+                    // Pickup info + extend action for ready orders
+                    if (order.status == OrderStatus.ready &&
+                        order.readyAt != null) ...[
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.access_time,
+                            size: 14,
+                            color: Colors.grey[600],
+                          ),
+                          const SizedBox(width: 4),
+                          Flexible(
+                            child: Text(
+                              'Ready ${PickupDeadlineService.formatPickupTime(order.readyAt)}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey[600],
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          PickupCountdown(
+                            pickupDeadline: sheetPickupDeadline,
+                            deadlineStatus: order.deadlineStatus,
+                          ),
+                        ],
+                      ),
+                      if (_viewModel.canExtendPickup(order) ||
+                          order.deadlineExtended) ...[
+                        const SizedBox(height: 8),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: ExtendPickupAction(
+                            canExtend:
+                                !sheetExtended &&
+                                _viewModel.canExtendPickup(order),
+                            extended: sheetExtended || order.deadlineExtended,
+                            isExtending: sheetExtending,
+                            pickupDeadline: sheetPickupDeadline,
+                            onExtend: () async {
+                              setSheetState(() => sheetExtending = true);
+                              final result = await _viewModel.extendPickup(
+                                order.orderId,
+                              );
+                              if (!context.mounted) return;
+                              final failure = result.failure;
+                              setSheetState(() {
+                                sheetExtending = false;
+                                if (failure == null) {
+                                  sheetExtended = true;
+                                  if (result.newDeadline != null) {
+                                    sheetPickupDeadline = result.newDeadline;
+                                  }
+                                }
+                              });
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    failure == null
+                                        ? 'Pickup extended by '
+                                              '${PickupExtensionService.extensionMinutes} minutes!'
+                                        : _pickupExtensionErrorMessage(failure),
+                                  ),
+                                  backgroundColor: failure == null
+                                      ? Colors.green.shade800
+                                      : Colors.red,
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                    ],
+                    const SizedBox(height: 16),
+
+                    // Status Timeline visualizer
+                    _buildStatusTimeline(order.status),
+                    const SizedBox(height: 20),
+
                     const Text(
-                      'Total Amount:',
+                      'Ordered Items',
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    Text(
-                      'Tsh ${order.totalAmount.toInt()}',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.green.shade900,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 20),
+                    const SizedBox(height: 10),
 
-                // Actions inside modal: Reorder All or Save to Planned
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () {
-                          Navigator.pop(context);
-                          _showAddPlannedOrderDialog(
-                            context,
-                            prefilledTitle:
-                                'Meal based on Order #${order.orderId.substring(0, 4)}',
-                            prefilledItems: order.items,
-                          );
-                        },
-                        icon: const Icon(Icons.bookmark_add_outlined, size: 18),
-                        label: const Text('Save as Plan'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.orange.shade900,
-                          side: BorderSide(color: Colors.orange.shade400),
-                          padding: const EdgeInsets.symmetric(vertical: 12),
+                    ...order.items.map((item) {
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade50,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.grey.shade200),
                         ),
-                      ),
+                        child: Row(
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: item.foodItem.buildImage(
+                                width: 50,
+                                height: 50,
+                                fit: BoxFit.cover,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    item.foodItem.title,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                  if (item.selectedCafe != null)
+                                    Text(
+                                      'Cafe: ${item.selectedCafe}',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey.shade600,
+                                      ),
+                                    ),
+                                  Text(
+                                    'Tsh ${item.foodItem.price.toInt()} x ${item.quantity}',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.grey.shade700,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Text(
+                              'Tsh ${(item.foodItem.price * item.quantity).toInt()}',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
+
+                    const SizedBox(height: 16),
+                    const Divider(),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Total Amount:',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          'Tsh ${order.totalAmount.toInt()}',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.green.shade900,
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: () {
-                          Navigator.pop(context);
-                          _handleReorder(order);
-                        },
-                        icon: const Icon(Icons.refresh, size: 18),
-                        label: const Text('Reorder All'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.orange,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          elevation: 0,
+                    const SizedBox(height: 20),
+
+                    // Actions inside modal: Reorder All or Save to Planned
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () {
+                              Navigator.pop(context);
+                              _showAddPlannedOrderDialog(
+                                context,
+                                prefilledTitle: 'My future meal',
+                                prefilledItems: order.items,
+                              );
+                            },
+                            icon: const Icon(
+                              Icons.bookmark_add_outlined,
+                              size: 18,
+                            ),
+                            label: const Text('Save as Plan'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.orange,
+                              side: BorderSide(color: Colors.orange),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                          ),
                         ),
-                      ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: () {
+                              Navigator.pop(context);
+                              _handleReorder(order);
+                            },
+                            icon: const Icon(Icons.refresh, size: 18),
+                            label: const Text('Reorder All'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.orange,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              elevation: 0,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         );
       },
     );
@@ -1179,7 +1526,8 @@ class _OrdersScreenState extends State<OrdersScreen>
 
     int currentStepIndex = steps.indexWhere((s) => s.status == currentStatus);
     if (currentStatus == OrderStatus.rejected ||
-        currentStatus == OrderStatus.noShow) {
+        currentStatus == OrderStatus.noShow ||
+        currentStatus == OrderStatus.cancelled) {
       currentStepIndex = -1;
     }
 
@@ -1265,7 +1613,7 @@ class _OrdersScreenState extends State<OrdersScreen>
                 children: [
                   Icon(Icons.event_note, color: Colors.orange),
                   SizedBox(width: 8),
-                  Text('Plan an Upcoming Meal'),
+                  Text('Plan a future Meal'),
                 ],
               ),
               content: SingleChildScrollView(
@@ -1424,6 +1772,8 @@ class _OrdersScreenState extends State<OrdersScreen>
         return (color: Colors.grey.shade700, icon: '✅', label: 'Collected');
       case OrderStatus.noShow:
         return (color: Colors.red.shade900, icon: '🚫', label: 'No Show');
+      case OrderStatus.cancelled:
+        return (color: Colors.grey.shade700, icon: '🗑️', label: 'Cancelled');
     }
   }
 
@@ -1482,5 +1832,137 @@ class _OrdersScreenState extends State<OrdersScreen>
       'Dec',
     ];
     return '${dt.day} ${months[dt.month - 1]}';
+  }
+}
+
+/// The one-tap "cancel order" action shown on pending orders inside the
+/// 2-minute cancellation window, with a live local countdown.
+///
+/// Shared by the order card and the order details bottom sheet. The countdown
+/// is pure UI — it derives the remaining time from the server-authoritative
+/// [FoodOrder.cancellationDeadline] and writes nothing to Firestore. When the
+/// window has already closed ([canCancel] is false) — or closes while the
+/// widget is mounted (via [CancellationCountdown.onExpired]) — the action is
+/// replaced by an expired-window notice so the student understands why the
+/// cancel option is gone.
+class _CancellationAction extends StatefulWidget {
+  final FoodOrder order;
+  final bool canCancel;
+  final bool isCancelling;
+  final VoidCallback onCancel;
+
+  const _CancellationAction({
+    required this.order,
+    required this.canCancel,
+    required this.isCancelling,
+    required this.onCancel,
+  });
+
+  @override
+  State<_CancellationAction> createState() => _CancellationActionState();
+}
+
+class _CancellationActionState extends State<_CancellationAction> {
+  bool _expired = false;
+
+  @override
+  Widget build(BuildContext context) {
+    // The window has already closed (deadline passed) or closed while this
+    // widget was mounted — render the expired notice directly instead of a
+    // countdown that would instantly flip to it.
+    if (!widget.canCancel || _expired) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.lock_clock, size: 14, color: Colors.grey.shade500),
+          const SizedBox(width: 4),
+          Text(
+            'Cancellation window expired',
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+          ),
+        ],
+      );
+    }
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        OutlinedButton.icon(
+          onPressed: widget.isCancelling ? null : widget.onCancel,
+          icon: widget.isCancelling
+              ? const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.cancel_outlined, size: 16),
+          label: Text(widget.isCancelling ? 'Cancelling…' : 'Cancel order'),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: Colors.red.shade700,
+            side: BorderSide(color: Colors.red.shade300),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            minimumSize: Size.zero,
+            textStyle: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        CancellationCountdown(
+          cancellationDeadline: widget.order.cancellationDeadline,
+          onExpired: () {
+            if (mounted) setState(() => _expired = true);
+          },
+        ),
+      ],
+    );
+  }
+}
+
+
+/// Resolves a pickup-extension failure to a user-facing message.
+///
+/// Kept in the consuming screen so it can later be swapped for the app's
+/// localization resources; English remains the default locale.
+String _pickupExtensionErrorMessage(PickupExtensionFailure failure) {
+  switch (failure) {
+    case PickupExtensionFailure.notFound:
+      return 'Order not found. It may have been cancelled.';
+    case PickupExtensionFailure.permissionDenied:
+      return 'You cannot extend this order.';
+    case PickupExtensionFailure.failedPrecondition:
+      return 'The pickup deadline can no longer be extended.';
+    case PickupExtensionFailure.unauthenticated:
+      return 'Please sign in to extend your pickup.';
+    case PickupExtensionFailure.unavailable:
+      return 'The server is unreachable. Please try again.';
+    case PickupExtensionFailure.failed:
+      return 'Could not extend pickup. Please try again.';
+    case PickupExtensionFailure.networkError:
+      return 'Could not extend pickup. Please check your connection and try again.';
+  }
+}
+
+/// Resolves a cancellation failure to a user-facing message.
+///
+/// Kept in the consuming screen so it can later be swapped for the app's
+/// localization resources; English remains the default locale.
+String _cancellationErrorMessage(OrderCancellationFailure failure) {
+  switch (failure) {
+    case OrderCancellationFailure.notFound:
+      return 'Order not found. It may have already been processed.';
+    case OrderCancellationFailure.permissionDenied:
+      return 'You can only cancel your own orders.';
+    case OrderCancellationFailure.failedPrecondition:
+      return 'Cancellation window has expired.';
+    case OrderCancellationFailure.unauthenticated:
+      return 'Please sign in to cancel your order.';
+    case OrderCancellationFailure.unavailable:
+      return 'The server is unreachable. Please try again.';
+    case OrderCancellationFailure.failed:
+      return 'Could not cancel the order. Please try again.';
+    case OrderCancellationFailure.networkError:
+      return 'Unable to cancel the order. Check your connection and try again.';
   }
 }

@@ -99,12 +99,16 @@ class FaqScreen extends StatelessWidget {
             ],
           ),
           ExpansionTile(
-            title: Text('What happens my account is suspended?'),
+            title: Text('What if I miss a pickup?'),
             children: [
               Padding(
                 padding: EdgeInsets.all(16.0),
                 child: Text(
-                  'If you accidentally did not collect your food and ended up suspended consider appealing to the cafe admins or report via the support team email.',
+                  'Missing a pickup does not suspend your account. Your pickup '
+                  'record simply reflects orders that were not collected on '
+                  'time, so you can keep ordering normally. If you ever '
+                  'believe your account was suspended by mistake, contact us '
+                  'through the support email or WhatsApp and we will help.',
                 ),
               ),
             ],
@@ -149,7 +153,7 @@ class ContactScreen extends StatelessWidget {
 
   /// whatsapp
   Future<void> _openWhatsApp() async {
-    final String phoneNumber = "255671035765";
+    final String phoneNumber = "255781710688";
     final String message =
         "Hello! I am contacting you from the Campus Bite app.";
     final Uri whatsappUri = Uri.parse(
@@ -182,7 +186,7 @@ class ContactScreen extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             const Text(
-              'Have a problem with your order or a suggestion for Campus Bite? Let us know!',
+              'An app feature is broken, a bug, a problem with your order or a suggestion for Campus Bite? Let us know!',
               style: TextStyle(fontSize: 16),
             ),
             const SizedBox(height: 24),

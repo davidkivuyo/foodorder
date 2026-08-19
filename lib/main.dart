@@ -15,9 +15,16 @@
 // deepLinkToTabIndex
 import 'dart:async';
 
+import 'package:clock/clock.dart';
 import 'package:campusbite/navigation/router.dart';
+import 'package:campusbite/services/analytics_service.dart';
 import 'package:campusbite/services/app_log.dart';
 import 'package:campusbite/services/connectivity_service.dart';
+import 'package:campusbite/services/crash_reporting_service.dart';
+import 'package:campusbite/services/diagnostics_service.dart';
+import 'package:campusbite/services/error_service.dart';
+import 'package:campusbite/services/health_service.dart';
+import 'package:campusbite/services/performance_service.dart';
 import 'package:campusbite/services/fcm_service.dart';
 import 'package:campusbite/services/notification_service.dart';
 import 'package:campusbite/services/sync_queue_service.dart';
@@ -54,104 +61,137 @@ final FcmService fcmService = FcmService(
 );
 
 Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+  // Phase 17 — every uncaught error, startup or runtime, flows through
+  // ErrorService. All Flutter binding setup and application startup run in
+  // this one guarded zone so initialization failures are handled like any
+  // other uncaught error instead of terminating the isolate.
+  await runZonedGuarded(() async {
+    WidgetsFlutterBinding.ensureInitialized();
 
-  // Phase 15 — fail closed: a web RELEASE build without a reCAPTCHA v3 site
-  // key cannot attest requests, so App Check-enforced backends would reject
-  // every call. Refuse to start instead of running a silently broken app.
-  // Only debug builds keep the no-provider path (attestation is not enforced
-  // in development) and log a warning.
-  if (kIsWeb && !kDebugMode && kRecaptchaSiteKey.isEmpty) {
-    AppLog.e(
-      '[AppCheck] Web release build missing RECAPTCHA_SITE_KEY — '
-      'refusing to start without attestation',
-    );
-    runApp(const _AppCheckMisconfiguredApp());
-    return;
-  }
+    // Phase 17 — install the global error handlers before anything else can
+    // throw. The startup performance trace begins later, after Firebase and
+    // the Performance service are initialized (see below), so the trace is
+    // actually created instead of being silently dropped.
+    ErrorService.instance.init();
 
-  // Track whether Firebase initialized so every Firebase-dependent setup
-  // below is gated behind this readiness flag. If init fails (e.g. no
-  // default Firebase app exists), the app degrades safely: FCM, the auth
-  // listener and Firestore persistence are skipped instead of throwing.
-  var firebaseReady = false;
-  try {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
-    firebaseReady = true;
-  } on Exception catch (e, stack) {
-    AppLog.e('Firebase init error', e, stack);
-    // Continue — app degrades gracefully if Firebase is unavailable.
-  }
+    // Phase 15 — fail closed: a web RELEASE build without a reCAPTCHA v3 site
+    // key cannot attest requests, so App Check-enforced backends would reject
+    // every call. Refuse to start instead of running a silently broken app.
+    // Only debug builds keep the no-provider path (attestation is not enforced
+    // in development) and log a warning.
+    if (kIsWeb && !kDebugMode && kRecaptchaSiteKey.isEmpty) {
+      AppLog.e(
+        '[AppCheck] Web release build missing RECAPTCHA_SITE_KEY — '
+        'refusing to start without attestation',
+      );
+      PerformanceService.instance.endAppStartup();
+      runApp(const _AppCheckMisconfiguredApp());
+      return;
+    }
 
-  if (firebaseReady) {
-    // ── Phase 15: Firebase App Check ───────────────────────────────────
-    // Attest that requests come from the genuine app before any Firestore
-    // access. Provider selection:
-    //   • Android release — Play Integrity (hardware-backed attestation).
-    //   • Android debug   — debug provider (tokens must be registered in
-    //                       Firebase Console → App Check → Manage debug
-    //                       tokens).
-    //   • Web             — reCAPTCHA v3, when a site key is provided via
-    //                       --dart-define (see kRecaptchaSiteKey).
-    // App Check activation must NEVER crash the app: failures are logged
-    // (debug only) and the app continues without attestation tokens, which
-    // will surface as permission-denied if the backend enforces App Check.
+    // Track whether Firebase initialized so every Firebase-dependent setup
+    // below is gated behind this readiness flag. If init fails (e.g. no
+    // default Firebase app exists), the app degrades safely: FCM, the auth
+    // listener and Firestore persistence are skipped instead of throwing.
+    var firebaseReady = false;
     try {
-      // Null on web without a reCAPTCHA key — allowed for debug builds only
-      // (release builds fail closed before Firebase initialization).
-      final webProvider = kIsWeb && kRecaptchaSiteKey.isNotEmpty
-          ? ReCaptchaV3Provider(kRecaptchaSiteKey)
-          : null;
-      if (kIsWeb && webProvider == null) {
-        AppLog.w(
-          '[AppCheck] Web build running without a reCAPTCHA site key — '
-          'App Check attestation disabled (debug builds only)',
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+      firebaseReady = true;
+    } on Exception catch (e, stack) {
+      AppLog.e('Firebase init error', e, stack);
+      // Continue — app degrades gracefully if Firebase is unavailable.
+    }
+
+    // Phase 17 — Performance Monitoring must be initialized before the
+    // startup trace begins: startTrace() returns null while the service is
+    // unavailable, so calling beginAppStartup() earlier would silently drop
+    // the app_startup measurement. initialize() is internally guarded and
+    // never throws; when Firebase is unavailable the service stays disabled
+    // and beginAppStartup() degrades to a no-op.
+    //
+    // Deliberate coverage tradeoff: the app_startup trace spans from here
+    // (post-Firebase-init) to the first frame, excluding Firebase.initializeApp
+    // time, because the trace can only begin once the service is initialized.
+    await PerformanceService.instance.initialize();
+    // Begin the startup measurement before the first frame renders; it is
+    // stopped in the post-frame callback after runApp().
+    PerformanceService.instance.beginAppStartup();
+
+    if (firebaseReady) {
+      HealthService.instance.markFirebaseReady();
+      // Phase 17 — Crashlytics/Analytics/Performance bootstrap.
+      // Fire-and-forget: monitoring failures are logged and never block
+      // startup.
+      unawaited(_bootstrapMonitoring());
+
+      // ── Phase 15: Firebase App Check ─────────────────────────────────
+      // Attest that requests come from the genuine app before any Firestore
+      // access. Provider selection:
+      //   • Android release — Play Integrity (hardware-backed attestation).
+      //   • Android debug   — debug provider (tokens must be registered in
+      //                       Firebase Console → App Check → Manage debug
+      //                       tokens).
+      //   • Web             — reCAPTCHA v3, when a site key is provided via
+      //                       --dart-define (see kRecaptchaSiteKey).
+      // App Check activation must NEVER crash the app: failures are logged
+      // (debug only) and the app continues without attestation tokens, which
+      // will surface as permission-denied if the backend enforces App Check.
+      try {
+        // Null on web without a reCAPTCHA key — allowed for debug builds only
+        // (release builds fail closed before Firebase initialization).
+        final webProvider = kIsWeb && kRecaptchaSiteKey.isNotEmpty
+            ? ReCaptchaV3Provider(kRecaptchaSiteKey)
+            : null;
+        if (kIsWeb && webProvider == null) {
+          AppLog.w(
+            '[AppCheck] Web build running without a reCAPTCHA site key — '
+            'App Check attestation disabled (debug builds only)',
+          );
+        }
+        await FirebaseAppCheck.instance.activate(
+          providerAndroid: kDebugMode
+              ? const AndroidDebugProvider()
+              : const AndroidPlayIntegrityProvider(),
+          providerWeb: webProvider,
+        );
+        await FirebaseAppCheck.instance.setTokenAutoRefreshEnabled(true);
+        AppLog.d('Firebase App Check activated');
+      } on Exception catch (e, stack) {
+        AppLog.e(
+          'App Check activation failed — continuing without attestation',
+          e,
+          stack,
         );
       }
-      await FirebaseAppCheck.instance.activate(
-        providerAndroid: kDebugMode
-            ? const AndroidDebugProvider()
-            : const AndroidPlayIntegrityProvider(),
-        providerWeb: webProvider,
-      );
-      await FirebaseAppCheck.instance.setTokenAutoRefreshEnabled(true);
-      AppLog.d('Firebase App Check activated');
-    } on Exception catch (e, stack) {
-      AppLog.e(
-        'App Check activation failed — continuing without attestation',
-        e,
-        stack,
-      );
-    }
-  }
-
-  if (firebaseReady) {
-    // ── Phase 13: Firestore offline persistence ─────────────────────────
-    // Enable the local cache so menu, food details, categories and reviews
-    // render instantly from cache before the network refreshes them.
-    // Must be set before any other Firestore operation.
-    try {
-      FirebaseFirestore.instance.settings = const Settings(
-        persistenceEnabled: true,
-      );
-      AppLog.d('Firestore offline persistence enabled');
-    } on Exception catch (e) {
-      AppLog.e('Failed to enable Firestore persistence', e);
     }
 
-    // Register background message handler once at startup (not per-auth).
-    FirebaseMessaging.onBackgroundMessage(fcmBackgroundMessageHandler);
-  } else {
-    AppLog.w('Firebase unavailable — skipping persistence and FCM setup');
-  }
+    if (firebaseReady) {
+      // ── Phase 13: Firestore offline persistence ───────────────────────
+      // Enable the local cache so menu, food details, categories and reviews
+      // render instantly from cache before the network refreshes them.
+      // Must be set before any other Firestore operation.
+      try {
+        FirebaseFirestore.instance.settings = const Settings(
+          persistenceEnabled: true,
+        );
+        AppLog.d('Firestore offline persistence enabled');
+      } on Exception catch (e) {
+        AppLog.e('Failed to enable Firestore persistence', e);
+      }
 
-  usePathUrlStrategy();
-  LicenseRegistry.addLicense(() async* {
-    yield const LicenseEntryWithLineBreaks(
-      ['Campus Bite'],
-      '''
+      // Register background message handler once at startup (not per-auth).
+      FirebaseMessaging.onBackgroundMessage(fcmBackgroundMessageHandler);
+    } else {
+      AppLog.w('Firebase unavailable — skipping persistence and FCM setup');
+    }
+
+    usePathUrlStrategy();
+    LicenseRegistry.addLicense(() async* {
+      yield const LicenseEntryWithLineBreaks(
+        ['Campus Bite'],
+        '''
 The software components of this application incorporate source code include the Apache version 2.0 Open Source License and its following notice.
 
 Copyright 2026 Campus Bite Contributors, Larason
@@ -168,22 +208,53 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
   ''',
-    );
+      );
+    });
+    // ── Phase 12: Connectivity & Sync Queue bootstrap ─────────────────
+    // Eagerly spin up the singleton so the polling timer starts and the
+    // SyncQueueService loads any queued operations from SharedPreferences
+    // before the first frame is drawn.
+    ConnectivityService();
+    SyncQueueService();
+
+    runApp(MyApp(firebaseReady: firebaseReady));
+
+    // Stop the startup trace once the first frame is rendered.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      PerformanceService.instance.endAppStartup();
+    });
+
+    // ── Phase 14: in-app updates ───────────────────────────────────────
+    // Fire-and-forget; every failure path in the update check is swallowed
+    // so a network error can never block app startup.
+    unawaited(registerPeriodicUpdateCheck());
+    unawaited(UpdateService.instance.checkForUpdate());
+  }, (Object error, StackTrace stack) {
+    ErrorService.instance.handleZoneError(error, stack);
   });
-  // ── Phase 12: Connectivity & Sync Queue bootstrap ───────────────────
-  // Eagerly spin up the singleton so the polling timer starts and the
-  // SyncQueueService loads any queued operations from SharedPreferences
-  // before the first frame is drawn.
-  ConnectivityService();
-  SyncQueueService();
+}
 
-  runApp(MyApp(firebaseReady: firebaseReady));
-
-  // ── Phase 14: in-app updates ─────────────────────────────────────────
-  // Fire-and-forget; every failure path in the update check is swallowed so
-  // a network error can never block app startup.
-  unawaited(registerPeriodicUpdateCheck());
-  unawaited(UpdateService.instance.checkForUpdate());
+/// Phase 17 — initializes Crashlytics and Analytics once Firebase is ready
+/// (Performance Monitoring is initialized directly in main() so the startup
+/// trace is not dropped), and keeps the Crashlytics network-status key in
+/// sync with connectivity changes.
+Future<void> _bootstrapMonitoring() async {
+  try {
+    // initialize() must run first — recordAppVersion() is a no-op while the
+    // service is unavailable, so the version keys would never be recorded.
+    await CrashReportingService.instance.initialize();
+    await CrashReportingService.instance.recordAppVersion();
+    await AnalyticsService.instance.initialize();
+    // Performance Monitoring is initialized directly in main() — before the
+    // startup trace is begun — not here, so the app_startup measurement is
+    // never dropped while this bootstrap runs fire-and-forget.
+  } catch (e, stack) {
+    AppLog.e('[Monitoring] bootstrap error', e, stack);
+  }
+  CrashReportingService.instance.setNetworkStatus(ConnectivityService().isOnline);
+  ConnectivityService().onConnectivityChanged.listen((online) {
+    CrashReportingService.instance.setNetworkStatus(online);
+  });
 }
 
 /// Initialize FCM for the current authenticated user.
@@ -219,7 +290,7 @@ class MyApp extends StatefulWidget {
   State<MyApp> createState() => _MyAppState();
 }
 
-class _MyAppState extends State<MyApp> {
+class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   // Deduplication: prevent handling the same deep link twice within 5 seconds.
   // This guards against redundant notification-tap processing (e.g., the same
   // FCM notification being delivered via both onMessageOpenedApp and
@@ -228,9 +299,22 @@ class _MyAppState extends State<MyApp> {
   DateTime? _lastHandledAt;
   StreamSubscription<User?>? _authSub;
 
+  /// When the last resume-triggered update check ran. Used to throttle
+  /// foreground checks to [UpdateService.resumeCheckMinInterval] (the
+  /// Worker's `/latest` edge TTL), so a quick background/resume cycle does
+  /// not hammer the endpoint with identical reads.
+  DateTime? _lastResumeCheckAt;
+
   @override
   void initState() {
     super.initState();
+
+    // Phase 14 — observe lifecycle so a returning user gets an update check
+    // without needing a cold start. The startup check in main() has already
+    // run by the time the widget tree builds, so the first resume event is
+    // throttled out; only a genuine return to the foreground later re-checks.
+    WidgetsBinding.instance.addObserver(this);
+    _lastResumeCheckAt = clock.now();
 
     // Initialize FCM when auth state changes — only when Firebase is ready,
     // otherwise FirebaseAuth.instance would throw.
@@ -240,12 +324,81 @@ class _MyAppState extends State<MyApp> {
 
       _authSub = FirebaseAuth.instance.authStateChanges().listen((user) {
         initializeFcmForUser(user);
+        _onAuthChanged(user);
       });
     }
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkForUpdateOnResume();
+    }
+  }
+
+  /// Re-runs the update check when the app returns to the foreground so a
+  /// release published while the app was backgrounded is surfaced on the
+  /// next resume instead of waiting for the next cold start or the periodic
+  /// background task.
+  ///
+  /// Throttled to [UpdateService.resumeCheckMinInterval]: the Worker
+  /// edge-caches `/latest` for 5 minutes, so a check sooner than that would
+  /// only re-read the same cached metadata. Fire-and-forget — every failure
+  /// path in [UpdateService.checkForUpdate] is swallowed internally, so a
+  /// resume check can never disrupt the app.
+  void _checkForUpdateOnResume() {
+    final now = clock.now();
+    final last = _lastResumeCheckAt;
+    if (last != null &&
+        now.difference(last) < UpdateService.resumeCheckMinInterval) {
+      return;
+    }
+    _lastResumeCheckAt = now;
+    unawaited(UpdateService.instance.checkForUpdate());
+  }
+
+  User? _previousAuthUser;
+  bool _initialAuthEmission = true;
+
+  /// Emits anonymous analytics login/logout events and refreshes the
+  /// Crashlytics role key. The first emission (session restore) is not a
+  /// fresh login, so it only records context.
+  void _onAuthChanged(User? user) {
+    if (_initialAuthEmission) {
+      _initialAuthEmission = false;
+      _previousAuthUser = user;
+      if (user != null) unawaited(_refreshMonitoringUserContext(user));
+      return;
+    }
+    final wasLoggedIn = _previousAuthUser != null;
+    final isLoggedIn = user != null;
+    final sameAccount = user != null &&
+        _previousAuthUser != null &&
+        user.uid == _previousAuthUser!.uid;
+    _previousAuthUser = user;
+    if (!wasLoggedIn && isLoggedIn) {
+      AnalyticsService.instance.logEvent(AnalyticsEvent.userLoggedIn);
+      unawaited(_refreshMonitoringUserContext(user));
+    } else if (wasLoggedIn && !isLoggedIn) {
+      AnalyticsService.instance.logEvent(AnalyticsEvent.userLoggedOut);
+      CrashReportingService.instance.setUserRole('guest');
+    } else if (isLoggedIn && !sameAccount) {
+      // Account switch: both users were present but the UIDs differ, so the
+      // monitoring context must be refreshed for the new account without
+      // emitting a spurious login event.
+      unawaited(_refreshMonitoringUserContext(user));
+    }
+  }
+
+  /// Refreshes the anonymous crash-report role key after a login.
+  Future<void> _refreshMonitoringUserContext(User user) async {
+    final role = await DiagnosticsService.instance.fetchUserRole(user.uid);
+    CrashReportingService.instance.setUserRole(role);
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _authSub?.cancel();
     super.dispose();
   }
@@ -269,6 +422,10 @@ class _MyAppState extends State<MyApp> {
     _lastHandledAt = now;
 
     AppLog.d('[FCM] Deep link navigation: $deepLink');
+
+    // Phase 17 — anonymous notification-opened analytics + screen context.
+    AnalyticsService.instance.logEvent(AnalyticsEvent.notificationOpened);
+    CrashReportingService.instance.setCurrentScreen('notification_deep_link');
 
     // Convert deep link to a main screen tab and navigate via GoRouter.
     // This works whether the user is on the welcome screen or main screen.

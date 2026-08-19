@@ -16,8 +16,10 @@
 // This file is loaded by Firebase's SDK to handle background push messages.
 // More info: https://firebase.google.com/docs/cloud-messaging/js/receive
 
-importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js');
-importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging-compat.js');
+importScripts(
+  'https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js',
+  'https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging-compat.js',
+);
 
 firebase.initializeApp({
   apiKey: 'AIzaSyAvFaZE8wKzOPNQDxtGAJhi476KEyXrTTs',

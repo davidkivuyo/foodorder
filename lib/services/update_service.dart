@@ -21,8 +21,10 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/update_info.dart';
+import 'analytics_service.dart';
 import 'app_log.dart';
 import 'http_headers.dart';
+import 'performance_service.dart';
 import 'update_platform.dart';
 import 'version_comparator.dart';
 
@@ -72,10 +74,15 @@ enum UpdateState {
 ///
 /// Rules enforced here:
 /// - Only `https://dl.larason.space/...` download URLs are accepted.
-/// - Check results are cached locally with an independent TTL so the endpoint
-///   is never called more than once per cache-validity window.
+/// - Check results are cached locally with an independent TTL so the app still
+///   works offline and renders a decision without waiting on the network.
+///   The cache is a fast path and an offline fallback only: every foreground
+///   check revalidates against the endpoint (stale-while-revalidate) so a
+///   release published after the cache was written is never hidden until the
+///   TTL lapses.
 /// - Every network failure in the check path is silently swallowed (debug-log
-///   only) and the app keeps running on the current version.
+///   only) and the app keeps running on the cached decision (or the current
+///   version when there is no cache).
 /// - Full download URLs are never logged.
 class UpdateService extends ChangeNotifier {
   UpdateService._();
@@ -88,6 +95,15 @@ class UpdateService extends ChangeNotifier {
   /// Local cache TTL, independent of the Worker's 5-minute edge TTL.
   static const Duration localCacheTtl = Duration(hours: 12);
 
+  /// Minimum interval between app-resume update checks.
+  ///
+  /// The Worker edge-caches `/latest` for 5 minutes, so a check issued sooner
+  /// than this after the previous one would only re-read the same cached
+  /// metadata. Throttling resume-triggered checks to this cadence lets
+  /// returning users be re-checked promptly without hammering the endpoint on
+  /// frequent foreground transitions (notification shade, app switcher, …).
+  static const Duration resumeCheckMinInterval = Duration(minutes: 5);
+
   static const String _cacheKey = 'update_metadata_cache';
   static const String _cacheTimeKey = 'update_metadata_cached_at';
   static const String _dismissedKey = 'update_dismissed_version';
@@ -97,6 +113,30 @@ class UpdateService extends ChangeNotifier {
     'armeabi-v7a',
     'x86_64',
   ];
+
+  /// Test seam: when true, forces the update system on in non-release builds
+  /// (which otherwise never run updates) and bypasses the
+  /// `updatePlatform.supported` gate, so the check flow can be exercised on
+  /// hosts that are not Android (e.g. the VM test runner, where
+  /// `Platform.isAndroid` is false). Production behavior is untouched — this
+  /// is never set outside tests.
+  @visibleForTesting
+  static bool debugForceCheckEnabled = false;
+
+  /// Whether the in-app update system runs in this build.
+  ///
+  /// Updates are disabled outside release builds so the update UI and the
+  /// periodic background task never interrupt development and testing. They
+  /// run only in production release builds, or when [debugForceCheckEnabled]
+  /// is set (test seam).
+  static bool get buildEnabled => kReleaseMode || debugForceCheckEnabled;
+
+  /// Test seam: when set, [checkForUpdate] uses this fetcher instead of
+  /// hitting `https://dl.larason.space/latest`. Lets tests feed a scripted
+  /// server response without a network layer. Production behavior is
+  /// untouched — this is never set outside tests.
+  @visibleForTesting
+  static Future<UpdateInfo?> Function()? debugLatestFetcher;
 
   static const int maxRetries = 3;
 
@@ -144,6 +184,36 @@ class UpdateService extends ChangeNotifier {
 
   bool get dismissed => _dismissed;
 
+  /// Test seam: resets transient check/download state so the shared singleton
+  /// does not leak state (e.g. a stuck `_busy` from a fire-and-forget check)
+  /// between tests. Production behavior is untouched — never called outside
+  /// tests.
+  @visibleForTesting
+  void debugResetForTest() {
+    _busy = false;
+    _state = UpdateState.idle;
+    _info = null;
+    _errorMessage = null;
+    _errorRetryable = false;
+    _dismissed = false;
+    _progress = 0;
+    _receivedBytes = 0;
+    _totalBytes = 0;
+    _eta = Duration.zero;
+    _paused = false;
+    _installerPath = null;
+    _retryCount = 0;
+    _abi = null;
+  }
+
+  /// Test seam: forces [state] so tests can exercise `checkForUpdate`'s
+  /// flow-preservation behavior without a real download. Production behavior
+  /// is untouched — never called outside tests.
+  @visibleForTesting
+  void debugSetStateForTest(UpdateState state) {
+    _state = state;
+  }
+
   void _setState(UpdateState state) {
     _state = state;
     notifyListeners();
@@ -151,43 +221,125 @@ class UpdateService extends ChangeNotifier {
 
   // ── Update check ────────────────────────────────────────────────────────
 
-  /// Checks for an update, respecting the local cache TTL. Every network
-  /// failure is swallowed (debug-log only) so the app continues normally.
+  /// Checks for an update and keeps the app current with the server.
+  ///
+  /// Runs stale-while-revalidate: cached metadata (when present and inside the
+  /// local TTL) is applied first so the UI and blocking logic never wait on
+  /// the network, then the endpoint is always re-queried and the decision
+  /// refreshed with the latest metadata. A cached "no update" verdict goes
+  /// stale the moment a new release is published — trusting it for the whole
+  /// TTL is what made new versions invisible until app data was erased.
+  ///
+  /// Every network failure is swallowed (debug-log only): the app keeps the
+  /// cached decision, or falls back to a stale-but-present cache, or stays on
+  /// the current version when there is no cache at all.
   Future<void> checkForUpdate() async {
+    if (!buildEnabled) return;
     if (_busy) return;
-    if (!updatePlatform.supported) return;
+    if (!updatePlatform.supported && !debugForceCheckEnabled) return;
 
     _busy = true;
-    _setState(UpdateState.checking);
+    final checkTrace =
+        PerformanceService.instance.startTrace(kTraceUpdateCheck);
+    // Capture whether a download/install flow is running BEFORE touching
+    // state: flipping to `checking` (or re-applying cached metadata) while a
+    // flow is in progress would hide the download UI and clobber the running
+    // flow. A transient `failed` state is deliberately NOT a running flow — a
+    // fresh verdict must be allowed to re-prompt the user to retry.
+    final flowActiveAtStart = _isFlowActive();
+    if (!flowActiveAtStart) {
+      _setState(UpdateState.checking);
+    }
+    UpdateInfo? cached;
     try {
-      final cached = await _readCachedInfo();
-      if (cached != null) {
-        await _applyInfo(cached);
-        return;
+      // Fast path: apply any cached metadata immediately so a mandatory
+      // update's blocking screen (or an optional prompt) never waits for the
+      // network round-trip. Never while a flow is running — the flow owns the
+      // state until it completes or fails.
+      if (!flowActiveAtStart) {
+        cached = await _readCachedInfo();
+        if (cached != null) {
+          await _applyInfo(cached);
+        }
       }
 
-      final fetched = await _fetchLatest();
-      if (fetched == null) {
-        // Network failure or non-200 — silently fall back to whatever is
-        // cached (even if stale) or stay on the current version.
-        final fallback = await _readRawCache();
-        if (fallback != null) {
-          await _applyInfo(fallback);
-        } else {
-          await _cleanupSupersededInstallers();
-          _setState(UpdateState.current);
+      // Always revalidate against the endpoint on a foreground check. The
+      // Worker edge-caches `/latest` for 5 minutes, so a cold start costs one
+      // cheap cached read instead of hammering GitHub.
+      final fetched = debugLatestFetcher != null
+          ? await debugLatestFetcher!()
+          : await _fetchLatest();
+      if (fetched != null) {
+        await _writeCache(fetched);
+        // Recheck immediately before applying: the user may have started a
+        // download while the revalidation was in flight (e.g. they tapped
+        // "Update now" on the cached prompt during the fetch) — never clobber
+        // it.
+        if (!_isFlowActive()) {
+          await _applyInfo(fetched);
         }
         return;
       }
 
-      await _writeCache(fetched);
-      await _applyInfo(fetched);
+      // Network failure or non-200 — silently keep whatever decision is
+      // already in effect, or fall back to a stale-but-present cache, or stay
+      // on the current version. Never touch state while a flow runs.
+      if (!_isFlowActive()) {
+        await _applyOfflineVerdict(cached);
+      }
     } on Exception catch (e, stack) {
       AppLog.e('[Update] check failed', e, stack);
+      // A thrown revalidation (or cache read) must never clear a verdict
+      // already applied from the cache — e.g. a mandatory update blocking the
+      // app must stay blocking even when the refresh throws — and never clobber
+      // a running flow. Only fall back to a stale cache / current when nothing
+      // was applied yet.
+      if (!_isFlowActive()) {
+        await _applyOfflineVerdict(cached);
+      }
+    } finally {
+      checkTrace?.stop();
+      _busy = false;
+    }
+  }
+
+  /// Whether [state] represents a running download/install flow that owns the
+  /// UI state.
+  ///
+  /// A transient [UpdateState.failed] is deliberately NOT a running flow: a
+  /// later check must be able to apply a fresh verdict so the user can retry
+  /// instead of being stuck on the failure screen.
+  @visibleForTesting
+  static bool isFlowActiveState(UpdateState state) {
+    return state == UpdateState.downloading ||
+        state == UpdateState.paused ||
+        state == UpdateState.verifying ||
+        state == UpdateState.readyToInstall ||
+        state == UpdateState.installPermissionRequired ||
+        state == UpdateState.installing ||
+        state == UpdateState.installed;
+  }
+
+  bool _isFlowActive() => isFlowActiveState(_state);
+
+  /// Offline fallback used when the endpoint is unreachable or the check
+  /// throws: keep a verdict already applied from the cache (never clear a
+  /// blocking mandatory update), else apply a stale-but-present cache, else
+  /// stay on the current version. Best-effort — never throws.
+  Future<void> _applyOfflineVerdict(UpdateInfo? cached) async {
+    if (cached != null) return;
+    try {
+      final fallback = await _readRawCache();
+      if (fallback != null) {
+        await _applyInfo(fallback);
+      } else {
+        await _cleanupSupersededInstallers();
+        _setState(UpdateState.current);
+      }
+    } on Exception catch (e, stack) {
+      AppLog.e('[Update] offline verdict failed', e, stack);
       await _cleanupSupersededInstallers();
       _setState(UpdateState.current);
-    } finally {
-      _busy = false;
     }
   }
 
@@ -247,6 +399,10 @@ class UpdateService extends ChangeNotifier {
         '$decision');
 
     if (decision == UpdateState.updateRequired) {
+      AnalyticsService.instance.logEvent(
+        AnalyticsEvent.updateAvailable,
+        params: {'result': 'required'},
+      );
       _setState(UpdateState.updateRequired);
       return;
     }
@@ -257,6 +413,10 @@ class UpdateService extends ChangeNotifier {
       if (_dismissed) {
         _setState(UpdateState.current);
       } else {
+        AnalyticsService.instance.logEvent(
+          AnalyticsEvent.updateAvailable,
+          params: {'result': 'optional'},
+        );
         _setState(UpdateState.updateAvailable);
       }
       return;
@@ -420,6 +580,10 @@ class UpdateService extends ChangeNotifier {
     _errorMessage = null;
     _errorRetryable = false;
 
+    void downloadFailed() {
+      AnalyticsService.instance.logEvent(AnalyticsEvent.updateDownloadFailed);
+    }
+
     // A retry re-enters here while a previous attempt's client may still be
     // alive — drop it before creating the next one.
     _closeDownloadClient();
@@ -447,6 +611,7 @@ class UpdateService extends ChangeNotifier {
       _streamedResponse = await _sendNoRedirect(client, request, url);
       if (_streamedResponse == null) {
         _closeDownloadClient();
+        downloadFailed();
         _fail('Could not start download.');
         return;
       }
@@ -454,6 +619,7 @@ class UpdateService extends ChangeNotifier {
       final status = _streamedResponse!.statusCode;
       if (status != 200 && status != 206) {
         _closeDownloadClient();
+        downloadFailed();
         _fail('Could not start download ($status).');
         return;
       }
@@ -478,6 +644,7 @@ class UpdateService extends ChangeNotifier {
       _fileHandle = await updatePlatform.openFile(partPath, append: append);
       if (_fileHandle == null) {
         _closeDownloadClient();
+        downloadFailed();
         _fail('Could not open download file.');
         return;
       }
@@ -525,6 +692,7 @@ class UpdateService extends ChangeNotifier {
             }
           } else {
             _closeDownloadClient();
+            downloadFailed();
             _fail('Download failed.');
           }
         },
@@ -534,6 +702,7 @@ class UpdateService extends ChangeNotifier {
           if (_paused) return;
           final ok = await updatePlatform.renameFile(partPath, target);
           if (!ok) {
+            downloadFailed();
             _fail('Could not finalize download.');
             return;
           }
@@ -552,6 +721,7 @@ class UpdateService extends ChangeNotifier {
           _setState(UpdateState.paused);
         }
       } else {
+        downloadFailed();
         _fail('Download failed.');
       }
     }
@@ -565,10 +735,16 @@ class UpdateService extends ChangeNotifier {
       return;
     }
 
+    void verificationFailed() {
+      AnalyticsService.instance
+          .logEvent(AnalyticsEvent.updateVerificationFailed);
+    }
+
     final checksumUrl = _pickChecksumUrl(info);
     if (checksumUrl == null) {
       // No checksum to compare — fail closed rather than install unverified.
       await updatePlatform.deleteFile(path);
+      verificationFailed();
       _fail('Could not verify the update.');
       return;
     }
@@ -581,6 +757,7 @@ class UpdateService extends ChangeNotifier {
         final response = await _sendNoRedirect(client, request, checksumUrl);
         if (response == null) {
           await updatePlatform.deleteFile(path);
+          verificationFailed();
           _fail('Could not verify the update.');
           return;
         }
@@ -589,6 +766,7 @@ class UpdateService extends ChangeNotifier {
             );
         if (res.statusCode != 200) {
           await updatePlatform.deleteFile(path);
+          verificationFailed();
           _fail('Could not verify the update.');
           return;
         }
@@ -600,6 +778,7 @@ class UpdateService extends ChangeNotifier {
             expected != actual) {
           AppLog.w('[Update] checksum mismatch — installer discarded');
           await updatePlatform.deleteFile(path);
+          verificationFailed();
           _fail('Could not verify the update.');
           return;
         }
@@ -610,6 +789,7 @@ class UpdateService extends ChangeNotifier {
       }
     } on Exception catch (_) {
       await updatePlatform.deleteFile(path);
+      verificationFailed();
       _fail('Could not verify the update.');
       return;
     }
@@ -671,10 +851,12 @@ class UpdateService extends ChangeNotifier {
 
     final launched = await updatePlatform.launchInstaller(path);
     if (!launched) {
+      AnalyticsService.instance.logEvent(AnalyticsEvent.updateInstallFailed);
       _fail('Could not launch the installer.');
       return;
     }
 
+    AnalyticsService.instance.logEvent(AnalyticsEvent.updateStarted);
     _setState(UpdateState.installing);
 
     // The installer owns the file once ACTION_VIEW hands it off. Stay pinned

@@ -15,7 +15,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:cached_network_image/cached_network_image.dart';
+import '../services/performance_service.dart';
+import '../widgets/monitored_network_image.dart';
 
 class FoodItem {
   final String id;
@@ -178,25 +179,13 @@ class FoodItem {
         image.startsWith('http://') || image.startsWith('https://');
 
     if (isNetwork) {
-      return CachedNetworkImage(
+      // Phase 17 — monitored image: reports load timing/failures to
+      // ImageMonitor and skips known-broken URLs instead of retrying them.
+      return MonitoredNetworkImage(
         imageUrl: image,
         width: width,
         height: height,
         fit: fit,
-        placeholder: (context, url) => Container(
-          width: width,
-          height: height,
-          color: Colors.grey.shade200,
-          child: const Center(
-            child: SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            ),
-          ),
-        ),
-        errorWidget: (context, url, error) =>
-            _buildErrorPlaceholder(width, height),
       );
     } else {
       return Image.asset(
@@ -276,6 +265,12 @@ class FoodData {
   static StreamController<List<Section>>? _sectionController;
   static List<Section>? _cachedSections;
 
+  /// Last successful Firestore sync time — diagnostics only (Phase 17).
+  static DateTime? lastSuccessfulSyncAt;
+
+  /// Menu-load performance trace; stopped on the first snapshot (Phase 17).
+  static TraceHandle? _menuLoadTrace;
+
   /// Active Firestore snapshot subscriptions — kept so a failed listener can
   /// be cancelled and the stream recreated on the next access.  A Firestore
   /// snapshot listener stops after it emits an error and never resumes, so
@@ -316,6 +311,8 @@ class FoodData {
     if (_foodController != null) return;
     final controller = StreamController<List<FoodItem>>.broadcast();
     _foodController = controller;
+    _menuLoadTrace ??=
+        PerformanceService.instance.startTrace(kTraceMenuLoad);
     // The subscription is stored so a failed listener can be torn down and
     // recreated on the next access.  A Firestore snapshot listener stops
     // after an error and never resumes, so the controller is reset on error.
@@ -326,12 +323,17 @@ class FoodData {
           cachedFoodItems = snapshot.docs
               .map((doc) => FoodItem.fromMap(doc.data(), id: doc.id))
               .toList();
+          lastSuccessfulSyncAt = DateTime.now();
           _foodError = null;
+          _menuLoadTrace?.stop();
+          _menuLoadTrace = null;
           if (!controller.isClosed) {
             controller.add(cachedFoodItems!);
           }
         }, onError: (Object e) {
           _foodError = e;
+          _menuLoadTrace?.stop();
+          _menuLoadTrace = null;
           if (!controller.isClosed) controller.addError(e);
           _resetFoodStream();
         });
@@ -349,6 +351,7 @@ class FoodData {
           _cachedSections = snapshot.docs
               .map((doc) => Section.fromMap(doc.data(), id: doc.id))
               .toList();
+          lastSuccessfulSyncAt = DateTime.now();
           _sectionError = null;
           if (!controller.isClosed) {
             controller.add(_cachedSections!);
@@ -386,6 +389,11 @@ class FoodData {
   /// clears cached data/errors).  Call during sign-out and test teardown so
   /// the next access recreates fresh listeners with a clean slate.
   static void resetStreams() {
+    // Stop and clear an in-flight menu-load trace first, so a reset that
+    // happens before the first snapshot does not leak a stale handle that
+    // the next [_ensureFoodStream] would otherwise reuse.
+    _menuLoadTrace?.stop();
+    _menuLoadTrace = null;
     _resetFoodStream();
     _resetSectionStream();
     _foodError = null;

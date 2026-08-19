@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import 'package:campusbite/services/analytics_service.dart';
 import 'package:campusbite/viewmodels/verify_email_view_model.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -67,6 +68,8 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
     }
 
     if (outcome == VerifyEmailOutcome.verified) {
+      // Phase 17 — anonymous registration-completion event.
+      AnalyticsService.instance.logEvent(AnalyticsEvent.userRegistered);
       context.go('/main');
     }
   }

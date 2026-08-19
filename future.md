@@ -1,96 +1,39 @@
 # future implementation plans
 
-# NOT FULLFILLED
-1. migrate CI to blacksmith- "runs-on: blacksmith-4vcpu-ubuntu-2404" 
+# TODOS
+1. apply ai to view and monitor images uploaded to be for food only no harm or dangerous materials
 
-2. prepaire updating code to automatically fetch and update app with ease
-Preserves all of your current signing and build logic.
-Builds both the universal APK and split-per-ABI APKs.
-Renames APKs consistently.
-Uploads APKs to Firebase Storage.
-Generates release.json automatically.
-Publishes only release.json and release notes to GitHub Releases.
-Keeps your existing version/tag workflow intact.
+2. Add a 'for' field on every food items which  is for univerisity with a value of "for university"
+* and food items for outer restaurants will have a value of "for restaurants"
 
-3. ADD A Verification email step to disallow other peoples emails and stop email misuse-ready
+3. use n8n to automate creating newsletters for furnitures to subscribers in mailchimp
 
-6. add and search filter to search easily the long list of menu items in the admin app-ready
+4. in each food description page add a arrow button to view through a popup the cafe/restaurant location on google maps and distance from where the student is.
 
-# 5. Add a review screen with review count dashboard, "campusbite customer" reviews with pre-written templates to avoid review abuse and harsh languages 
-Users will be able to delete or edit their reviews.
-example
-* great deal
-* great value for money
-* not great as expected
-* hot food
-* served well
+5. add a search to view if the written cafe is already in database to avoid duplication
 
-6. Make the student app and admin app choose which university there in and ensure that the FOOD ITEM and CAFE(add a field to specify which university there in) in university A is not shown or mixed into university B, including their orders.
+6. create a new branch to add restaurants other than university ones
+* Their menu items will be able to link to whatsapp easily
+* Or start a messaging platform inside the app
+
+5. Make the student app and admin app choose which university there in and ensure that the FOOD ITEM and CAFE(add a field to specify which university there in) in university A is not shown or mixed into university B, including their orders.
 * Also add a university collection to list all available universities in which the app serve
 
-11. order screen should clean 24hrs and its history will be saved under /users/{userId}/history according to date, food item title and the total price.-ready
+7. Performance Analytics: Daily/weekly revenue, top-selling dishes, peak order hours, average prep time, customer rating trends.
 
-3. create a new branch to add restaurants other than university ones
-
-5. Performance Analytics: Daily/weekly revenue, top-selling dishes, peak order hours, average prep time, customer rating trends.
-
-2. add products for off_campus food items. the section field will be changed to off_campus, cafe field to offcampus, and the location field will be added to indicate the location of the offcampus cafes.
+8. add products for off_campus food items. the section field will be changed to off_campus, cafe field to offcampus, and the location field will be added to indicate the location of the offcampus cafes.
 // Row for deals outside campus cafes on home screnn
 * CardRowItems(title: "Deals outside campus cafes",items: offCampus,),
 // If cafe is 'offcampus', show 'OFF-CAMPUS', otherwise show 'CAFE(X)'
-* item.cafe.toLowerCase() == 'offcampus' ? '${item.rating} • offcampus' : '${item.rating} • CAFE(${item.cafe})',
+* item.cafe.toLowerCase() == 'offcampus' ? '${item.rating} • OFFCAMPUS' : '${item.rating} • CAFE(${item.cafe})',
 
-# Updated CampusBite Roadmap
+---
 
-✔ Phase 0
-Foundation
+# important
+Rule going forward
 
-✔ Phase 1
-Ordering System
+Keep versions strictly increasing across channels — a production tag must always be greater than the highest dev tag, and dev tags should be prereleases of a future version, not a parallel numbering track:
+- Bad: dev  v1.1.0-dev ,  v1.8.0-dev  → production  v1.0.0  (downgrade in name)
+- Good: production  v1.9.0  → then dev  v1.10.0-dev  → production  v2.0.0  → dev  v2.1.0-dev  …
 
-✔ Phase 2
-Student Discipline & Account Management
-
-↓
-
-✔ Phase 3
-Pickup Deadline Engine
-
-↓
-
-✔Phase 4
-Distance-Based Pickup Windows
-
-↓
-
-✔Phase 5
-Automatic Strike Engine
-
-↓
-
-✔Phase 6
-Notifications
-starting to finish with notification, very tired exshausted with freebuff, opencode and antigravity
-
-↓
-
-✔Phase 7
-Search & Personalization
-
-↓
-
-Phase 8
-Reviews & Feedback
-
-↓
-
-Phase 9
-Business Analytics
-
-↓
-
-Phase 10
-Production Hardening & Release
-
-
-# ai instructions for updating the app
+Your pipeline enforces this automatically — the  -prerelease  detection in the workflow ( IS_PRERELEASE ) publishes dev tags as GitHub prereleases, the semver validation ensures tags are always well-formed, and a release-ordering gate in the Extract Version step rejects any tag that is not semver-greater than every previously published tag (excluding the candidate itself, so re-runs pass). No manual gate is needed; a lower tag simply fails the build.

@@ -173,30 +173,34 @@ void main() {
         },
       );
 
-      test('audit_logs are admin-append-only (Part 20)', () {
+      test('audit_logs are backend-only — no client create (Part 20)', () {
         final auditBlock = rules.substring(
           rules.indexOf('match /audit_logs/{docId}'),
           rules.indexOf('match /users/{userId}'),
         );
-        expect(auditBlock, contains('allow create: if isAdmin()'));
-        expect(auditBlock, contains('validAuditLogCreate()'));
+        // Phase 18 — audit records are written only by trusted Cloud
+        // Functions (Admin SDK), which derive actor identity and timestamp
+        // server-side; direct client creates/updates/deletes are denied so
+        // no client can forge, skip, or tamper with the append-only trail.
+        expect(auditBlock, isNot(contains('allow create')));
         expect(auditBlock, contains('allow update: if false;'));
         expect(auditBlock, contains('allow delete: if false;'));
-        // Admins may only log actions as themself — no spoofing another admin
-        // or the automation engine ("system").
+        // Reads are cafe-scoped (Part 20): an audit record carrying a
+        // cafeId is readable only by an admin of that cafe; cafeless
+        // records remain readable by any admin. Cross-cafe reads are denied
+        // (covered behaviourally by the emulator suite).
+        expect(
+          auditBlock,
+          contains('allow read: if isAdmin() && adminCanReadAudit()'),
+        );
         final auditFn = rules.substring(
-          rules.indexOf('function validAuditLogCreate()'),
-          rules.indexOf('// ── Rules ─'),
+          rules.indexOf('function adminCanReadAudit()'),
+          rules.indexOf('function callerDoc()'),
         );
-        expect(auditFn, contains('request.auth.uid'));
-        expect(
-          auditFn,
-          contains("request.resource.data.adminId == request.auth.uid"),
-        );
-        expect(
-          auditFn,
-          contains("request.resource.data.performedBy == request.auth.uid"),
-        );
+        expect(auditFn, contains("'cafeId'"));
+        expect(auditFn, contains('callerDoc().data.cafeName'));
+        // The client-side create helper is gone.
+        expect(rules, isNot(contains('function validAuditLogCreate()')));
       });
 
       test('orders are owner-scoped and admin-gated (Part 10)', () {
@@ -205,10 +209,13 @@ void main() {
           rules.indexOf('match /section/{sectionId}'),
         );
         expect(orderBlock, contains('isOwner('));
-        expect(orderBlock, contains('validOrderCreateRequest()'));
         expect(orderBlock, contains('adminNotModifyingProtectedOrderFields()'));
         // Illegal/backwards status transitions must be rejected (Part 10).
         expect(orderBlock, contains('validOrderStatusTransition()'));
+        // Phase E — order creation is exclusively server-authoritative
+        // (placeOrder callable): no client create rule exists on /orders.
+        expect(orderBlock, isNot(contains('allow create')));
+        expect(rules, isNot(contains('function validOrderCreateRequest()')));
         expect(rules, contains('function canonicalOrderStatus(status)'));
         expect(rules, contains('function validOrderStatusTransition()'));
       });
@@ -238,13 +245,16 @@ void main() {
         expect(
           fn,
           contains(
-            "let allowed = ['fullName', 'email', 'phoneNumber', 'cafeName'];",
+            "let allowed = ['fullName', 'email', 'phoneNumber', 'cafeName', "
+            "'updatedAt'];",
           ),
         );
         // role / strikeCount / accountStatus must NOT be student-writable.
         expect(fn, isNot(contains("'role'")));
         expect(fn, isNot(contains("'strikeCount'")));
         expect(fn, isNot(contains("'accountStatus'")));
+        // updatedAt is refreshable only via the server timestamp sentinel.
+        expect(fn, contains('request.resource.data.updatedAt == request.time'));
         // A changed email must equal the verified ID-token email claim.
         expect(
           fn,

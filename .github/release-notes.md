@@ -1,12 +1,22 @@
-# Campus Bite
+# Campus Bite- Production Release
 
 Thank you for downloading Campus Bite.
 
-## Bug fixes
+This version is production release
 
-- Fixed hero tags mismatch issue on the home screen, category and search screens.
+##  Release features
 
-## special thanks
+- Users food ordering
+- Food reviewing
+- In app and phone Notifications
+- Meal planning
+- One tap reordering
+- Account profile customization information
+- Cafe details viewing
+- Seamless In app updates
+- Cafe/restaurants information
+
+## Special thanks
 To all app contributors, the app is open source under Apache 2.0 License.
 
 ## APKs
@@ -22,7 +32,3 @@ For older Android phones.
 
 ### x86_64
 For emulators and Intel devices.
-
----
-
-Built automatically by GitHub Actions.

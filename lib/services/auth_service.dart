@@ -22,6 +22,24 @@ import 'input_validator.dart';
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
+  /// Timestamp of the last successful network-backed Auth operation, or null
+  /// if none has completed in this session. Used only for health reporting —
+  /// never contains user data.
+  static DateTime? lastSuccessAt;
+
+  /// Timestamp of the last failed network-backed Auth operation, or null if
+  /// none has failed. Used only for health reporting — never user data.
+  static DateTime? lastFailureAt;
+
+  static void _record(bool success) {
+    final now = DateTime.now();
+    if (success) {
+      lastSuccessAt = now;
+    } else {
+      lastFailureAt = now;
+    }
+  }
+
   // ── Public helpers ──────────────────────────────────────────────────────────
 
   Stream<User?> get authStateChanges => _auth.authStateChanges();
@@ -73,8 +91,10 @@ class AuthService {
       if (credential.user != null) {
         await credential.user!.updateDisplayName(cleanName);
       }
+      _record(true);
       return null; // success — Firestore profile is NOT created yet
     } on Exception catch (e, stack) {
+      _record(false);
       AppLog.e('[AuthService] register error: type=${e.runtimeType}', e, stack);
       return _extractUserFriendlyError(e);
     }
@@ -102,8 +122,10 @@ class AuthService {
         email: InputValidator.sanitizeEmail(email),
         password: password,
       );
+      _record(true);
       return null; // success
     } on Exception catch (e, stack) {
+      _record(false);
       AppLog.e('[AuthService] signIn error: type=${e.runtimeType}', e, stack);
       // Phase 15 — anti-enumeration: sign-in failures must not reveal
       // whether an email exists or whether the password was correct.
@@ -119,8 +141,10 @@ class AuthService {
       final user = _auth.currentUser;
       if (user == null) return 'No authenticated user found.';
       await user.sendEmailVerification();
+      _record(true);
       return null; // success
     } on Exception catch (e) {
+      _record(false);
       AppLog.e('[AuthService] sendVerificationEmail error: type=${e.runtimeType}');
       return _extractUserFriendlyError(e);
     }
@@ -133,8 +157,10 @@ class AuthService {
       final user = _auth.currentUser;
       if (user == null) return 'No authenticated user found.';
       await user.reload();
+      _record(true);
       return null; // success
     } on Exception catch (e) {
+      _record(false);
       AppLog.e('[AuthService] reloadUser error: type=${e.runtimeType}');
       return _extractUserFriendlyError(e);
     }
@@ -156,8 +182,10 @@ class AuthService {
       final user = _auth.currentUser;
       if (user == null) return 'No authenticated user found.';
       await user.getIdToken(true);
+      _record(true);
       return null; // success
     } catch (e) {
+      _record(false);
       AppLog.e('[AuthService] refreshIdToken error: type=${e.runtimeType}');
       return 'Could not refresh session. Please try again.';
     }
@@ -172,6 +200,7 @@ class AuthService {
   Future<String?> sendPasswordReset({required String email}) async {
     try {
       await _auth.sendPasswordResetEmail(email: email.trim());
+      _record(true);
       return null; // success — same response for all outcomes
     } on Exception catch (e) {
       // Log the actual Firebase error code (safe for internal debugging).
@@ -195,8 +224,10 @@ class AuthService {
       final user = _auth.currentUser;
       if (user == null) return 'No authenticated user found.';
       await user.verifyBeforeUpdateEmail(newEmail.trim());
+      _record(true);
       return null; // success — a new verification email is sent automatically
     } on Exception catch (e) {
+      _record(false);
       AppLog.e('[AuthService] changeEmail error: type=${e.runtimeType}');
       return _extractUserFriendlyError(e);
     }
@@ -209,8 +240,10 @@ class AuthService {
       final user = _auth.currentUser;
       if (user == null) return 'No authenticated user found.';
       await user.delete();
+      _record(true);
       return null; // success
     } on Exception catch (e) {
+      _record(false);
       AppLog.e('[AuthService] deleteAccount error: type=${e.runtimeType}');
       return _extractUserFriendlyError(e);
     }

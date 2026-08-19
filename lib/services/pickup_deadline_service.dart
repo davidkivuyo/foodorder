@@ -17,6 +17,45 @@ import 'package:flutter/material.dart';
 class PickupDeadlineService {
   PickupDeadlineService._();
 
+  static const int defaultGracePeriodMinutes = 5;
+
+  static DateTime? getNoShowEligibleAt(
+    DateTime? pickupDeadline, {
+    int gracePeriodMinutes = defaultGracePeriodMinutes,
+  }) {
+    if (pickupDeadline == null) return null;
+    return pickupDeadline.add(Duration(minutes: gracePeriodMinutes));
+  }
+
+  static bool isInGracePeriod(
+    DateTime? pickupDeadline, {
+    int gracePeriodMinutes = defaultGracePeriodMinutes,
+  }) {
+    if (pickupDeadline == null) return false;
+    final now = DateTime.now();
+    final eligibleAt = getNoShowEligibleAt(pickupDeadline, gracePeriodMinutes: gracePeriodMinutes)!;
+    return !now.isBefore(pickupDeadline) && now.isBefore(eligibleAt);
+  }
+
+  static bool isGracePeriodExpired(
+    DateTime? pickupDeadline, {
+    int gracePeriodMinutes = defaultGracePeriodMinutes,
+  }) {
+    if (pickupDeadline == null) return false;
+    final eligibleAt = getNoShowEligibleAt(pickupDeadline, gracePeriodMinutes: gracePeriodMinutes)!;
+    return !DateTime.now().isBefore(eligibleAt);
+  }
+
+  static Duration gracePeriodRemainingDuration(
+    DateTime? pickupDeadline, {
+    int gracePeriodMinutes = defaultGracePeriodMinutes,
+  }) {
+    if (pickupDeadline == null) return Duration.zero;
+    final eligibleAt = getNoShowEligibleAt(pickupDeadline, gracePeriodMinutes: gracePeriodMinutes)!;
+    final remaining = eligibleAt.difference(DateTime.now());
+    return remaining.isNegative ? Duration.zero : remaining;
+  }
+
   static Duration remainingDuration(DateTime? pickupDeadline) {
     if (pickupDeadline == null) return Duration.zero;
     final remaining = pickupDeadline.difference(DateTime.now());
@@ -32,6 +71,12 @@ class PickupDeadlineService {
       return '${hours}h ${minutes}m ${seconds}s';
     }
     return '${minutes}m ${seconds}s';
+  }
+
+  static String formatGraceCountdown(Duration duration) {
+    final minutes = duration.inMinutes.toString().padLeft(2, '0');
+    final seconds = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return 'Grace period active · $minutes:$seconds';
   }
 
   static String formatPickupTime(DateTime? dateTime) {

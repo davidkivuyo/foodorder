@@ -20,12 +20,15 @@ import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../data/food_data.dart';
 import '../models/review.dart';
+import '../services/analytics_service.dart';
 import '../services/app_log.dart';
+import '../services/crash_reporting_service.dart';
 import '../services/review_service.dart';
 import '../widgets/cafe_selection_dialog.dart';
 import '../widgets/stock_badge.dart';
 import '../widgets/add_review_dialog.dart';
 import 'reviews_screen.dart';
+import 'cafe_details_screen.dart';
 
 /// A reusable food item detail screen used from the home screen,
 /// category screen, common food list, search results, and favourites.
@@ -106,6 +109,13 @@ class _FoodDetailsScreenState extends State<FoodDetailsScreen> {
   @override
   void initState() {
     super.initState();
+    // Phase 17 — anonymous analytics (category only, never the item id) and
+    // crash-report screen context.
+    AnalyticsService.instance.logEvent(
+      AnalyticsEvent.foodViewed,
+      params: {'category': widget.item.category},
+    );
+    CrashReportingService.instance.setCurrentScreen('food_details');
     _checkReviewEligibility();
     _listenToFoodStats();
   }
@@ -748,22 +758,48 @@ class _FoodDetailsScreenState extends State<FoodDetailsScreen> {
                       ...item.availableCafes.map(
                         (cafe) => Padding(
                           padding: const EdgeInsets.only(bottom: 8),
-                          child: Row(
-                            children: [
-                              Icon(
-                                Icons.storefront_outlined,
-                                size: 18,
-                                color: Colors.grey.shade600,
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                cafe,
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  color: Colors.black87,
+                          child: InkWell(
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) =>
+                                      CafeDetailsScreen(cafeName: cafe),
                                 ),
+                              );
+                            },
+                            borderRadius: BorderRadius.circular(8),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 4,
+                                horizontal: 4,
                               ),
-                            ],
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.storefront_outlined,
+                                    size: 18,
+                                    color: Colors.orange.shade700,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      cafe,
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                        color: Colors.black87,
+                                      ),
+                                    ),
+                                  ),
+                                  Icon(
+                                    Icons.chevron_right,
+                                    size: 18,
+                                    color: Colors.grey.shade400,
+                                  ),
+                                ],
+                              ),
+                            ),
                           ),
                         ),
                       ),
@@ -954,9 +990,7 @@ class _FoodDetailsScreenState extends State<FoodDetailsScreen> {
       onTap: () {
         Navigator.push(
           context,
-          MaterialPageRoute(
-            builder: (_) => ReviewsScreen(foodItem: item),
-          ),
+          MaterialPageRoute(builder: (_) => ReviewsScreen(foodItem: item)),
         );
       },
       borderRadius: BorderRadius.circular(12),
@@ -995,10 +1029,7 @@ class _FoodDetailsScreenState extends State<FoodDetailsScreen> {
             const SizedBox(width: 4),
             Text(
               '($_displayReviewCount ${_displayReviewCount == 1 ? 'review' : 'reviews'})',
-              style: TextStyle(
-                color: Colors.grey.shade600,
-                fontSize: 14,
-              ),
+              style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
             ),
             const Spacer(),
             const Icon(
@@ -1032,10 +1063,7 @@ class _FoodDetailsScreenState extends State<FoodDetailsScreen> {
         ),
         label: Text(
           _hasExistingReview ? 'Edit Review' : 'Write a Review',
-          style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-          ),
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
         ),
       ),
     );

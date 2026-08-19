@@ -7,13 +7,17 @@ on:
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    # Deploy only after the no-show emulator integration suite has passed.
+    # Without this dependency GitHub Actions would run the jobs in parallel
+    # and could ship to Cloudflare Pages before (or despite) a failing suite.
+    needs: no-show-integration
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     steps:
       # Step 1: Checkout the code
       - uses: actions/checkout@v4
 
       # Step 2: Set up Java (required by Flutter)
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: 'zulu'
           java-version: '17'
@@ -22,6 +26,7 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
+          flutter-version: '3.44.6'
           cache: true
 
       # Step 4: Run the security & unit test suite before building.
@@ -59,3 +64,36 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: pages deploy build/web --project-name="foodorder"
+
+  # Order-lifecycle integration suites: run the REAL Firestore emulator with
+  # the REAL firestore.rules and the REAL order Cloud Functions (executable
+  # coverage for the static guardrails in no_show_foundation_test.dart and
+  # order_cancellation_foundation_test.dart). The Firestore emulator
+  # requires Java 21+.
+  no-show-integration:
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies
+        run: npm ci --ignore-scripts
+        working-directory: functions
+
+      - name: Run no-show emulator integration suite
+        run: npm run test:no-show:integration
+        working-directory: functions
+
+      - name: Run order-cancellation emulator integration suite
+        run: npm run test:cancellation:integration
+        working-directory: functions

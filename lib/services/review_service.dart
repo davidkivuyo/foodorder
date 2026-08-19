@@ -17,6 +17,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/review.dart';
 import '../repositories/review_repository.dart';
+import 'analytics_service.dart';
 import 'app_log.dart';
 
 /// Business-logic layer for the Reviews & Feedback system.
@@ -37,21 +38,26 @@ class ReviewService {
     ReviewRepository? repository,
     FirebaseFirestore? firestore,
     FirebaseAuth? auth,
-  })  : _repository = repository ?? ReviewRepository(),
-        _firestore = firestore ?? FirebaseFirestore.instance,
-        _auth = auth ?? FirebaseAuth.instance;
+  }) : _repository = repository ?? ReviewRepository(),
+       _firestore = firestore ?? FirebaseFirestore.instance,
+       _auth = auth ?? FirebaseAuth.instance;
 
-  String? get _userId => _auth.currentUser?.uid;
+  /// Current authenticated user ID, if any.
+  ///
+  /// Overridable in tests (FirebaseAuth itself cannot be subclassed).
+  String? get currentUserId => _auth.currentUser?.uid;
 
   // ── Eligibility ────────────────────────────────────────────────────────────
 
   /// Check if the current user can review a food item.
   ///
-  /// Finds all collected orders containing this food item that don't
-  /// yet have a review, plus any existing reviews for edit mode.
-  /// Students can review the same food item from different orders.
+  /// Once the user has reviewed this meal, edit mode is always preferred:
+  /// the button must say "Edit Review" and never fall back to "Write a
+  /// Review", even when the user has other collected (but unreviewed)
+  /// orders of the same meal. The check is scoped per food item, so
+  /// reviews for other meals never affect it.
   Future<ReviewEligibility> checkEligibility(String foodId) async {
-    final userId = _userId;
+    final userId = currentUserId;
     if (userId == null) {
       return ReviewEligibility.notEligible();
     }
@@ -59,24 +65,64 @@ class ReviewService {
     // 1. Find existing reviews for this food+user combination.
     final List<Review> existingReviews;
     try {
-      existingReviews =
-          await _repository.findUserReviewsForFood(foodId: foodId, userId: userId);
+      existingReviews = await _repository.findUserReviewsForFood(
+        foodId: foodId,
+        userId: userId,
+      );
     } on Exception catch (e) {
       AppLog.e('[ReviewService] checkEligibility review query error', e);
       return ReviewEligibility.notEligible();
     }
-    final reviewedOrderIds = existingReviews.map((r) => r.orderId).toSet();
 
-    // 2. Find collected orders containing this food item that are NOT yet reviewed.
+    // 2. A live review already exists for this meal — always edit mode.
+    //    Soft-deleted reviews don't count: they are invisible and should
+    //    allow a fresh review (createReview revives them by composite key).
+    //
+    //    The canonical review is selected deterministically: the most
+    //    recently updated live review wins, with the document ID as a
+    //    stable tiebreaker. createReview refuses to create a second live
+    //    review for the same meal, so at most one canonical doc exists
+    //    going forward — this ordering just makes legacy duplicates
+    //    resolve the same way on every call.
+    final liveReviews = existingReviews.where((r) => !r.deleted).toList();
+    if (liveReviews.isNotEmpty) {
+      // More than one live review for the same meal means legacy duplicate
+      // data exists (created before the one-review-per-meal guard). Flag it
+      // so the duplicates can be investigated and cleaned up; the sort below
+      // still resolves a deterministic canonical review in the meantime.
+      if (liveReviews.length > 1) {
+        AppLog.w(
+          '[ReviewService] checkEligibility: ${liveReviews.length} live '
+          'reviews found for food $foodId — legacy duplicate data',
+        );
+      }
+      liveReviews.sort((a, b) {
+        final aTime =
+            (a.updatedAt ?? a.createdAt) ??
+            DateTime.fromMillisecondsSinceEpoch(0);
+        final bTime =
+            (b.updatedAt ?? b.createdAt) ??
+            DateTime.fromMillisecondsSinceEpoch(0);
+        final byTime = bTime.compareTo(aTime);
+        return byTime != 0 ? byTime : a.id.compareTo(b.id);
+      });
+      final canonical = liveReviews.first;
+      return ReviewEligibility(
+        eligible: true,
+        hasExistingReview: true,
+        existingReview: canonical,
+        matchingOrderId: canonical.orderId,
+      );
+    }
+
+    // 3. No live review yet — find a collected order containing this food
+    //    item to attach the new review to.
     try {
       final orderIds = await _repository.findOrderIdsWithFoodItem(
         userId: userId,
         foodId: foodId,
       );
-
-      // Return the first matching order that hasn't been reviewed yet.
       for (final orderId in orderIds) {
-        if (reviewedOrderIds.contains(orderId)) continue;
         return ReviewEligibility(
           eligible: true,
           hasExistingReview: false,
@@ -89,30 +135,7 @@ class ReviewService {
       return ReviewEligibility.notEligible();
     }
 
-    // 3. No new eligible orders — if there's an existing review, show edit mode.
-    if (existingReviews.isNotEmpty) {
-      return ReviewEligibility(
-        eligible: true,
-        hasExistingReview: true,
-        existingReview: existingReviews.first,
-        matchingOrderId: existingReviews.first.orderId,
-      );
-    }
-
     return ReviewEligibility.notEligible();
-  }
-
-  /// Check if a specific (foodId, orderId, userId) combination already has a review.
-  Future<Review?> findExistingReviewForOrder({
-    required String foodId,
-    required String orderId,
-    required String userId,
-  }) async {
-    return _repository.findExistingReview(
-      foodId: foodId,
-      orderId: orderId,
-      userId: userId,
-    );
   }
 
   // ── CRUD ───────────────────────────────────────────────────────────────────
@@ -136,8 +159,31 @@ class ReviewService {
     bool anonymous = true,
     String? displayName,
   }) async {
-    final userId = _userId;
+    final userId = currentUserId;
     if (userId == null) return null;
+
+    // ── Step 0: One live review per (user, food) — reject duplicates ──
+    // A user may only have a single live review for a given meal, no
+    // matter which collected order it is attached to. Without this guard,
+    // a second review for the same meal via a different order would
+    // inflate the food's reviewCount and rating distribution. Soft-deleted
+    // reviews don't block: they are invisible and may be revived or
+    // replaced.
+    try {
+      final existingReviews = await _repository.findUserReviewsForFood(
+        foodId: foodId,
+        userId: userId,
+      );
+      if (existingReviews.any((r) => !r.deleted)) {
+        AppLog.d(
+          '[ReviewService] createReview: user already has a live review for food $foodId',
+        );
+        return null;
+      }
+    } on Exception catch (e) {
+      AppLog.e('[ReviewService] createReview duplicate guard error', e);
+      return null;
+    }
 
     // ── Step 1: Verify order eligibility atomically ──────────────────
     try {
@@ -152,7 +198,9 @@ class ReviewService {
 
       // Check ownership
       if (orderData['studentId'] != userId) {
-        AppLog.d('[ReviewService] createReview: order $orderId ownership mismatch — rejected');
+        AppLog.d(
+          '[ReviewService] createReview: order $orderId ownership mismatch — rejected',
+        );
         return null;
       }
 
@@ -160,7 +208,9 @@ class ReviewService {
       // any normalized casing in the stored status).
       final status = orderData['status'] as String? ?? '';
       if (status.toLowerCase() != 'collected') {
-        AppLog.d('[ReviewService] createReview: order $orderId status is $status, not collected');
+        AppLog.d(
+          '[ReviewService] createReview: order $orderId status is $status, not collected',
+        );
         return null;
       }
 
@@ -180,21 +230,9 @@ class ReviewService {
         }
       }
       if (!containsFood) {
-        AppLog.d('[ReviewService] createReview: order $orderId does not contain food $foodId');
-        return null;
-      }
-
-      // Check for any existing review (including soft-deleted) for this
-      // (userId, orderId, foodId) combination using the deterministic
-      // composite key. Non-deleted reviews block creation; soft-deleted
-      // reviews are revived instead.
-      final existingNonDeleted = await _repository.findExistingReview(
-        foodId: foodId,
-        orderId: orderId,
-        userId: userId,
-      );
-      if (existingNonDeleted != null) {
-        AppLog.d('[ReviewService] createReview: review already exists for $orderId');
+        AppLog.d(
+          '[ReviewService] createReview: order $orderId does not contain food $foodId',
+        );
         return null;
       }
     } on Exception catch (e) {
@@ -214,10 +252,11 @@ class ReviewService {
     final name = anonymous
         ? 'CampusBite Customer'
         : ((displayName != null && displayName.isNotEmpty)
-            ? displayName
-            : (currentUserDisplayName != null && currentUserDisplayName.isNotEmpty)
-                ? currentUserDisplayName
-                : 'CampusBite Customer');
+              ? displayName
+              : (currentUserDisplayName != null &&
+                    currentUserDisplayName.isNotEmpty)
+              ? currentUserDisplayName
+              : 'CampusBite Customer');
 
     // ── Step 3: Create or revive the review ──────────────────────────
     final review = Review(
@@ -257,9 +296,12 @@ class ReviewService {
           'updatedAt': FieldValue.serverTimestamp(),
         };
 
-        final revived = await _repository.update(softDeleted.id, reviveData);
+        final revived = await _repository.revive(softDeleted.id, reviveData);
         // Rating stats are updated server-side by the onReviewChanged
         // Cloud Function. No client-side aggregation needed.
+        if (revived) {
+          AnalyticsService.instance.logEvent(AnalyticsEvent.reviewSubmitted);
+        }
         return revived ? softDeleted.id : null;
       }
 
@@ -267,6 +309,9 @@ class ReviewService {
       final docId = await _repository.create(review.toFirestore());
       // Rating stats are updated server-side by the onReviewChanged
       // Cloud Function. No client-side aggregation needed.
+      if (docId != null) {
+        AnalyticsService.instance.logEvent(AnalyticsEvent.reviewSubmitted);
+      }
       return docId;
     } on Exception catch (e) {
       AppLog.e('[ReviewService] createReview write error', e);
@@ -286,7 +331,7 @@ class ReviewService {
     bool anonymous = true,
     String? displayName,
   }) async {
-    final userId = _userId;
+    final userId = currentUserId;
     if (userId == null) return false;
 
     // ── Ownership & foodId check ─────────────────────────────────────
@@ -296,11 +341,15 @@ class ReviewService {
       return false;
     }
     if (existing.userId != userId) {
-      AppLog.d('[ReviewService] updateReview: review $reviewId owned by another user — rejected');
+      AppLog.d(
+        '[ReviewService] updateReview: review $reviewId owned by another user — rejected',
+      );
       return false;
     }
     if (existing.foodId != foodId) {
-      AppLog.d('[ReviewService] updateReview: review $reviewId foodId mismatch — rejected');
+      AppLog.d(
+        '[ReviewService] updateReview: review $reviewId foodId mismatch — rejected',
+      );
       return false;
     }
 
@@ -322,22 +371,20 @@ class ReviewService {
     final name = anonymous
         ? 'CampusBite Customer'
         : ((displayName != null && displayName.isNotEmpty)
-            ? displayName
-            : (currentUserDisplayName != null && currentUserDisplayName.isNotEmpty)
-                ? currentUserDisplayName
-                : 'CampusBite Customer');
+              ? displayName
+              : (currentUserDisplayName != null &&
+                    currentUserDisplayName.isNotEmpty)
+              ? currentUserDisplayName
+              : 'CampusBite Customer');
 
-    final success = await _repository.update(
-      reviewId,
-      {
-        'rating': clampedRating,
-        'templateTags': validTags,
-        'comment': sanitizedComment,
-        'anonymous': anonymous,
-        'displayName': name,
-        'updatedAt': FieldValue.serverTimestamp(),
-      },
-    );
+    final success = await _repository.update(reviewId, {
+      'rating': clampedRating,
+      'templateTags': validTags,
+      'comment': sanitizedComment,
+      'anonymous': anonymous,
+      'displayName': name,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
     // Rating stats are updated server-side by the onReviewChanged
     // Cloud Function. No client-side aggregation needed.
     return success;
@@ -350,7 +397,7 @@ class ReviewService {
     required String reviewId,
     required String foodId,
   }) async {
-    final userId = _userId;
+    final userId = currentUserId;
     if (userId == null) return false;
 
     // ── Ownership & foodId check ─────────────────────────────────────
@@ -360,11 +407,15 @@ class ReviewService {
       return false;
     }
     if (existing.userId != userId) {
-      AppLog.d('[ReviewService] deleteReview: review $reviewId owned by another user — rejected');
+      AppLog.d(
+        '[ReviewService] deleteReview: review $reviewId owned by another user — rejected',
+      );
       return false;
     }
     if (existing.foodId != foodId) {
-      AppLog.d('[ReviewService] deleteReview: review $reviewId foodId mismatch — rejected');
+      AppLog.d(
+        '[ReviewService] deleteReview: review $reviewId foodId mismatch — rejected',
+      );
       return false;
     }
 

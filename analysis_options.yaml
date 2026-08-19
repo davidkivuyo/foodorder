@@ -1,1 +1,8 @@
 include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  exclude:
+    # The functions/ package is a Node.js deployment (its firebase-tools
+    # devDependency ships Dart starter templates that are not part of this
+    # Flutter project and must not be analyzed here).
+    - functions/**

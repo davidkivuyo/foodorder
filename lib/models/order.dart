@@ -15,17 +15,19 @@
 import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../data/food_data.dart';
+import '../services/pickup_deadline_service.dart';
 import 'cart_item.dart';
 
 /// Represents the current state of an order.
 enum OrderStatus {
-  pending,    // Awaiting admin review
+  pending,    // Awaiting admin review (cancellable during the 2-min window)
   accepted,   // Admin accepted the order
   rejected,   // Admin rejected the order
   preparing,  // Food is being cooked
   ready,      // Ready for pickup
   collected,  // Student collected the order
-  noShow;     // Student did not collect
+  noShow,     // Student did not collect
+  cancelled;  // Student cancelled within the cancellation window (terminal)
 
   /// Parse an [OrderStatus] from its string representation.
   static OrderStatus fromString(String value) {
@@ -44,6 +46,8 @@ enum OrderStatus {
         return OrderStatus.collected;
       case 'no_show':
         return OrderStatus.noShow;
+      case 'cancelled':
+        return OrderStatus.cancelled;
       default:
         return OrderStatus.pending;
     }
@@ -58,6 +62,16 @@ enum OrderStatus {
         return name;
     }
   }
+
+  /// Order statuses that count toward the active-order limit (Phase E §10).
+  /// Mirrors the backend ACTIVE_ORDER_STATUSES constant. Canonical home of
+  /// the membership so callers never duplicate string literals.
+  static const List<OrderStatus> activeOrderStatuses = [
+    OrderStatus.pending,
+    OrderStatus.accepted,
+    OrderStatus.preparing,
+    OrderStatus.ready,
+  ];
 }
 
 /// Backend-driven pickup deadline status.
@@ -109,6 +123,7 @@ class FoodOrder {
   final DateTime? updatedAt;
   final DateTime? readyAt;
   final DateTime? pickupDeadline;
+  final DateTime? collectedAt;
   final int pickupWindowMinutes;
   final DeadlineStatus deadlineStatus;
 
@@ -119,10 +134,30 @@ class FoodOrder {
   final double? distanceMeters;
   final bool distanceCalculated;
 
-  // Phase 6: Automatic strike tracking
-  final bool strikeProcessed;
+  // No-show processing state (server-written by the pickup expiry function)
+  final bool noShowProcessed;
+  final DateTime? noShowAt;
   final DateTime? expiredAt;
-  final DateTime? strikeIssuedAt;
+
+  // Pickup deadline extension (student-initiated, once per order)
+  final bool deadlineExtended;
+  final DateTime? extensionAt;
+
+  // Phase B: 2-minute cancellation window (server-authoritative)
+  final DateTime? cancellationDeadline;
+  final DateTime? cancelledAt;
+  final String? cancelledBy;
+  final String? cancellationReason;
+
+  // Phase G: admin intervention — the no-show was excused (server-written
+  // by the excuseNoShow callable; the order itself stays NO_SHOW)
+  final bool noShowExcused;
+  final DateTime? excusedAt;
+  final String? excuseReason;
+
+  /// Calculated server-authoritative hard cutoff time for pickup eligibility.
+  DateTime? get noShowEligibleAt => pickupDeadline?.add(
+      const Duration(minutes: PickupDeadlineService.defaultGracePeriodMinutes));
 
   FoodOrder({
     required this.orderId,
@@ -135,6 +170,7 @@ class FoodOrder {
     this.updatedAt,
     this.readyAt,
     this.pickupDeadline,
+    this.collectedAt,
     this.pickupWindowMinutes = 20,
     this.deadlineStatus = DeadlineStatus.notReady,
     this.studentLocation,
@@ -142,9 +178,18 @@ class FoodOrder {
     this.cafeId,
     this.distanceMeters,
     this.distanceCalculated = false,
-    this.strikeProcessed = false,
+    this.noShowProcessed = false,
+    this.noShowAt,
     this.expiredAt,
-    this.strikeIssuedAt,
+    this.deadlineExtended = false,
+    this.extensionAt,
+    this.cancellationDeadline,
+    this.cancelledAt,
+    this.cancelledBy,
+    this.cancellationReason,
+    this.noShowExcused = false,
+    this.excusedAt,
+    this.excuseReason,
   });
 
   /// Build a [FoodOrder] from a Firestore document snapshot.
@@ -219,6 +264,7 @@ class FoodOrder {
       updatedAt: parseTimestamp(data['updatedAt']),
       readyAt: parseTimestamp(data['readyAt']),
       pickupDeadline: parseTimestamp(data['pickupDeadline']),
+      collectedAt: parseTimestamp(data['collectedAt']),
       pickupWindowMinutes: (data['pickupWindowMinutes'] as num?)?.toInt() ?? 20,
       deadlineStatus: DeadlineStatus.fromString(
         data['deadlineStatus'] as String? ?? 'NOT_READY',
@@ -228,9 +274,18 @@ class FoodOrder {
       cafeId: (data['cafeId'] as String?) ?? '',
       distanceMeters: (data['distanceMeters'] as num?)?.toDouble(),
       distanceCalculated: data['distanceCalculated'] as bool? ?? false,
-      strikeProcessed: data['strikeProcessed'] as bool? ?? false,
+      noShowProcessed: data['noShowProcessed'] as bool? ?? false,
+      noShowAt: parseTimestamp(data['noShowAt']),
       expiredAt: parseTimestamp(data['expiredAt']),
-      strikeIssuedAt: parseTimestamp(data['strikeIssuedAt']),
+      deadlineExtended: data['deadlineExtended'] as bool? ?? false,
+      extensionAt: parseTimestamp(data['extensionAt']),
+      cancellationDeadline: parseTimestamp(data['cancellationDeadline']),
+      cancelledAt: parseTimestamp(data['cancelledAt']),
+      cancelledBy: data['cancelledBy'] as String?,
+      cancellationReason: data['cancellationReason'] as String?,
+      noShowExcused: data['noShowExcused'] as bool? ?? false,
+      excusedAt: parseTimestamp(data['excusedAt']),
+      excuseReason: data['excuseReason'] as String?,
     );
   }
 
@@ -267,7 +322,15 @@ class FoodOrder {
       'distanceMeters': distanceMeters,
       'distanceCalculated': distanceCalculated,
       'pickupWindowMinutes': pickupWindowMinutes,
-      'strikeProcessed': strikeProcessed,
+      'noShowProcessed': noShowProcessed,
+      'deadlineExtended': deadlineExtended,
+      // Phase B: the authoritative cancellationDeadline (createdAt + 2 min)
+      // is written only by the onNewOrder Cloud Function. The client never
+      // sends one on create — the Firestore create rule rejects any payload
+      // carrying it, so the deadline cannot be forged.
+      'cancelledAt': cancelledAt,
+      'cancelledBy': cancelledBy,
+      'cancellationReason': cancellationReason,
     };
   }
 }

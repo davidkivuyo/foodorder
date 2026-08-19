@@ -1221,4 +1221,4 @@ class AppLogo extends StatelessWidget {
       ],
     );
   }
-}
+}
