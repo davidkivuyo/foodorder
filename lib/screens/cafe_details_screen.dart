@@ -202,11 +202,17 @@ class _CafeDetailsScreenState extends State<CafeDetailsScreen>
 
   String _parseTimeString(dynamic value) {
     // Canonical storage is a timezone-free "HH:mm" string in the cafe's local
-    // time. Only strings are valid: any other type (e.g. a Timestamp) yields an
-    // empty string, consistent with CafeHours.minutesOfDayValue treating
-    // non-strings as unknown.
-    if (value is! String) return '';
-    return value.trim();
+    // time. Legacy Timestamp hours are rendered from toDate() (device-local —
+    // the single-campus assumption equates the device zone to the cafe's).
+    // Any other type yields an empty string, consistent with
+    // CafeHours.minutesOfDayValue treating it as unknown.
+    if (value is String) return value.trim();
+    if (value is Timestamp) {
+      final t = value.toDate();
+      return '${t.hour.toString().padLeft(2, '0')}'
+          ':${t.minute.toString().padLeft(2, '0')}';
+    }
+    return '';
   }
 
   /// Whether the cafe is open at [now]. [now] must be server time — never the
