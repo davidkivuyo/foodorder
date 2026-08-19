@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:campusbite/services/cafe_hours.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -41,6 +42,30 @@ void main() {
       expect(CafeHours.minutesOfDayValue('08:60'), isNull);
       expect(CafeHours.minutesOfDayValue('-1:00'), isNull);
       expect(CafeHours.minutesOfDayValue('8:99'), isNull);
+    });
+
+    test('parses a legacy Timestamp as its local time-of-day', () {
+      // Timestamp.fromDate preserves the wall-clock time through toDate() in
+      // the device's zone, which the single-campus assumption equates to the
+      // cafe's zone.
+      expect(
+        CafeHours.minutesOfDayValue(
+          Timestamp.fromDate(DateTime(2026, 8, 18, 8, 30)),
+        ),
+        8 * 60 + 30,
+      );
+      expect(
+        CafeHours.minutesOfDayValue(
+          Timestamp.fromDate(DateTime(2026, 8, 18, 22, 0)),
+        ),
+        22 * 60,
+      );
+      expect(
+        CafeHours.minutesOfDayValue(
+          Timestamp.fromDate(DateTime(2026, 8, 18, 23, 59)),
+        ),
+        1439,
+      );
     });
 
     test('returns null for absent, non-string, or malformed values', () {

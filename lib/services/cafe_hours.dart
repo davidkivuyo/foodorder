@@ -12,15 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 /// Pure helpers for cafe operating-hours checks.
 ///
 /// Cafe `openAt`/`closingAt` are stored as timezone-free `"HH:mm"` strings in
-/// the cafe's local time-of-day. No timestamp is used because a time-of-day
-/// cannot be expressed by a `Timestamp` without a timezone: `toDate()`
-/// converts in the device's local timezone, making the result depend on the
-/// device rather than the cafe. The comparison "now" is supplied by the caller
-/// already in the cafe's timezone (a single-campus app assumes the device is
-/// in that zone).
+/// the cafe's local time-of-day. Legacy documents written before the string
+/// contract may still carry a `Timestamp`; because a single-campus app assumes
+/// the device is in the cafe's timezone, `Timestamp.toDate()` (device-local)
+/// yields the intended time-of-day. The comparison "now" is supplied by the
+/// caller already in the cafe's timezone (a single-campus app assumes the
+/// device is in that zone).
 class CafeHours {
   CafeHours._();
 
@@ -31,10 +33,14 @@ class CafeHours {
   /// with `Timestamp.toDate()` (device-local).
   static int minutesOfDay(DateTime time) => time.hour * 60 + time.minute;
 
-  /// Parses a validated `"HH:mm"` time-of-day into minutes since midnight.
-  /// Returns `null` when the value is absent or malformed. The hour must be
-  /// 00–23 and the minute 00–59 (a 1- or 2-digit hour is accepted).
+  /// Parses a validated `"HH:mm"` time-of-day (or a legacy `Timestamp`) into
+  /// minutes since midnight. Returns `null` when the value is absent or
+  /// malformed. The hour must be 00–23 and the minute 00–59 (a 1- or 2-digit
+  /// hour is accepted).
   static int? minutesOfDayValue(dynamic value) {
+    // Legacy Timestamp hours: toDate() resolves in the device's timezone,
+    // which the single-campus assumption equates to the cafe's timezone.
+    if (value is Timestamp) return minutesOfDay(value.toDate());
     if (value is! String) return null;
     final parts = value.trim().split(':');
     if (parts.length != 2) return null;
