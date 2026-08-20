@@ -34,6 +34,7 @@
 14. Remove duplicate icons in the categories filter in the top header section
 
 15. change the food details popup model design to adapt that of uber eats in the screenshots
+16. remove the overlay in desktop
 
 ----
 
