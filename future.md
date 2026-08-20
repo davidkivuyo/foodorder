@@ -15,7 +15,7 @@
 
 5 . fix the orange overlay **checked**
 
-6. fix the home searchbar layout issue **checked
+6. fix the home searchbar layout issue **checked**
 
 7. fix the padding issue **checked**
 
@@ -29,9 +29,9 @@
 
 12. increase slightly the width of the food images in homescreen
 
-13. Fix the searchbar logic in homescreen
+13. Fix the searchbar logic in homescreen **checked**
 
-14. Remove duplicate icons in the categories filter in the top header section
+14. Remove duplicate icons in the categories filter in the top header section **checked**
 
 15. change the food details popup model design to adapt that of uber eats in the screenshots
 16. remove the overlay in desktop
