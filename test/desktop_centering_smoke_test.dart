@@ -28,9 +28,11 @@ void main() {
 
   testWidgets('MyProfileScreen centers its body on desktop', (tester) async {
     await pumpAtDesktop(tester, const MyProfileScreen());
-    expect(constrainedChild(tester, 'My Profile'), isNotNull);
-    final box = tester.getRect(find.text('My Profile'));
-    expect(box.center.dx, closeTo(960, 200));
+    final body = constrainedChild(tester, 'My Profile');
+    expect(body, findsOneWidget);
+    final box = tester.getRect(body);
+    expect(box.center.dx, closeTo(960, 1));
+    expect(box.width, lessThanOrEqualTo(720));
   });
 
   testWidgets('SupportScreen centers its body on desktop', (tester) async {
