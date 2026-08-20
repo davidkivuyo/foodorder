@@ -21,3 +21,22 @@ const double kDesktopBreakpoint = 850;
 /// Whether the [context]'s view width is at or above the desktop breakpoint.
 bool isDesktopWidth(BuildContext context) =>
     MediaQuery.of(context).size.width >= kDesktopBreakpoint;
+
+/// Wraps [child] in a top-aligned, horizontally-centered band of [maxWidth]
+/// on desktop/large screens so detail screens stay readable and well
+/// structured instead of stretching edge to edge. On smaller screens the
+/// child is returned untouched.
+Widget desktopCentered(
+  BuildContext context,
+  Widget child, {
+  double maxWidth = 720,
+}) {
+  if (!isDesktopWidth(context)) return child;
+  return Align(
+    alignment: Alignment.topCenter,
+    child: ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: maxWidth),
+      child: child,
+    ),
+  );
+}

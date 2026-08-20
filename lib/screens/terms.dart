@@ -13,6 +13,7 @@
 // limitations under the License.
 
 import 'package:flutter/material.dart';
+import '../utils/responsive.dart';
 
 class TermsScreen extends StatelessWidget {
   const TermsScreen({super.key});
@@ -21,13 +22,15 @@ class TermsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Terms and Conditions')),
-      body: const Padding(
-        padding: EdgeInsets.all(16.0),
-        child: SingleChildScrollView(
-          child: Column(
-            children: [
-              Text(
-                '''
+      body: desktopCentered(
+        context,
+        const Padding(
+          padding: EdgeInsets.all(16.0),
+          child: SingleChildScrollView(
+            child: Column(
+              children: [
+                Text(
+                  '''
 Last Updated: Sept 9, 2026
 
 Welcome to Campus Bite
@@ -85,26 +88,27 @@ These terms shall be governed by and construed in accordance with the laws of th
 
 13. Contact Us
 For support, see the Help & support page or email directly lembotor6@gmail.com''',
-                style: TextStyle(
-                  fontSize: 14.0,
-                  height: 1.5,
-                  color: Colors.black,
-                  fontWeight: FontWeight
-                      .normal, // Adds a little line spacing for better readability
+                  style: TextStyle(
+                    fontSize: 14.0,
+                    height: 1.5,
+                    color: Colors.black,
+                    fontWeight: FontWeight
+                        .normal, // Adds a little line spacing for better readability
+                  ),
                 ),
-              ),
-              SizedBox(height: 10),
-              Text(
-                'Please collect your orders within the pickup window to help keep cafeterias efficient and reduce food waste.',
-                style: TextStyle(
-                  fontSize: 14.0,
-                  height: 1.5,
-                  color: Colors.red,
-                  fontWeight: FontWeight
-                      .bold, // Adds a little line spacing for better readability
+                SizedBox(height: 10),
+                Text(
+                  'Please collect your orders within the pickup window to help keep cafeterias efficient and reduce food waste.',
+                  style: TextStyle(
+                    fontSize: 14.0,
+                    height: 1.5,
+                    color: Colors.red,
+                    fontWeight: FontWeight
+                        .bold, // Adds a little line spacing for better readability
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

@@ -16,6 +16,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/app_log.dart';
+import '../utils/responsive.dart';
 
 class SupportScreen extends StatelessWidget {
   const SupportScreen({super.key});
@@ -24,42 +25,45 @@ class SupportScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Help and support')),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: ListView(
-          children: [
-            const Text(
-              'How can we help?',
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 16),
-            ListTile(
-              leading: const Icon(Icons.help_outline),
-              title: const Text('Frequently Asked Questions'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => context.push('/support/faq'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.mail_outline),
-              title: const Text('Contact us'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => context.push('/support/contact'),
-            ),
-            const Divider(),
-            ListTile(
-              leading: const Icon(Icons.gavel_outlined),
-              title: const Text('Licenses & Legal'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () {
-                showLicensePage(
-                  context: context,
-                  applicationName: 'Campus Bite',
-                  applicationLegalese:
-                      '© 2026 Campus Bite Contributors, Larason.',
-                );
-              },
-            ),
-          ],
+      body: desktopCentered(
+        context,
+        Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: ListView(
+            children: [
+              const Text(
+                'How can we help?',
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 16),
+              ListTile(
+                leading: const Icon(Icons.help_outline),
+                title: const Text('Frequently Asked Questions'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => context.push('/support/faq'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.mail_outline),
+                title: const Text('Contact us'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => context.push('/support/contact'),
+              ),
+              const Divider(),
+              ListTile(
+                leading: const Icon(Icons.gavel_outlined),
+                title: const Text('Licenses & Legal'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () {
+                  showLicensePage(
+                    context: context,
+                    applicationName: 'Campus Bite',
+                    applicationLegalese:
+                        '© 2026 Campus Bite Contributors, Larason.',
+                  );
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -73,58 +77,61 @@ class FaqScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('FAQ')),
-      body: ListView(
-        padding: const EdgeInsets.all(16.0),
-        children: const [
-          ExpansionTile(
-            title: Text('About delivery?'),
-            children: [
-              Padding(
-                padding: EdgeInsets.all(16.0),
-                child: Text(
-                  'We currently DO NOT deliver to any location. the app is a self pick based, users order food and the cafe receives orders to process them and prepare once ready(completed), users go to the corresponding cafe and pick their meals.',
+      body: desktopCentered(
+        context,
+        ListView(
+          padding: const EdgeInsets.all(16.0),
+          children: const [
+            ExpansionTile(
+              title: Text('About delivery?'),
+              children: [
+                Padding(
+                  padding: EdgeInsets.all(16.0),
+                  child: Text(
+                    'We currently DO NOT deliver to any location. the app is a self pick based, users order food and the cafe receives orders to process them and prepare once ready(completed), users go to the corresponding cafe and pick their meals.',
+                  ),
                 ),
-              ),
-            ],
-          ),
-          ExpansionTile(
-            title: Text('About payment?'),
-            children: [
-              Padding(
-                padding: EdgeInsets.all(16.0),
-                child: Text(
-                  'The app is strictly non payment proccessing, it DOES NOT accept, process or make payments. We encourage users to only pay at the cafe in which they ordered their meals',
+              ],
+            ),
+            ExpansionTile(
+              title: Text('About payment?'),
+              children: [
+                Padding(
+                  padding: EdgeInsets.all(16.0),
+                  child: Text(
+                    'The app is strictly non payment proccessing, it DOES NOT accept, process or make payments. We encourage users to only pay at the cafe in which they ordered their meals',
+                  ),
                 ),
-              ),
-            ],
-          ),
-          ExpansionTile(
-            title: Text('What if I miss a pickup?'),
-            children: [
-              Padding(
-                padding: EdgeInsets.all(16.0),
-                child: Text(
-                  'Missing a pickup does not suspend your account. Your pickup '
-                  'record simply reflects orders that were not collected on '
-                  'time, so you can keep ordering normally. If you ever '
-                  'believe your account was suspended by mistake, contact us '
-                  'through the support email or WhatsApp and we will help.',
+              ],
+            ),
+            ExpansionTile(
+              title: Text('What if I miss a pickup?'),
+              children: [
+                Padding(
+                  padding: EdgeInsets.all(16.0),
+                  child: Text(
+                    'Missing a pickup does not suspend your account. Your pickup '
+                    'record simply reflects orders that were not collected on '
+                    'time, so you can keep ordering normally. If you ever '
+                    'believe your account was suspended by mistake, contact us '
+                    'through the support email or WhatsApp and we will help.',
+                  ),
                 ),
-              ),
-            ],
-          ),
-          ExpansionTile(
-            title: Text('Why do you need my location data?'),
-            children: [
-              Padding(
-                padding: EdgeInsets.all(16.0),
-                child: Text(
-                  'We understand that concerns you and we care your privacy, your location is used to get the distance between your current position and the cafe in which you order the meal, and after the distance is retrieved time is calculated to give a fair and correct pickup window to ensure responsibility for food self pickup and fairness, Your location data never leaves your device or stored in our infrastructure.',
+              ],
+            ),
+            ExpansionTile(
+              title: Text('Why do you need my location data?'),
+              children: [
+                Padding(
+                  padding: EdgeInsets.all(16.0),
+                  child: Text(
+                    'We understand that concerns you and we care your privacy, your location is used to get the distance between your current position and the cafe in which you order the meal, and after the distance is retrieved time is calculated to give a fair and correct pickup window to ensure responsibility for food self pickup and fairness, Your location data never leaves your device or stored in our infrastructure.',
+                  ),
                 ),
-              ),
-            ],
-          ),
-        ],
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -175,35 +182,38 @@ class ContactScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Contact us')),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Get in Touch',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'An app feature is broken, a bug, a problem with your order or a suggestion for Campus Bite? Let us know!',
-              style: TextStyle(fontSize: 16),
-            ),
-            const SizedBox(height: 24),
-            ListTile(
-              leading: const Icon(Icons.email, color: Colors.blue),
-              title: const Text('Email Support'),
-              subtitle: const Text('lembotor6@gmail.com'),
-              onTap: _launchEmail,
-            ),
-            const Divider(),
-            ListTile(
-              leading: const Icon(Icons.chat, color: Colors.green),
-              title: const Text('Message on whatsapp'),
-              subtitle: Text('+255671035765'),
-              onTap: _openWhatsApp,
-            ),
-          ],
+      body: desktopCentered(
+        context,
+        Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Get in Touch',
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'An app feature is broken, a bug, a problem with your order or a suggestion for Campus Bite? Let us know!',
+                style: TextStyle(fontSize: 16),
+              ),
+              const SizedBox(height: 24),
+              ListTile(
+                leading: const Icon(Icons.email, color: Colors.blue),
+                title: const Text('Email Support'),
+                subtitle: const Text('lembotor6@gmail.com'),
+                onTap: _launchEmail,
+              ),
+              const Divider(),
+              ListTile(
+                leading: const Icon(Icons.chat, color: Colors.green),
+                title: const Text('Message on whatsapp'),
+                subtitle: Text('+255671035765'),
+                onTap: _openWhatsApp,
+              ),
+            ],
+          ),
         ),
       ),
     );
