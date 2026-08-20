@@ -162,23 +162,22 @@ class HomeScreen extends StatelessWidget {
                   children: [
                     // ── 1. Orange Header Overlay Background ─────────────
                     // Spans from notification status bar at top edge down to
-                    // center of special banner card
-                    Positioned(
-                      top: 0,
-                      left: 0,
-                      right: 0,
-                      height: isDesktop
-                          ? (statusBarHeight + 5 + 50 * textScale + 8 + 3)
-                          : (12 + 48 * textScale + 8),
-                      child: Container(
-                        decoration: const BoxDecoration(
-                          color: Colors.orange,
-                          borderRadius: BorderRadius.vertical(
-                            bottom: Radius.circular(20),
+                    // center of special banner card (Mobile / Small screens only)
+                    if (!isDesktop)
+                      Positioned(
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        height: statusBarHeight + 12 + 48 * textScale + 8,
+                        child: Container(
+                          decoration: const BoxDecoration(
+                            color: Colors.orange,
+                            borderRadius: BorderRadius.vertical(
+                              bottom: Radius.circular(20),
+                            ),
                           ),
                         ),
                       ),
-                    ),
                     Padding(
                       padding: EdgeInsets.fromLTRB(
                         isDesktop ? 8.0 : 0,

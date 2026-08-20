@@ -656,84 +656,70 @@ class _FoodDetailsScreenState extends State<FoodDetailsScreen> {
       ],
 
       // Available Cafes
-      if (item.availableCafes.isNotEmpty) ...[
-        if (isModal)
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.storefront_outlined,
-                size: 16,
-                color: Colors.grey.shade600,
-              ),
-              const SizedBox(width: 6),
-              Text(
-                'Available at: ${item.displayCafe}',
-                style: const TextStyle(
-                  fontSize: 13,
-                  color: Colors.black87,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          )
-        else ...[
-          const Text(
-            'Available At',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+      if (item.availableCafes.isNotEmpty || item.displayCafe.isNotEmpty) ...[
+        Text(
+          'Available At',
+          textAlign: isModal ? TextAlign.center : TextAlign.start,
+          style: TextStyle(
+            fontSize: isModal ? 16 : 18,
+            fontWeight: FontWeight.bold,
           ),
-          const SizedBox(height: 10),
-          ...item.availableCafes.map(
-            (cafe) => Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: InkWell(
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => CafeDetailsScreen(cafeName: cafe),
-                    ),
-                  );
-                },
-                borderRadius: BorderRadius.circular(8),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    vertical: 4,
-                    horizontal: 4,
+        ),
+        const SizedBox(height: 10),
+        ...(item.availableCafes.isNotEmpty
+                ? item.availableCafes
+                : [item.displayCafe])
+            .map(
+          (cafe) => Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: InkWell(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => CafeDetailsScreen(cafeName: cafe),
                   ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.storefront_outlined,
-                        size: 18,
-                        color: Colors.orange.shade700,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          cafe,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.black87,
-                          ),
+                );
+              },
+              borderRadius: BorderRadius.circular(8),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  vertical: 6,
+                  horizontal: 8,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.max,
+                  children: [
+                    Icon(
+                      Icons.storefront_outlined,
+                      size: 18,
+                      color: Colors.orange.shade700,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        cafe,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.black87,
                         ),
                       ),
-                      Icon(
-                        Icons.chevron_right,
-                        size: 18,
-                        color: Colors.grey.shade400,
-                      ),
-                    ],
-                  ),
+                    ),
+                    Icon(
+                      Icons.chevron_right,
+                      size: 18,
+                      color: Colors.grey.shade400,
+                    ),
+                  ],
                 ),
               ),
             ),
           ),
-          const SizedBox(height: 24),
-          const Divider(height: 1, color: Color(0xFFEEEEEE)),
-          const SizedBox(height: 24),
-        ],
+        ),
+        SizedBox(height: isModal ? 16 : 24),
+        const Divider(height: 1, color: Color(0xFFEEEEEE)),
+        SizedBox(height: isModal ? 16 : 24),
       ],
 
       // Dietary Info
