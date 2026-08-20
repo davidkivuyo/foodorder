@@ -4103,7 +4103,7 @@ function validateCreateAdminPayload(data) {
   const phoneNumber =
     typeof data.phoneNumber === "string" ? data.phoneNumber.trim() : "";
 
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+  if (!/^[^\s@./\\]+(?:\.[^\s@./\\]+)*@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+$/.test(email)) {
     throw new HttpsError("invalid-argument", "A valid admin email is required.");
   }
   if (password.length < 6) {
