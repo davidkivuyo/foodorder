@@ -27,6 +27,7 @@ import '../services/review_service.dart';
 import '../widgets/cafe_selection_dialog.dart';
 import '../widgets/stock_badge.dart';
 import '../widgets/add_review_dialog.dart';
+import '../utils/responsive.dart';
 import 'reviews_screen.dart';
 import 'cafe_details_screen.dart';
 
@@ -39,10 +40,16 @@ class FoodDetailsScreen extends StatefulWidget {
   final FoodItem item;
   final String heroTagPrefix;
 
+  /// Whether this screen is presented as a modal card over a blurred backdrop.
+  /// Captured once at open-time so the route type and widget layout stay
+  /// consistent even if the window is resized while the screen is open.
+  final bool isModal;
+
   const FoodDetailsScreen({
     super.key,
     required this.item,
     this.heroTagPrefix = 'home_',
+    this.isModal = false,
   });
 
   /// Opens [FoodDetailsScreen]. On Desktop PC, it uses a non-opaque route so the
@@ -52,8 +59,8 @@ class FoodDetailsScreen extends StatefulWidget {
     FoodItem item, {
     String heroTagPrefix = 'home_',
   }) {
-    final bool isDesktop = MediaQuery.of(context).size.width >= 850;
-    if (isDesktop) {
+    final bool isModal = isDesktopWidth(context);
+    if (isModal) {
       return Navigator.push<T>(
         context,
         PageRouteBuilder<T>(
@@ -62,11 +69,12 @@ class FoodDetailsScreen extends StatefulWidget {
           barrierColor: Colors.transparent,
           transitionDuration: const Duration(milliseconds: 200),
           reverseTransitionDuration: const Duration(milliseconds: 150),
-          pageBuilder: (_, __, ___) => FoodDetailsScreen(
+          pageBuilder: (_, _, _) => FoodDetailsScreen(
             item: item,
             heroTagPrefix: heroTagPrefix,
+            isModal: isModal,
           ),
-          transitionsBuilder: (_, animation, __, child) {
+          transitionsBuilder: (_, animation, _, child) {
             return FadeTransition(opacity: animation, child: child);
           },
         ),
@@ -78,6 +86,7 @@ class FoodDetailsScreen extends StatefulWidget {
         builder: (_) => FoodDetailsScreen(
           item: item,
           heroTagPrefix: heroTagPrefix,
+          isModal: isModal,
         ),
       ),
     );
@@ -287,10 +296,10 @@ class _FoodDetailsScreenState extends State<FoodDetailsScreen> {
   @override
   Widget build(BuildContext context) {
     final item = widget.item;
-    final bool isDesktop = MediaQuery.of(context).size.width >= 850;
+    final bool isModal = widget.isModal;
 
     // --- DESKTOP PC VIEW: Compact, Centered Card Modal with Blurred Background ---
-    if (isDesktop) {
+    if (isModal) {
       return Material(
         color: Colors.transparent,
         child: Stack(
@@ -301,9 +310,7 @@ class _FoodDetailsScreenState extends State<FoodDetailsScreen> {
                 onTap: () => Navigator.of(context).pop(),
                 child: BackdropFilter(
                   filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-                  child: Container(
-                    color: Colors.black.withValues(alpha: 0.30),
-                  ),
+                  child: Container(color: Colors.black.withValues(alpha: 0.30)),
                 ),
               ),
             ),
@@ -349,7 +356,10 @@ class _FoodDetailsScreenState extends State<FoodDetailsScreen> {
                       ),
                     ),
                     body: SingleChildScrollView(
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 24,
+                        vertical: 12,
+                      ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
@@ -361,7 +371,8 @@ class _FoodDetailsScreenState extends State<FoodDetailsScreen> {
                                 ClipRRect(
                                   borderRadius: BorderRadius.circular(16),
                                   child: Hero(
-                                    tag: '${widget.heroTagPrefix}${item.displayCafe}_${item.title}_${item.image}',
+                                    tag:
+                                        '${widget.heroTagPrefix}${item.displayCafe}_${item.title}_${item.image}',
                                     child: item.buildImage(
                                       width: 300,
                                       height: 180,
@@ -375,7 +386,10 @@ class _FoodDetailsScreenState extends State<FoodDetailsScreen> {
                                     top: 12,
                                     right: 12,
                                     child: Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                        vertical: 4,
+                                      ),
                                       decoration: BoxDecoration(
                                         color: Colors.orange.shade700,
                                         borderRadius: BorderRadius.circular(16),
@@ -395,177 +409,11 @@ class _FoodDetailsScreenState extends State<FoodDetailsScreen> {
                           ),
                           const SizedBox(height: 16),
 
-                          // Title & Price
-                          Text(
-                            item.title,
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              fontSize: 22,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.black87,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            'TZS ${item.price}',
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.orange,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-
-                          // Subtitle & Ratings
-                          if (item.subtitle.isNotEmpty) ...[
-                            Text(
-                              item.subtitle,
-                              textAlign: TextAlign.center,
-                              style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
-                            ),
-                            const SizedBox(height: 6),
-                          ],
-
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const Icon(Icons.star_rounded, color: Colors.amber, size: 18),
-                              const SizedBox(width: 4),
-                              Text(
-                                _displayRating.toStringAsFixed(1),
-                                style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black87),
-                              ),
-                              if (item.time.isNotEmpty) ...[
-                                const SizedBox(width: 6),
-                                Text(' • ${item.time}', style: const TextStyle(color: Colors.grey, fontSize: 13)),
-                              ],
-                            ],
-                          ),
-                          if (!item.available) ...[
-                            const SizedBox(height: 8),
-                            StockBadge(inStock: item.available, fontSize: 12),
-                          ],
-                          const SizedBox(height: 16),
-
-                          // Description
-                          if (item.description.isNotEmpty) ...[
-                            Text(
-                              item.description,
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(color: Colors.black54, height: 1.4, fontSize: 13),
-                            ),
-                            const SizedBox(height: 16),
-                          ],
-
-                          // Available Cafes & Dietary Info
-                          if (item.availableCafes.isNotEmpty) ...[
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.storefront_outlined, size: 16, color: Colors.grey.shade600),
-                                const SizedBox(width: 6),
-                                Text(
-                                  'Available at: ${item.displayCafe}',
-                                  style: const TextStyle(fontSize: 13, color: Colors.black87, fontWeight: FontWeight.w500),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 12),
-                          ],
-
-                          if (item.dietaryTags.isNotEmpty) ...[
-                            Wrap(
-                              alignment: WrapAlignment.center,
-                              spacing: 6,
-                              runSpacing: 6,
-                              children: item.dietaryTags.map((tag) {
-                                return Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFE8F5E9),
-                                    borderRadius: BorderRadius.circular(16),
-                                  ),
-                                  child: Text(
-                                    tag,
-                                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: Color(0xFF2E7D32)),
-                                  ),
-                                );
-                              }).toList(),
-                            ),
-                            const SizedBox(height: 16),
-                          ],
-
-                          // Review Section
-                          if (_displayReviewCount > 0) ...[
-                            _buildReviewSummaryRow(),
-                            const SizedBox(height: 12),
-                          ],
-                          if (!_checkingEligibility && _isReviewable) ...[
-                            _buildReviewButton(),
-                            const SizedBox(height: 16),
-                          ],
+                          ..._buildDetailContent(isModal: true),
                         ],
                       ),
                     ),
-                    bottomNavigationBar: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        border: Border(top: BorderSide(color: Colors.grey.shade200)),
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            decoration: BoxDecoration(
-                              color: Colors.grey.shade200,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Row(
-                              children: [
-                                IconButton(
-                                  icon: const Icon(Icons.remove, size: 18),
-                                  onPressed: () {
-                                    if (quantity > 1) setState(() => quantity--);
-                                  },
-                                ),
-                                Text(
-                                  quantity.toString(),
-                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                                ),
-                                IconButton(
-                                  icon: const Icon(Icons.add, size: 18),
-                                  onPressed: () {
-                                    final maxQty = item.quantity > 0 ? item.quantity : 99;
-                                    if (quantity < maxQty) setState(() => quantity++);
-                                  },
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: ElevatedButton.icon(
-                              onPressed: item.available
-                                  ? () => addToCartWithCafeCheck(context, item, quantity: quantity)
-                                  : null,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: item.available ? Colors.orange : Colors.grey.shade400,
-                                foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(vertical: 14),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                elevation: 0,
-                              ),
-                              icon: Icon(item.available ? Icons.shopping_cart_outlined : Icons.block, size: 18),
-                              label: Text(
-                                item.available ? 'Add to Cart • TZS ${(item.price * quantity)}' : 'Unavailable',
-                                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                    bottomNavigationBar: _buildActionBar(isModal: true),
                   ),
                 ),
               ),
@@ -649,234 +497,7 @@ class _FoodDetailsScreenState extends State<FoodDetailsScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Title and Price
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: Text(
-                            item.title,
-                            style: const TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.black87,
-                            ),
-                          ),
-                        ),
-                        Text(
-                          'TZS ${item.price}',
-                          style: const TextStyle(
-                            fontSize: 24,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.orange,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-
-                    // Subtitle
-                    if (item.subtitle.isNotEmpty) ...[
-                      Text(
-                        item.subtitle,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                    ],
-
-                    // Rating and Prep Time
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.star_rounded,
-                          color: Colors.amber,
-                          size: 20,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          _displayRating.toStringAsFixed(1),
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: Colors.black87,
-                          ),
-                        ),
-                        if (item.time.isNotEmpty) ...[
-                          const SizedBox(width: 4),
-                          Text(
-                            '  •  ${item.time}',
-                            style: const TextStyle(color: Colors.grey),
-                          ),
-                        ],
-                      ],
-                    ),
-
-                    // Stock status inline
-                    if (!item.available) ...[
-                      const SizedBox(height: 8),
-                      StockBadge(inStock: item.available, fontSize: 12),
-                    ],
-
-                    const SizedBox(height: 24),
-
-                    // Description Section
-                    if (item.description.isNotEmpty) ...[
-                      const Text(
-                        'Description',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        item.description,
-                        style: const TextStyle(
-                          color: Colors.black54,
-                          height: 1.5,
-                          fontSize: 14,
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-                      const Divider(height: 1, color: Color(0xFFEEEEEE)),
-                      const SizedBox(height: 24),
-                    ],
-
-                    // Available Cafes
-                    if (item.availableCafes.isNotEmpty) ...[
-                      const Text(
-                        'Available At',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      ...item.availableCafes.map(
-                        (cafe) => Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: InkWell(
-                            onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) =>
-                                      CafeDetailsScreen(cafeName: cafe),
-                                ),
-                              );
-                            },
-                            borderRadius: BorderRadius.circular(8),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                vertical: 4,
-                                horizontal: 4,
-                              ),
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    Icons.storefront_outlined,
-                                    size: 18,
-                                    color: Colors.orange.shade700,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      cafe,
-                                      style: const TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w600,
-                                        color: Colors.black87,
-                                      ),
-                                    ),
-                                  ),
-                                  Icon(
-                                    Icons.chevron_right,
-                                    size: 18,
-                                    color: Colors.grey.shade400,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-                      const Divider(height: 1, color: Color(0xFFEEEEEE)),
-                      const SizedBox(height: 24),
-                    ],
-
-                    // Dietary Tags
-                    if (item.dietaryTags.isNotEmpty) ...[
-                      const Text(
-                        'Dietary Info',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: item.dietaryTags.map((tag) {
-                          return Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 6,
-                            ),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFE8F5E9),
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Text(
-                              tag,
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w500,
-                                color: Color(0xFF2E7D32),
-                              ),
-                            ),
-                          );
-                        }).toList(),
-                      ),
-                      const SizedBox(height: 24),
-                    ],
-
-                    // Category
-                    if (item.category.isNotEmpty) ...[
-                      const Text(
-                        'Category',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        item.category,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          color: Colors.black54,
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-                    ],
-
-                    // ── Review Section ───────────────────────────────────
-                    if (_displayReviewCount > 0) ...[
-                      _buildReviewSummaryRow(),
-                      const SizedBox(height: 12),
-                    ],
-
-                    // Review button — shows if eligible
-                    if (!_checkingEligibility && _isReviewable) ...[
-                      _buildReviewButton(),
-                      const SizedBox(height: 24),
-                    ],
-
+                    ..._buildDetailContent(isModal: false),
                     const SizedBox(height: 100), // Padding for bottom navbar
                   ],
                 ),
@@ -887,98 +508,397 @@ class _FoodDetailsScreenState extends State<FoodDetailsScreen> {
       ),
 
       // Bottom Bar with Counter and Add to Cart Button
-      bottomSheet: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.05),
-              blurRadius: 10,
-              offset: const Offset(0, -4),
+      bottomSheet: _buildActionBar(isModal: false),
+    );
+  }
+
+  // ── Detail Content & Action Bar ────────────────────────────────────────────
+
+  /// Shared detail content (title, pricing, metadata, description, cafe and
+  /// dietary info, review controls). [isModal] switches between the centered
+  /// desktop-card presentation and the mobile sectioned layout while keeping
+  /// each branch's padding and typography.
+  List<Widget> _buildDetailContent({required bool isModal}) {
+    final item = widget.item;
+    return [
+      // Title & Price
+      if (isModal) ...[
+        Text(
+          item.title,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.bold,
+            color: Colors.black87,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'TZS ${item.price}',
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: Colors.orange,
+          ),
+        ),
+        const SizedBox(height: 8),
+      ] else ...[
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Text(
+                item.title,
+                style: const TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+              ),
+            ),
+            Text(
+              'TZS ${item.price}',
+              style: const TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                color: Colors.orange,
+              ),
             ),
           ],
         ),
-        child: SafeArea(
-          child: Row(
-            children: [
-              // Quantity Counter Block
-              Container(
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade200,
-                  borderRadius: BorderRadius.circular(12),
+        const SizedBox(height: 8),
+      ],
+
+      // Subtitle
+      if (item.subtitle.isNotEmpty) ...[
+        Text(
+          item.subtitle,
+          textAlign: isModal ? TextAlign.center : TextAlign.start,
+          style: isModal
+              ? TextStyle(fontSize: 13, color: Colors.grey.shade600)
+              : const TextStyle(fontSize: 14, color: Colors.grey),
+        ),
+        SizedBox(height: isModal ? 6 : 4),
+      ],
+
+      // Rating and prep time
+      Row(
+        mainAxisAlignment: isModal
+            ? MainAxisAlignment.center
+            : MainAxisAlignment.start,
+        children: [
+          Icon(
+            Icons.star_rounded,
+            color: Colors.amber,
+            size: isModal ? 18 : 20,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            _displayRating.toStringAsFixed(1),
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              color: Colors.black87,
+            ),
+          ),
+          if (item.time.isNotEmpty) ...[
+            SizedBox(width: isModal ? 6 : 4),
+            Text(
+              '${isModal ? ' • ' : '  •  '}${item.time}',
+              style: isModal
+                  ? const TextStyle(color: Colors.grey, fontSize: 13)
+                  : const TextStyle(color: Colors.grey),
+            ),
+          ],
+        ],
+      ),
+
+      // Stock status inline
+      if (!item.available) ...[
+        const SizedBox(height: 8),
+        StockBadge(inStock: item.available, fontSize: 12),
+      ],
+
+      SizedBox(height: isModal ? 16 : 24),
+
+      // Description
+      if (item.description.isNotEmpty) ...[
+        if (!isModal) ...[
+          const Text(
+            'Description',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 10),
+        ],
+        Text(
+          item.description,
+          textAlign: isModal ? TextAlign.center : TextAlign.start,
+          style: isModal
+              ? const TextStyle(
+                  color: Colors.black54,
+                  height: 1.4,
+                  fontSize: 13,
+                )
+              : const TextStyle(
+                  color: Colors.black54,
+                  height: 1.5,
+                  fontSize: 14,
                 ),
-                child: Row(
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.remove, size: 18),
-                      onPressed: () {
-                        if (quantity > 1) {
-                          setState(() => quantity--);
-                        }
-                      },
-                    ),
-                    Text(
-                      quantity.toString(),
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.add, size: 18),
-                      onPressed: () {
-                        final maxQty = item.quantity > 0 ? item.quantity : 99;
-                        if (quantity < maxQty) {
-                          setState(() => quantity++);
-                        }
-                      },
-                    ),
-                  ],
+        ),
+        if (isModal) ...[
+          const SizedBox(height: 16),
+        ] else ...[
+          const SizedBox(height: 24),
+          const Divider(height: 1, color: Color(0xFFEEEEEE)),
+          const SizedBox(height: 24),
+        ],
+      ],
+
+      // Available Cafes
+      if (item.availableCafes.isNotEmpty) ...[
+        if (isModal)
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.storefront_outlined,
+                size: 16,
+                color: Colors.grey.shade600,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                'Available at: ${item.displayCafe}',
+                style: const TextStyle(
+                  fontSize: 13,
+                  color: Colors.black87,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
-              const SizedBox(width: 16),
-
-              // Add to Cart Button
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: item.available
-                      ? () => addToCartWithCafeCheck(
-                          context,
-                          item,
-                          quantity: quantity,
-                        )
-                      : null,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: item.available
-                        ? Colors.orange
-                        : Colors.grey.shade400,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(24),
+            ],
+          )
+        else ...[
+          const Text(
+            'Available At',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 10),
+          ...item.availableCafes.map(
+            (cafe) => Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: InkWell(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => CafeDetailsScreen(cafeName: cafe),
                     ),
-                    elevation: 0,
+                  );
+                },
+                borderRadius: BorderRadius.circular(8),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 4,
+                    horizontal: 4,
                   ),
-                  icon: Icon(
-                    item.available ? Icons.shopping_cart_outlined : Icons.block,
-                    size: 20,
-                  ),
-                  label: Text(
-                    item.available
-                        ? 'Add to Cart • TZS ${(item.price * quantity)}'
-                        : 'Unavailable',
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
-                    ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.storefront_outlined,
+                        size: 18,
+                        color: Colors.orange.shade700,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          cafe,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.black87,
+                          ),
+                        ),
+                      ),
+                      Icon(
+                        Icons.chevron_right,
+                        size: 18,
+                        color: Colors.grey.shade400,
+                      ),
+                    ],
                   ),
                 ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+          const Divider(height: 1, color: Color(0xFFEEEEEE)),
+          const SizedBox(height: 24),
+        ],
+      ],
+
+      // Dietary Info
+      if (item.dietaryTags.isNotEmpty) ...[
+        if (!isModal) ...[
+          const Text(
+            'Dietary Info',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 10),
+        ],
+        Wrap(
+          alignment: isModal ? WrapAlignment.center : WrapAlignment.start,
+          spacing: isModal ? 6 : 8,
+          runSpacing: isModal ? 6 : 8,
+          children: item.dietaryTags.map((tag) {
+            return Container(
+              padding: EdgeInsets.symmetric(
+                horizontal: isModal ? 10 : 12,
+                vertical: isModal ? 4 : 6,
+              ),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE8F5E9),
+                borderRadius: BorderRadius.circular(isModal ? 16 : 20),
+              ),
+              child: Text(
+                tag,
+                style: TextStyle(
+                  fontSize: isModal ? 11 : 12,
+                  fontWeight: FontWeight.w500,
+                  color: const Color(0xFF2E7D32),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+        SizedBox(height: isModal ? 16 : 24),
+      ],
+
+      // Category (mobile only)
+      if (!isModal && item.category.isNotEmpty) ...[
+        const Text(
+          'Category',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 10),
+        Text(
+          item.category,
+          style: const TextStyle(fontSize: 14, color: Colors.black54),
+        ),
+        const SizedBox(height: 24),
+      ],
+
+      // ── Review Section ─────────────────────────────────────────────────
+      if (_displayReviewCount > 0) ...[
+        _buildReviewSummaryRow(),
+        const SizedBox(height: 12),
+      ],
+      if (!_checkingEligibility && _isReviewable) ...[
+        _buildReviewButton(),
+        SizedBox(height: isModal ? 16 : 24),
+      ],
+    ];
+  }
+
+  /// Shared quantity counter + add-to-cart action bar. Centralizes the max
+  /// quantity clamp and the cart price label; [isModal] picks the small
+  /// branch-specific sizing and the surrounding container treatment.
+  Widget _buildActionBar({required bool isModal}) {
+    final item = widget.item;
+    final maxQty = item.quantity > 0 ? item.quantity : 99;
+    final cartLabel = item.available
+        ? 'Add to Cart • TZS ${(item.price * quantity)}'
+        : 'Unavailable';
+
+    final counterAndButton = Row(
+      children: [
+        // Quantity Counter Block
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.grey.shade200,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.remove, size: 18),
+                onPressed: () {
+                  if (quantity > 1) {
+                    setState(() => quantity--);
+                  }
+                },
+              ),
+              Text(
+                quantity.toString(),
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: isModal ? 15 : 16,
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.add, size: 18),
+                onPressed: () {
+                  if (quantity < maxQty) {
+                    setState(() => quantity++);
+                  }
+                },
               ),
             ],
           ),
         ),
-      ),
+        SizedBox(width: isModal ? 12 : 16),
+
+        // Add to Cart Button
+        Expanded(
+          child: ElevatedButton.icon(
+            onPressed: item.available
+                ? () =>
+                      addToCartWithCafeCheck(context, item, quantity: quantity)
+                : null,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: item.available
+                  ? Colors.orange
+                  : Colors.grey.shade400,
+              foregroundColor: Colors.white,
+              padding: EdgeInsets.symmetric(vertical: isModal ? 14 : 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(isModal ? 20 : 24),
+              ),
+              elevation: 0,
+            ),
+            icon: Icon(
+              item.available ? Icons.shopping_cart_outlined : Icons.block,
+              size: isModal ? 18 : 20,
+            ),
+            label: Text(
+              cartLabel,
+              style: TextStyle(
+                fontSize: isModal ? 14 : 15,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: isModal
+          ? BoxDecoration(
+              color: Colors.white,
+              border: Border(top: BorderSide(color: Colors.grey.shade200)),
+            )
+          : BoxDecoration(
+              color: Colors.white,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, -4),
+                ),
+              ],
+            ),
+      child: isModal ? counterAndButton : SafeArea(child: counterAndButton),
     );
   }
 

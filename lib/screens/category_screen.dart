@@ -15,7 +15,6 @@
 import 'package:flutter/material.dart';
 import '../data/food_data.dart';
 import '../widgets/cafe_selection_dialog.dart';
-import '../widgets/hover_card_scale.dart';
 import '../widgets/stock_badge.dart';
 import 'food_details.dart';
 
@@ -220,7 +219,7 @@ class Cards extends StatelessWidget {
               1.35, // Adjust this ratio so cards look nicely proportioned
         ),
         itemBuilder: (context, index) {
-          return HoverCardScale(child: FoodCard(item: items[index]));
+          return FoodCard(item: items[index]);
         },
       );
     }
@@ -278,6 +277,8 @@ class FoodCard extends StatelessWidget {
             ),
             // Stock overlay badge
             StockOverlayBadge(inStock: item.available),
+            // Prep time overlay badge (Deliveroo style)
+            PrepTimeBadge(time: item.time),
           ],
         ),
 

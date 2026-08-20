@@ -17,7 +17,6 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../data/food_data.dart';
 import '../widgets/cafe_selection_dialog.dart';
 import '../widgets/cart_fab.dart';
-import '../widgets/hover_card_scale.dart';
 import '../widgets/stock_badge.dart';
 import 'food_details.dart';
 
@@ -299,9 +298,7 @@ class _CommonFoodList extends StatelessWidget {
                                 childAspectRatio: 1.35,
                               ),
                           itemBuilder: (context, index) {
-                            return HoverCardScale(
-                              child: _CommonFoodCard(item: filtered[index]),
-                            );
+                            return _CommonFoodCard(item: filtered[index]);
                           },
                         )
                       : ListView.builder(
@@ -311,9 +308,7 @@ class _CommonFoodList extends StatelessWidget {
                             final item = filtered[index];
                             return Padding(
                               padding: const EdgeInsets.only(bottom: 24.0),
-                              child: HoverCardScale(
-                                child: _CommonFoodCard(item: item),
-                              ),
+                              child: _CommonFoodCard(item: item),
                             );
                           },
                         ),
@@ -374,6 +369,8 @@ class _CommonFoodCard extends StatelessWidget {
             ),
             // Stock overlay badge
             StockOverlayBadge(inStock: item.available),
+            // Prep time overlay badge (Deliveroo style)
+            PrepTimeBadge(time: item.time),
           ],
         ),
 
@@ -424,18 +421,6 @@ class _CommonFoodCard extends StatelessWidget {
                   ),
                 ],
               ),
-
-              // Prep time row
-              Row(
-                children: [
-                  Text(
-                    item.time,
-                    style: const TextStyle(fontSize: 12, color: Colors.grey),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 2),
 
               // Rating & cafe row
               Row(

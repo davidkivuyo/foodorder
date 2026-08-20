@@ -47,10 +47,7 @@ class StockBadge extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0xFFFFEBEE),
         borderRadius: BorderRadius.circular(6),
-        border: Border.all(
-          color: const Color(0xFFEF9A9A),
-          width: 0.5,
-        ),
+        border: Border.all(color: const Color(0xFFEF9A9A), width: 0.5),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -100,11 +97,7 @@ class StockOverlayBadge extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(
-              Icons.block,
-              size: 12,
-              color: Colors.white,
-            ),
+            const Icon(Icons.block, size: 12, color: Colors.white),
             const SizedBox(width: 4),
             const Text(
               'Out of Stock',
@@ -115,6 +108,49 @@ class StockOverlayBadge extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// An overlay chip that sits at the bottom-right corner of a food card image.
+///
+/// Shows preparation time (e.g. "10 min" or "40 min") inside a clean white
+/// Deliveroo-style pill container.
+class PrepTimeBadge extends StatelessWidget {
+  final String time;
+
+  const PrepTimeBadge({super.key, required this.time});
+
+  @override
+  Widget build(BuildContext context) {
+    if (time.isEmpty) return const SizedBox.shrink();
+
+    return Positioned(
+      bottom: 8,
+      right: 8,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: const [
+            BoxShadow(
+              color: Colors.black12,
+              blurRadius: 4,
+              offset: Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Text(
+          time,
+          semanticsLabel: 'Preparation time: $time',
+          style: const TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.bold,
+            color: Colors.black87,
+          ),
         ),
       ),
     );

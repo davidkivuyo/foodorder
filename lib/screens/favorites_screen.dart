@@ -17,7 +17,6 @@ import '../data/food_data.dart';
 import '../services/favorite_service.dart';
 import '../widgets/cafe_selection_dialog.dart';
 import '../widgets/cart_fab.dart';
-import '../widgets/hover_card_scale.dart';
 import '../widgets/stock_badge.dart';
 import 'food_details.dart';
 
@@ -91,104 +90,114 @@ class YourFavouritesScreen extends StatelessWidget {
               final item = items[index];
               return Padding(
                 padding: const EdgeInsets.only(bottom: 24.0),
-                child: HoverCardScale(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Stack(
-                        children: [
-                          AspectRatio(
-                            aspectRatio: 2.2,
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(16),
-                              child: GestureDetector(
-                                onTap: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => FoodDetailsScreen(
-                                        item: item,
-                                        heroTagPrefix: 'fav_',
-                                      ),
-                                    ),
-                                  );
-                                },
-                                child: Hero(
-                                  tag:
-                                      'fav_${item.displayCafe}_${item.title}_${item.image}',
-                                  child: item.buildImage(
-                                    height: 100,
-                                    width: double.infinity,
-                                    fit: BoxFit.cover,
-                                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Stack(
+                      children: [
+                        AspectRatio(
+                          aspectRatio: 2.2,
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(16),
+                            child: GestureDetector(
+                              onTap: () {
+                                FoodDetailsScreen.open(
+                                  context,
+                                  item,
+                                  heroTagPrefix: 'fav_',
+                                );
+                              },
+                              child: Hero(
+                                tag:
+                                    'fav_${item.displayCafe}_${item.title}_${item.image}',
+                                child: item.buildImage(
+                                  height: 100,
+                                  width: double.infinity,
+                                  fit: BoxFit.cover,
                                 ),
                               ),
                             ),
                           ),
-                          // Stock overlay badge
-                          StockOverlayBadge(inStock: item.available),
-                        ],
-                      ),
+                        ),
+                        // Stock overlay badge
+                        StockOverlayBadge(inStock: item.available),
+                      ],
+                    ),
 
-                      Padding(
-                        padding: const EdgeInsets.all(4),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    item.title,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      color: Colors.black,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 16,
-                                    ),
+                    Padding(
+                      padding: const EdgeInsets.all(4),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  item.title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: Colors.black,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
                                   ),
                                 ),
-                                const SizedBox(width: 8),
-                                GestureDetector(
-                                  onTap: item.available
-                                      ? () => addToCartWithCafeCheck(
-                                          context,
-                                          item,
-                                        )
-                                      : null,
-                                  child: Container(
-                                    padding: const EdgeInsets.all(6),
-                                    decoration: BoxDecoration(
-                                      color: item.available
-                                          ? Colors.orange
-                                          : Colors.grey.shade300,
-                                      shape: BoxShape.circle,
-                                    ),
-                                    child: Icon(
-                                      item.available
-                                          ? Icons.add_rounded
-                                          : Icons.block,
-                                      color: item.available
-                                          ? Colors.white
-                                          : Colors.grey.shade500,
-                                      size: 18,
-                                    ),
+                              ),
+                              const SizedBox(width: 8),
+                              GestureDetector(
+                                onTap: item.available
+                                    ? () =>
+                                          addToCartWithCafeCheck(context, item)
+                                    : null,
+                                child: Container(
+                                  padding: const EdgeInsets.all(6),
+                                  decoration: BoxDecoration(
+                                    color: item.available
+                                        ? Colors.orange
+                                        : Colors.grey.shade300,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(
+                                    item.available
+                                        ? Icons.add_rounded
+                                        : Icons.block,
+                                    color: item.available
+                                        ? Colors.white
+                                        : Colors.grey.shade500,
+                                    size: 18,
                                   ),
                                 ),
-                              ],
-                            ),
+                              ),
+                            ],
+                          ),
 
-                            Row(
-                              children: [
-                                const Icon(
-                                  Icons.star_rounded,
-                                  color: Colors.amber,
-                                  size: 16,
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.star_rounded,
+                                color: Colors.amber,
+                                size: 16,
+                              ),
+                              Text(
+                                '${item.averageRating > 0 ? item.averageRating.toStringAsFixed(1) : '0.0'} • ',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.black,
                                 ),
-                                Text(
-                                  '${item.averageRating > 0 ? item.averageRating.toStringAsFixed(1) : '0.0'} • ',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(width: 2),
+                              Icon(
+                                Icons.storefront_outlined,
+                                size: 14,
+                                color: Colors.grey.shade400,
+                              ),
+                              const SizedBox(width: 2),
+                              Flexible(
+                                child: Text(
+                                  item.displayCafe,
                                   style: const TextStyle(
                                     fontSize: 12,
                                     color: Colors.black,
@@ -196,33 +205,15 @@ class YourFavouritesScreen extends StatelessWidget {
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
-                                const SizedBox(width: 2),
-                                Icon(
-                                  Icons.storefront_outlined,
-                                  size: 14,
-                                  color: Colors.grey.shade400,
-                                ),
-                                const SizedBox(width: 2),
-                                Flexible(
-                                  child: Text(
-                                    item.displayCafe,
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.black,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 4),
-                            StockBadge(inStock: item.available, fontSize: 11),
-                          ],
-                        ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          StockBadge(inStock: item.available, fontSize: 11),
+                        ],
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               );
             },

@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../screens/home_screen.dart';
@@ -28,6 +29,63 @@ import '../services/notification_service.dart';
 import '../widgets/cart_bottom_sheet.dart';
 import '../widgets/cart_fab.dart';
 import '../widgets/offline_banner.dart';
+import '../utils/responsive.dart';
+
+/// Describes a desktop filter chip: its display label, title shown on the
+/// results screen, icon, and the section/availability value used for
+/// filtering. Keeps filtering keyed on data, not on display labels.
+class _FilterDescriptor {
+  final String label;
+  final String title;
+  final IconData icon;
+  final String section;
+
+  const _FilterDescriptor({
+    required this.label,
+    required this.title,
+    required this.icon,
+    required this.section,
+  });
+}
+
+const List<_FilterDescriptor> _filterDescriptors = [
+  _FilterDescriptor(
+    label: 'All Foods',
+    title: 'All Foods',
+    icon: Icons.grid_view_rounded,
+    section: 'all',
+  ),
+  _FilterDescriptor(
+    label: "🔥 Today's Deals",
+    title: "Today's Deals",
+    icon: Icons.local_fire_department,
+    section: 'todays_deals',
+  ),
+  _FilterDescriptor(
+    label: "⭐ Campus Favourite",
+    title: 'Favourite on campus',
+    icon: Icons.star_rounded,
+    section: 'campus_favourite',
+  ),
+  _FilterDescriptor(
+    label: '🍹 Drinks Deals!',
+    title: 'Drinks Deals!',
+    icon: Icons.local_drink_rounded,
+    section: 'drinks',
+  ),
+  _FilterDescriptor(
+    label: '🍱 Other Meal Deals',
+    title: 'Other meal deals',
+    icon: Icons.restaurant_rounded,
+    section: 'other',
+  ),
+  _FilterDescriptor(
+    label: '✅ Available Now',
+    title: 'Available Now',
+    icon: Icons.check_circle_outline,
+    section: 'available',
+  ),
+];
 
 // home screen
 class MainScreen extends StatefulWidget {
@@ -40,15 +98,41 @@ class MainScreen extends StatefulWidget {
 // body and bottom navigation
 class _NavigationExampleState extends State<MainScreen> {
   int currentPageIndex = 0;
+  final ScrollController _homeScrollController = ScrollController();
+  bool _isScrolled = false;
 
-  final TextEditingController _desktopSearchController = TextEditingController();
+  final TextEditingController _desktopSearchController =
+      TextEditingController();
   final FocusNode _desktopSearchFocusNode = FocusNode();
   bool _isDesktopSearchOpen = false;
   String _desktopSearchQuery = '';
+  Stream<int>? _unreadCountStream;
+  StreamSubscription<User?>? _authSub;
+  bool _isFilterChipLoading = false;
+
+  late final List<Widget> _pages;
 
   @override
   void initState() {
     super.initState();
+    _pages = [
+      HomeScreen(scrollController: _homeScrollController),
+      const CategoryScreen(),
+      const SearchBarScreen(),
+      const OrdersScreen(),
+      const AccountScreen(),
+    ];
+    _authSub = FirebaseAuth.instance.authStateChanges().listen((user) {
+      final uid = user?.uid ?? '';
+      _unreadCountStream = uid.isEmpty
+          ? null
+          : NotificationService().unreadCountStream(
+              recipientId: uid,
+              recipientRole: NotificationService.roleStudent,
+            );
+      if (mounted) setState(() {});
+    });
+    _homeScrollController.addListener(_onHomeScroll);
     _desktopSearchFocusNode.addListener(() {
       if (mounted) {
         setState(() {
@@ -58,24 +142,30 @@ class _NavigationExampleState extends State<MainScreen> {
     });
   }
 
+  void _onHomeScroll() {
+    if (!mounted) return;
+    final isScrolledNow =
+        _homeScrollController.hasClients && _homeScrollController.offset > 5;
+    if (isScrolledNow != _isScrolled) {
+      setState(() {
+        _isScrolled = isScrolledNow;
+      });
+    }
+  }
+
   @override
   void dispose() {
+    _authSub?.cancel();
+    _homeScrollController.removeListener(_onHomeScroll);
+    _homeScrollController.dispose();
     _desktopSearchController.dispose();
     _desktopSearchFocusNode.dispose();
     super.dispose();
   }
 
-  static const List<Widget> _pages = [
-    HomeScreen(),
-    CategoryScreen(),
-    SearchBarScreen(),
-    OrdersScreen(),
-    AccountScreen(),
-  ];
-
   // Helper method to handle navigation choices
   void _onPageSelected(int index) {
-    final bool isDesktop = MediaQuery.of(context).size.width >= 850;
+    final bool isDesktop = isDesktopWidth(context);
     if (index == 2) {
       if (isDesktop) {
         // On desktop: open the inline Uber-Eats-style search overlay
@@ -87,93 +177,13 @@ class _NavigationExampleState extends State<MainScreen> {
         // On mobile: push the full search page
         Navigator.push(
           context,
-          MaterialPageRoute(
-            builder: (context) => const SearchBarScreen(),
-          ),
+          MaterialPageRoute(builder: (context) => const SearchBarScreen()),
         );
       }
     } else {
       setState(() {
         currentPageIndex = index;
       });
-    }
-  }
-
-  // Quick cafe selection helper for desktop header location pill
-  void _showDesktopCafePicker() async {
-    final selected = await showModalBottomSheet<String>(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (context) {
-        final cafes = ['All Cafes', 'Main Campus Cafe', 'Science Cafe', 'Library Cafe', 'Hostel Cafe'];
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-              const Text(
-                'Select Campus Cafe',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Choose a cafe location to filter available meals:',
-                style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
-              ),
-              const SizedBox(height: 16),
-              ...cafes.map(
-                (cafe) => Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.pop(context, cafe),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        side: BorderSide(color: Colors.orange.shade300),
-                      ),
-                      child: Text(
-                        cafe,
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.black87,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-    if (selected != null && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Showing meals from: $selected'),
-          duration: const Duration(seconds: 2),
-          backgroundColor: Colors.orange,
-        ),
-      );
     }
   }
 
@@ -213,62 +223,19 @@ class _NavigationExampleState extends State<MainScreen> {
           ),
           const SizedBox(width: 24),
 
-          // 2. Uber Eats Style Delivery / Pickup & Cafe Selector Pill
-          InkWell(
-            onTap: _showDesktopCafePicker,
-            borderRadius: BorderRadius.circular(24),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade100,
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(color: Colors.grey.shade300, width: 1),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: const BoxDecoration(
-                      color: Colors.orange,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.storefront,
-                      size: 14,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  const Text(
-                    'Campus Cafes',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13,
-                      color: Colors.black87,
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  Icon(
-                    Icons.keyboard_arrow_down_rounded,
-                    size: 18,
-                    color: Colors.grey.shade700,
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(width: 20),
-
-          // 3. Uber Eats Style Interactive Search Input Bar in Header
+          // 2. Uber Eats Style Interactive Search Input Bar in Header
           Expanded(
             child: Container(
               height: 44,
               decoration: BoxDecoration(
-                color: _isDesktopSearchOpen ? Colors.white : Colors.grey.shade100,
+                color: _isDesktopSearchOpen
+                    ? Colors.white
+                    : Colors.grey.shade100,
                 borderRadius: BorderRadius.circular(22),
                 border: Border.all(
-                  color: _isDesktopSearchOpen ? Colors.orange : Colors.grey.shade300,
+                  color: _isDesktopSearchOpen
+                      ? Colors.orange
+                      : Colors.grey.shade300,
                   width: _isDesktopSearchOpen ? 2 : 1,
                 ),
                 boxShadow: _isDesktopSearchOpen
@@ -302,9 +269,13 @@ class _NavigationExampleState extends State<MainScreen> {
                             _isDesktopSearchOpen = true;
                           });
                         },
-                        style: const TextStyle(fontSize: 14, color: Colors.black87, fontWeight: FontWeight.w500),
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: Colors.black87,
+                          fontWeight: FontWeight.w500,
+                        ),
                         decoration: const InputDecoration(
-                          hintText: "Search ",
+                          hintText: "Search",
                           hintStyle: TextStyle(
                             fontSize: 14,
                             color: Colors.grey,
@@ -318,7 +289,11 @@ class _NavigationExampleState extends State<MainScreen> {
                     ),
                     if (_desktopSearchQuery.isNotEmpty)
                       IconButton(
-                        icon: const Icon(Icons.close_rounded, size: 18, color: Colors.grey),
+                        icon: const Icon(
+                          Icons.close_rounded,
+                          size: 18,
+                          color: Colors.grey,
+                        ),
                         onPressed: () {
                           _desktopSearchController.clear();
                           setState(() {
@@ -333,7 +308,7 @@ class _NavigationExampleState extends State<MainScreen> {
           ),
           const SizedBox(width: 24),
 
-          // 4. Quick Action Navigation Bar (Home, Categories, Orders, Notifications, Basket, Account)
+          // 3. Quick Action Navigation Bar (Home, Categories, Orders, Notifications, Basket, Account)
           Row(
             children: [
               // Home Nav Link
@@ -365,10 +340,7 @@ class _NavigationExampleState extends State<MainScreen> {
 
               // Notifications Icon
               StreamBuilder<int>(
-                stream: NotificationService().unreadCountStream(
-                  recipientId: FirebaseAuth.instance.currentUser?.uid ?? '',
-                  recipientRole: NotificationService.roleStudent,
-                ),
+                stream: _unreadCountStream,
                 builder: (context, snapshot) {
                   final unreadCount = snapshot.hasData ? snapshot.data! : 0;
                   return IconButton(
@@ -449,7 +421,10 @@ class _NavigationExampleState extends State<MainScreen> {
                     borderRadius: BorderRadius.circular(24),
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 200),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 10,
+                      ),
                       decoration: BoxDecoration(
                         color: hasCart ? Colors.orange : Colors.grey.shade100,
                         borderRadius: BorderRadius.circular(24),
@@ -472,7 +447,9 @@ class _NavigationExampleState extends State<MainScreen> {
                           ),
                           const SizedBox(width: 8),
                           Text(
-                            hasCart ? '$cartItemsCount • TZS $totalAmount' : 'Cart (0)',
+                            hasCart
+                                ? '$cartItemsCount • TZS $totalAmount'
+                                : 'Cart (0)',
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 13,
@@ -492,14 +469,19 @@ class _NavigationExampleState extends State<MainScreen> {
                 onTap: () => setState(() => currentPageIndex = 4),
                 borderRadius: BorderRadius.circular(20),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
                   decoration: BoxDecoration(
                     color: currentPageIndex == 4
                         ? Colors.orange.withValues(alpha: 0.1)
                         : Colors.grey.shade100,
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(
-                      color: currentPageIndex == 4 ? Colors.orange : Colors.transparent,
+                      color: currentPageIndex == 4
+                          ? Colors.orange
+                          : Colors.transparent,
                     ),
                   ),
                   child: Row(
@@ -522,7 +504,9 @@ class _NavigationExampleState extends State<MainScreen> {
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
-                          color: currentPageIndex == 4 ? Colors.orange : Colors.black87,
+                          color: currentPageIndex == 4
+                              ? Colors.orange
+                              : Colors.black87,
                         ),
                       ),
                     ],
@@ -549,7 +533,9 @@ class _NavigationExampleState extends State<MainScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.orange.withValues(alpha: 0.1) : Colors.transparent,
+          color: isSelected
+              ? Colors.orange.withValues(alpha: 0.1)
+              : Colors.transparent,
           borderRadius: BorderRadius.circular(20),
         ),
         child: Row(
@@ -574,42 +560,60 @@ class _NavigationExampleState extends State<MainScreen> {
     );
   }
 
-  void _onFilterChipSelected(String label) {
-    if (label == 'All Foods') {
+  void _onFilterChipSelected(_FilterDescriptor descriptor) {
+    if (_isFilterChipLoading) return;
+    if (descriptor.section == 'all') {
       setState(() => currentPageIndex = 0);
       return;
     }
 
-    final allItems = FoodData.cachedFoodItems ?? [];
-    List<FoodItem> filtered = [];
-    String title = label;
+    _openFilteredItems(descriptor);
+  }
 
-    if (label.contains("Today's Deals")) {
-      title = "Today's Deals";
-      filtered = allItems.where((item) => item.section == 'todays_deals').toList();
-    } else if (label.contains("Campus Favourite")) {
-      title = "Favourite on campus";
-      filtered = allItems.where((item) => item.section == 'campus_favourite').toList();
-    } else if (label.contains("Drinks Deals")) {
-      title = "Drinks Deals!";
-      filtered = allItems.where((item) => item.section == 'drinks').toList();
-    } else if (label.contains("Other Meal Deals")) {
-      title = "Other meal deals";
-      filtered = allItems.where((item) => item.section == 'other').toList();
-    } else if (label.contains("Available Now")) {
-      title = "Available Now";
-      filtered = allItems.where((item) => item.available).toList();
-    } else {
-      filtered = allItems;
+  Future<void> _openFilteredItems(_FilterDescriptor descriptor) async {
+    // Wait for the first menu snapshot when the cache has not loaded yet, so
+    // we never navigate to CategoriesTitles with an empty fallback list.
+    var allItems = FoodData.cachedFoodItems;
+    if (allItems == null) {
+      _isFilterChipLoading = true;
+      try {
+        allItems = await FoodData.foodItemsStream.first.timeout(
+          const Duration(seconds: 5),
+        );
+      } catch (_) {
+        _isFilterChipLoading = false;
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Menu is still loading. Please try again.'),
+            duration: Duration(seconds: 2),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
+      _isFilterChipLoading = false;
+      if (!mounted) return;
     }
+
+    final filtered = switch (descriptor.section) {
+      'todays_deals' =>
+        allItems.where((item) => item.section == 'todays_deals').toList(),
+      'campus_favourite' =>
+        allItems.where((item) => item.section == 'campus_favourite').toList(),
+      'drinks' => allItems.where((item) => item.section == 'drinks').toList(),
+      'other' => allItems.where((item) => item.section == 'other').toList(),
+      'available' => allItems.where((item) => item.available).toList(),
+      _ => allItems,
+    };
 
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => CategoriesTitles(
-          title: title,
+          title: descriptor.title,
           items: filtered,
-          heroTagPrefix: 'chip_${title.replaceAll(' ', '_')}_',
+          heroTagPrefix: 'chip_${descriptor.title.replaceAll(' ', '_')}_',
         ),
       ),
     );
@@ -625,26 +629,24 @@ class _NavigationExampleState extends State<MainScreen> {
       child: ListView(
         scrollDirection: Axis.horizontal,
         children: [
-          _buildFilterChip(label: 'All Foods', icon: Icons.grid_view_rounded, isSelected: currentPageIndex == 0),
-          _buildFilterChip(label: "🔥 Today's Deals", icon: Icons.local_fire_department, isSelected: false),
-          _buildFilterChip(label: "⭐ Campus Favourite", icon: Icons.star_rounded, isSelected: false),
-          _buildFilterChip(label: '🍹 Drinks Deals!', icon: Icons.local_drink_rounded, isSelected: false),
-          _buildFilterChip(label: '🍱 Other Meal Deals', icon: Icons.restaurant_rounded, isSelected: false),
-          _buildFilterChip(label: '✅ Available Now', icon: Icons.check_circle_outline, isSelected: false),
+          for (final descriptor in _filterDescriptors)
+            _buildFilterChip(
+              descriptor: descriptor,
+              isSelected: descriptor.section == 'all' && currentPageIndex == 0,
+            ),
         ],
       ),
     );
   }
 
   Widget _buildFilterChip({
-    required String label,
-    required IconData icon,
+    required _FilterDescriptor descriptor,
     required bool isSelected,
   }) {
     return Padding(
       padding: const EdgeInsets.only(right: 10.0),
       child: InkWell(
-        onTap: () => _onFilterChipSelected(label),
+        onTap: () => _onFilterChipSelected(descriptor),
         borderRadius: BorderRadius.circular(20),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
@@ -659,13 +661,13 @@ class _NavigationExampleState extends State<MainScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
-                icon,
+                descriptor.icon,
                 size: 16,
                 color: isSelected ? Colors.white : Colors.grey.shade700,
               ),
               const SizedBox(width: 6),
               Text(
-                label,
+                descriptor.label,
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
@@ -681,185 +683,287 @@ class _NavigationExampleState extends State<MainScreen> {
 
   // --- Uber Eats Style Desktop Inline Search Dropdown Overlay ---
   Widget _buildDesktopSearchOverlay() {
-    final query = _desktopSearchQuery;
-    final allItems = FoodData.cachedFoodItems ?? [];
-    final searchResults = query.isEmpty
-        ? <FoodItem>[]
-        : allItems
-            .where(
-              (item) =>
-                  item.title.toLowerCase().contains(query.toLowerCase()) ||
-                  item.category.toLowerCase().contains(query.toLowerCase()) ||
-                  item.displayCafe.toLowerCase().contains(query.toLowerCase()),
-            )
-            .take(10)
-            .toList();
+    return StreamBuilder<List<FoodItem>>(
+      stream: FoodData.foodItemsStream,
+      builder: (context, snapshot) {
+        final query = _desktopSearchQuery;
+        final hasError = snapshot.hasError;
+        final isLoading = !snapshot.hasData && !hasError;
+        final allItems = snapshot.data ?? [];
+        final searchResults = query.isEmpty
+            ? <FoodItem>[]
+            : allItems
+                  .where(
+                    (item) =>
+                        item.title.toLowerCase().contains(
+                          query.toLowerCase(),
+                        ) ||
+                        item.category.toLowerCase().contains(
+                          query.toLowerCase(),
+                        ) ||
+                        item.displayCafe.toLowerCase().contains(
+                          query.toLowerCase(),
+                        ),
+                  )
+                  .take(10)
+                  .toList();
 
-    const topCategories = [
-      {'icon': '🥞', 'label': 'Breakfast'},
-      {'icon': '🍴', 'label': 'Lunch'},
-      {'icon': '🥮', 'label': 'Dinner'},
-      {'icon': '🍕', 'label': 'Teasers'},
-      {'icon': '🥂', 'label': 'Drinks'},
-    ];
+        const topCategories = [
+          {'icon': '🥞', 'label': 'Breakfast'},
+          {'icon': '🍴', 'label': 'Lunch'},
+          {'icon': '🥮', 'label': 'Dinner'},
+          {'icon': '🍕', 'label': 'Teasers'},
+          {'icon': '🥂', 'label': 'Drinks'},
+        ];
 
-    // Position the dropdown just below the header bar (72px header + 54px subheader)
-    return Positioned(
-      top: 72,
-      left: 0,
-      right: 0,
-      child: Material(
-        elevation: 12,
-        shadowColor: Colors.black26,
-        borderRadius: const BorderRadius.only(
-          bottomLeft: Radius.circular(16),
-          bottomRight: Radius.circular(16),
-        ),
-        child: Container(
-          constraints: const BoxConstraints(maxHeight: 420),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.only(
+        // Position the dropdown just below the header bar (72px header + 54px subheader)
+        return Positioned(
+          top: 72,
+          left: 0,
+          right: 0,
+          child: Material(
+            elevation: 12,
+            shadowColor: Colors.black26,
+            borderRadius: const BorderRadius.only(
               bottomLeft: Radius.circular(16),
               bottomRight: Radius.circular(16),
             ),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (query.isEmpty) ...[
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(20, 16, 20, 10),
-                  child: Text(
-                    'Top categories',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black87,
-                    ),
-                  ),
+            child: Container(
+              constraints: const BoxConstraints(maxHeight: 420),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.only(
+                  bottomLeft: Radius.circular(16),
+                  bottomRight: Radius.circular(16),
                 ),
-                Flexible(
-                  child: ListView.separated(
-                    shrinkWrap: true,
-                    itemCount: topCategories.length,
-                    separatorBuilder: (_, __) => const Divider(height: 1, indent: 20, endIndent: 20),
-                    itemBuilder: (context, index) {
-                      final cat = topCategories[index];
-                      return ListTile(
-                        leading: Text(cat['icon']!, style: const TextStyle(fontSize: 22)),
-                        title: Text(
-                          cat['label']!,
-                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.black87),
-                        ),
-                        trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 14, color: Colors.grey),
-                        onTap: () {
-                          final categoryName = cat['label']!;
-                          final catItems = allItems
-                              .where((i) =>
-                                  i.category.toLowerCase().contains(categoryName.toLowerCase()) ||
-                                  i.title.toLowerCase().contains(categoryName.toLowerCase()) ||
-                                  i.section.toLowerCase().contains(categoryName.toLowerCase()))
-                              .toList();
-                          _desktopSearchFocusNode.unfocus();
-                          setState(() {
-                            _isDesktopSearchOpen = false;
-                          });
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => CategoriesTitles(
-                                title: categoryName,
-                                items: catItems.isNotEmpty ? catItems : allItems,
-                                heroTagPrefix: 'search_cat_',
+              ),
+              child: hasError
+                  ? _buildSearchOverlayError(snapshot.error)
+                  : isLoading
+                  ? const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(32),
+                        child: CircularProgressIndicator(color: Colors.orange),
+                      ),
+                    )
+                  : Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (query.isEmpty) ...[
+                          const Padding(
+                            padding: EdgeInsets.fromLTRB(20, 16, 20, 10),
+                            child: Text(
+                              'Top categories',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.black87,
                               ),
                             ),
-                          );
-                        },
-                      );
-                    },
-                  ),
-                ),
-              ] else ...[
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 14, 20, 10),
-                  child: Text(
-                    'Results for "$_desktopSearchQuery" (${searchResults.length})',
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black87,
-                    ),
-                  ),
-                ),
-                if (searchResults.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.all(24.0),
-                    child: Center(
-                      child: Text(
-                        'No food items found matching your search.',
-                        style: TextStyle(color: Colors.grey, fontSize: 14),
-                      ),
-                    ),
-                  )
-                else
-                  Flexible(
-                    child: ListView.builder(
-                      shrinkWrap: true,
-                      itemCount: searchResults.length,
-                      itemBuilder: (context, index) {
-                        final item = searchResults[index];
-                        return ListTile(
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                          leading: ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: item.buildImage(width: 48, height: 48, fit: BoxFit.cover),
                           ),
-                          title: Text(
-                            item.title,
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                          ),
-                          subtitle: Text(
-                            '${item.displayCafe} • TZS ${item.price}',
-                            style: const TextStyle(fontSize: 12, color: Colors.grey),
-                          ),
-                          trailing: Container(
-                            padding: const EdgeInsets.all(6),
-                            decoration: BoxDecoration(
-                              color: item.available ? Colors.orange : Colors.grey.shade300,
-                              shape: BoxShape.circle,
+                          Flexible(
+                            child: ListView.separated(
+                              shrinkWrap: true,
+                              itemCount: topCategories.length,
+                              separatorBuilder: (_, _) => const Divider(
+                                height: 1,
+                                indent: 20,
+                                endIndent: 20,
+                              ),
+                              itemBuilder: (context, index) {
+                                final cat = topCategories[index];
+                                return ListTile(
+                                  leading: Text(
+                                    cat['icon']!,
+                                    style: const TextStyle(fontSize: 22),
+                                  ),
+                                  title: Text(
+                                    cat['label']!,
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.black87,
+                                    ),
+                                  ),
+                                  trailing: const Icon(
+                                    Icons.arrow_forward_ios_rounded,
+                                    size: 14,
+                                    color: Colors.grey,
+                                  ),
+                                  onTap: () {
+                                    final categoryName = cat['label']!;
+                                    final catItems = allItems
+                                        .where(
+                                          (i) =>
+                                              i.category.toLowerCase().contains(
+                                                categoryName.toLowerCase(),
+                                              ) ||
+                                              i.title.toLowerCase().contains(
+                                                categoryName.toLowerCase(),
+                                              ) ||
+                                              i.section.toLowerCase().contains(
+                                                categoryName.toLowerCase(),
+                                              ),
+                                        )
+                                        .toList();
+                                    _desktopSearchFocusNode.unfocus();
+                                    setState(() {
+                                      _isDesktopSearchOpen = false;
+                                    });
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) => CategoriesTitles(
+                                          title: categoryName,
+                                          items: catItems,
+                                          heroTagPrefix: 'search_cat_',
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                );
+                              },
                             ),
-                            child: Icon(
-                              item.available ? Icons.add_rounded : Icons.block,
-                              color: item.available ? Colors.white : Colors.grey.shade500,
-                              size: 16,
+                          ),
+                        ] else ...[
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(20, 14, 20, 10),
+                            child: Text(
+                              'Results for "$_desktopSearchQuery" (${searchResults.length})',
+                              style: const TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.black87,
+                              ),
                             ),
                           ),
-                          onTap: () {
-                            _desktopSearchFocusNode.unfocus();
-                            setState(() {
-                              _isDesktopSearchOpen = false;
-                            });
-                            FoodDetailsScreen.open(context, item, heroTagPrefix: 'search_overlay_');
-                          },
-                        );
-                      },
+                          if (searchResults.isEmpty)
+                            const Padding(
+                              padding: EdgeInsets.all(24.0),
+                              child: Center(
+                                child: Text(
+                                  'No food items found matching your search.',
+                                  style: TextStyle(
+                                    color: Colors.grey,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ),
+                            )
+                          else
+                            Flexible(
+                              child: ListView.builder(
+                                shrinkWrap: true,
+                                itemCount: searchResults.length,
+                                itemBuilder: (context, index) {
+                                  final item = searchResults[index];
+                                  return ListTile(
+                                    contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 16,
+                                      vertical: 4,
+                                    ),
+                                    leading: ClipRRect(
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: item.buildImage(
+                                        width: 48,
+                                        height: 48,
+                                        fit: BoxFit.cover,
+                                      ),
+                                    ),
+                                    title: Text(
+                                      item.title,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                    subtitle: Text(
+                                      '${item.displayCafe} • TZS ${item.price}',
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey,
+                                      ),
+                                    ),
+                                    trailing: Container(
+                                      padding: const EdgeInsets.all(6),
+                                      decoration: BoxDecoration(
+                                        color: item.available
+                                            ? Colors.orange
+                                            : Colors.grey.shade300,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: Icon(
+                                        item.available
+                                            ? Icons.add_rounded
+                                            : Icons.block,
+                                        color: item.available
+                                            ? Colors.white
+                                            : Colors.grey.shade500,
+                                        size: 16,
+                                      ),
+                                    ),
+                                    onTap: () {
+                                      _desktopSearchFocusNode.unfocus();
+                                      setState(() {
+                                        _isDesktopSearchOpen = false;
+                                      });
+                                      FoodDetailsScreen.open(
+                                        context,
+                                        item,
+                                        heroTagPrefix: 'search_overlay_',
+                                      );
+                                    },
+                                  );
+                                },
+                              ),
+                            ),
+                        ],
+                      ],
                     ),
-                  ),
-              ],
-            ],
+            ),
           ),
+        );
+      },
+    );
+  }
+
+  Widget _buildSearchOverlayError(Object? error) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.cloud_off_rounded, size: 36, color: Colors.grey),
+            const SizedBox(height: 12),
+            const Text(
+              'Failed to load the menu.',
+              style: TextStyle(color: Colors.black87, fontSize: 14),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '$error',
+              style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 8),
+            TextButton.icon(
+              onPressed: () => setState(() {}),
+              icon: const Icon(Icons.refresh, size: 18),
+              label: const Text('Retry'),
+            ),
+          ],
         ),
       ),
     );
   }
 
-
   @override
   Widget build(BuildContext context) {
-    final double screenWidth = MediaQuery.of(context).size.width;
-    final bool isDesktop = screenWidth >= 850;
+    final bool isDesktop = isDesktopWidth(context);
 
     final Widget desktopBody = Column(
       children: [
@@ -899,7 +1003,10 @@ class _NavigationExampleState extends State<MainScreen> {
                     decoration: BoxDecoration(
                       color: Colors.white,
                       border: Border(
-                        left: BorderSide(color: Colors.grey.shade200, width: 1.5),
+                        left: BorderSide(
+                          color: Colors.grey.shade200,
+                          width: 1.5,
+                        ),
                       ),
                       boxShadow: [
                         BoxShadow(
@@ -991,14 +1098,18 @@ class _NavigationExampleState extends State<MainScreen> {
             ? null
             : AppBar(
                 toolbarHeight: 50,
+                backgroundColor: (currentPageIndex == 0 && !_isScrolled)
+                    ? Colors.orange
+                    : Colors.white,
+                elevation: 0,
+                scrolledUnderElevation: 0,
+                surfaceTintColor: Colors.transparent,
+                iconTheme: const IconThemeData(color: Colors.black87),
                 title: const AppLogo(),
                 actions: <Widget>[
                   // Notifications Icon
                   StreamBuilder<int>(
-                    stream: NotificationService().unreadCountStream(
-                      recipientId: FirebaseAuth.instance.currentUser?.uid ?? '',
-                      recipientRole: NotificationService.roleStudent,
-                    ),
+                    stream: _unreadCountStream,
                     builder: (context, snapshot) {
                       final unreadCount = snapshot.hasData ? snapshot.data! : 0;
                       return Stack(
@@ -1167,14 +1278,17 @@ class _NavigationExampleState extends State<MainScreen> {
                 selectedIndex: currentPageIndex,
                 onDestinationSelected: _onPageSelected,
                 indicatorColor: Colors.orange,
-                labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
+
                 destinations: const [
                   NavigationDestination(
                     icon: Icon(Icons.home_outlined, semanticLabel: 'home'),
                     label: "Home",
                   ),
                   NavigationDestination(
-                    icon: Icon(Icons.category_outlined, semanticLabel: 'categories'),
+                    icon: Icon(
+                      Icons.category_outlined,
+                      semanticLabel: 'categories',
+                    ),
                     label: "Categories",
                   ),
                   NavigationDestination(
@@ -1189,7 +1303,10 @@ class _NavigationExampleState extends State<MainScreen> {
                     label: "Orders",
                   ),
                   NavigationDestination(
-                    icon: Icon(Icons.person_outlined, semanticLabel: 'my profile'),
+                    icon: Icon(
+                      Icons.person_outlined,
+                      semanticLabel: 'my profile',
+                    ),
                     label: "Account",
                   ),
                 ],
@@ -1214,7 +1331,6 @@ class AppLogo extends StatelessWidget {
           style: TextStyle(
             fontSize: 20,
             fontWeight: FontWeight.w800,
-            color: Colors.black87,
             letterSpacing: -0.5,
           ),
         ),

@@ -362,13 +362,7 @@ class _SearchBarScreenState extends State<SearchBarScreen> {
               borderRadius: BorderRadius.circular(12),
               onTap: () {
                 _searchFocusNode.unfocus();
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) =>
-                        FoodDetailsScreen(item: item, heroTagPrefix: 'search_'),
-                  ),
-                );
+                FoodDetailsScreen.open(context, item, heroTagPrefix: 'search_');
               },
               child: Row(
                 children: [
@@ -443,22 +437,29 @@ class _SearchBarScreenState extends State<SearchBarScreen> {
                                 ),
                               ),
                               if (item.availableCafes.isNotEmpty)
-                                Row(
-                                  children: [
-                                    Icon(
-                                      Icons.storefront_outlined,
-                                      size: 14,
-                                      color: Colors.grey.shade400,
-                                    ),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      item.displayCafe,
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        color: Colors.grey.shade500,
+                                Flexible(
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.end,
+                                    children: [
+                                      Icon(
+                                        Icons.storefront_outlined,
+                                        size: 14,
+                                        color: Colors.grey.shade400,
                                       ),
-                                    ),
-                                  ],
+                                      const SizedBox(width: 4),
+                                      Flexible(
+                                        child: Text(
+                                          item.displayCafe,
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: Colors.grey.shade500,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                             ],
                           ),
