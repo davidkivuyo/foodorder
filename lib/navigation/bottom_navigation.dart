@@ -134,9 +134,9 @@ class _NavigationExampleState extends State<MainScreen> {
     });
     _homeScrollController.addListener(_onHomeScroll);
     _desktopSearchFocusNode.addListener(() {
-      if (mounted) {
+      if (mounted && _desktopSearchFocusNode.hasFocus) {
         setState(() {
-          _isDesktopSearchOpen = _desktopSearchFocusNode.hasFocus;
+          _isDesktopSearchOpen = true;
         });
       }
     });
@@ -225,83 +225,125 @@ class _NavigationExampleState extends State<MainScreen> {
 
           // 2. Uber Eats Style Interactive Search Input Bar in Header
           Expanded(
-            child: Container(
-              height: 44,
-              decoration: BoxDecoration(
-                color: _isDesktopSearchOpen
-                    ? Colors.white
-                    : Colors.grey.shade100,
-                borderRadius: BorderRadius.circular(22),
-                border: Border.all(
+            child: TapRegion(
+              groupId: 'desktop_search',
+              onTapOutside: (event) {
+                if (_isDesktopSearchOpen) {
+                  setState(() {
+                    _isDesktopSearchOpen = false;
+                  });
+                  _desktopSearchFocusNode.unfocus();
+                }
+              },
+              child: Container(
+                height: 44,
+                decoration: BoxDecoration(
                   color: _isDesktopSearchOpen
-                      ? Colors.orange
-                      : Colors.grey.shade300,
-                  width: _isDesktopSearchOpen ? 2 : 1,
-                ),
-                boxShadow: _isDesktopSearchOpen
-                    ? [
-                        BoxShadow(
-                          color: Colors.orange.withValues(alpha: 0.15),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
-                        ),
-                      ]
-                    : null,
-              ),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 14.0),
-                child: Row(
-                  children: [
-                    const Icon(Icons.search, color: Colors.orange, size: 20),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: TextField(
-                        controller: _desktopSearchController,
-                        focusNode: _desktopSearchFocusNode,
-                        onChanged: (q) {
-                          setState(() {
-                            _desktopSearchQuery = q;
-                            _isDesktopSearchOpen = true;
-                          });
-                        },
-                        onTap: () {
-                          setState(() {
-                            _isDesktopSearchOpen = true;
-                          });
-                        },
-                        style: const TextStyle(
-                          fontSize: 14,
-                          color: Colors.black87,
-                          fontWeight: FontWeight.w500,
-                        ),
-                        decoration: const InputDecoration(
-                          hintText: "Search",
-                          hintStyle: TextStyle(
-                            fontSize: 14,
-                            color: Colors.grey,
-                            fontWeight: FontWeight.w400,
+                      ? Colors.white
+                      : Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(22),
+                  border: Border.all(
+                    color: _isDesktopSearchOpen
+                        ? Colors.orange
+                        : Colors.grey.shade300,
+                    width: _isDesktopSearchOpen ? 2 : 1,
+                  ),
+                  boxShadow: _isDesktopSearchOpen
+                      ? [
+                          BoxShadow(
+                            color: Colors.orange.withValues(alpha: 0.15),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
                           ),
-                          border: InputBorder.none,
-                          isDense: true,
-                          contentPadding: EdgeInsets.symmetric(vertical: 10),
+                        ]
+                      : null,
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 14.0),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.search, color: Colors.orange, size: 20),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: TextField(
+                          controller: _desktopSearchController,
+                          focusNode: _desktopSearchFocusNode,
+                          onChanged: (q) {
+                            setState(() {
+                              _desktopSearchQuery = q;
+                              _isDesktopSearchOpen = true;
+                            });
+                          },
+                          onTap: () {
+                            setState(() {
+                              _isDesktopSearchOpen = true;
+                            });
+                          },
+                          onSubmitted: (val) {
+                            final searchVal = val.trim();
+                            if (searchVal.isNotEmpty) {
+                              final allItems = FoodData.cachedFoodItems ?? [];
+                              final matchedItems = allItems
+                                  .where(
+                                    (item) =>
+                                        item.title.toLowerCase().contains(searchVal.toLowerCase()) ||
+                                        item.category.toLowerCase().contains(searchVal.toLowerCase()) ||
+                                        item.displayCafe.toLowerCase().contains(searchVal.toLowerCase()) ||
+                                        item.section.toLowerCase().contains(searchVal.toLowerCase()) ||
+                                        item.searchPrefixes.any((p) => p.toLowerCase().contains(searchVal.toLowerCase())) ||
+                                        item.keywords.any((k) => k.toLowerCase().contains(searchVal.toLowerCase())),
+                                  )
+                                  .toList();
+                              _desktopSearchFocusNode.unfocus();
+                              setState(() {
+                                _isDesktopSearchOpen = false;
+                              });
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => CategoriesTitles(
+                                    title: 'Search: $searchVal',
+                                    items: matchedItems,
+                                    heroTagPrefix: 'desktop_search_submit_',
+                                  ),
+                                ),
+                              );
+                            }
+                          },
+                          style: const TextStyle(
+                            fontSize: 14,
+                            color: Colors.black87,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          decoration: const InputDecoration(
+                            hintText: "Search meals, categories...",
+                            hintStyle: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey,
+                              fontWeight: FontWeight.w400,
+                            ),
+                            border: InputBorder.none,
+                            isDense: true,
+                            contentPadding: EdgeInsets.symmetric(vertical: 10),
+                          ),
                         ),
                       ),
-                    ),
-                    if (_desktopSearchQuery.isNotEmpty)
-                      IconButton(
-                        icon: const Icon(
-                          Icons.close_rounded,
-                          size: 18,
-                          color: Colors.grey,
+                      if (_desktopSearchQuery.isNotEmpty)
+                        IconButton(
+                          icon: const Icon(
+                            Icons.close_rounded,
+                            size: 18,
+                            color: Colors.grey,
+                          ),
+                          onPressed: () {
+                            _desktopSearchController.clear();
+                            setState(() {
+                              _desktopSearchQuery = '';
+                            });
+                          },
                         ),
-                        onPressed: () {
-                          _desktopSearchController.clear();
-                          setState(() {
-                            _desktopSearchQuery = '';
-                          });
-                        },
-                      ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -721,206 +763,214 @@ class _NavigationExampleState extends State<MainScreen> {
           top: 72,
           left: 0,
           right: 0,
-          child: Material(
-            elevation: 12,
-            shadowColor: Colors.black26,
-            borderRadius: const BorderRadius.only(
-              bottomLeft: Radius.circular(16),
-              bottomRight: Radius.circular(16),
-            ),
-            child: Container(
-              constraints: const BoxConstraints(maxHeight: 420),
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.only(
-                  bottomLeft: Radius.circular(16),
-                  bottomRight: Radius.circular(16),
-                ),
+          child: TapRegion(
+            groupId: 'desktop_search',
+            child: Material(
+              elevation: 12,
+              shadowColor: Colors.black26,
+              borderRadius: const BorderRadius.only(
+                bottomLeft: Radius.circular(16),
+                bottomRight: Radius.circular(16),
               ),
-              child: hasError
-                  ? _buildSearchOverlayError(snapshot.error)
-                  : isLoading
-                  ? const Center(
-                      child: Padding(
-                        padding: EdgeInsets.all(32),
-                        child: CircularProgressIndicator(color: Colors.orange),
-                      ),
-                    )
-                  : Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (query.isEmpty) ...[
-                          const Padding(
-                            padding: EdgeInsets.fromLTRB(20, 16, 20, 10),
-                            child: Text(
-                              'Top categories',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.black87,
-                              ),
-                            ),
-                          ),
-                          Flexible(
-                            child: ListView.separated(
-                              shrinkWrap: true,
-                              itemCount: topCategories.length,
-                              separatorBuilder: (_, _) => const Divider(
-                                height: 1,
-                                indent: 20,
-                                endIndent: 20,
-                              ),
-                              itemBuilder: (context, index) {
-                                final cat = topCategories[index];
-                                return ListTile(
-                                  leading: Text(
-                                    cat['icon']!,
-                                    style: const TextStyle(fontSize: 22),
-                                  ),
-                                  title: Text(
-                                    cat['label']!,
-                                    style: const TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w600,
-                                      color: Colors.black87,
-                                    ),
-                                  ),
-                                  trailing: const Icon(
-                                    Icons.arrow_forward_ios_rounded,
-                                    size: 14,
-                                    color: Colors.grey,
-                                  ),
-                                  onTap: () {
-                                    final categoryName = cat['label']!;
-                                    final catItems = allItems
-                                        .where(
-                                          (i) =>
-                                              i.category.toLowerCase().contains(
-                                                categoryName.toLowerCase(),
-                                              ) ||
-                                              i.title.toLowerCase().contains(
-                                                categoryName.toLowerCase(),
-                                              ) ||
-                                              i.section.toLowerCase().contains(
-                                                categoryName.toLowerCase(),
-                                              ),
-                                        )
-                                        .toList();
-                                    _desktopSearchFocusNode.unfocus();
-                                    setState(() {
-                                      _isDesktopSearchOpen = false;
-                                    });
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (_) => CategoriesTitles(
-                                          title: categoryName,
-                                          items: catItems,
-                                          heroTagPrefix: 'search_cat_',
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                );
-                              },
-                            ),
-                          ),
-                        ] else ...[
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(20, 14, 20, 10),
-                            child: Text(
-                              'Results for "$_desktopSearchQuery" (${searchResults.length})',
-                              style: const TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.black87,
-                              ),
-                            ),
-                          ),
-                          if (searchResults.isEmpty)
+              child: Container(
+                constraints: const BoxConstraints(maxHeight: 420),
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.only(
+                    bottomLeft: Radius.circular(16),
+                    bottomRight: Radius.circular(16),
+                  ),
+                ),
+                child: hasError
+                    ? _buildSearchOverlayError(snapshot.error)
+                    : isLoading
+                    ? const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(32),
+                          child: CircularProgressIndicator(color: Colors.orange),
+                        ),
+                      )
+                    : Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (query.isEmpty) ...[
                             const Padding(
-                              padding: EdgeInsets.all(24.0),
-                              child: Center(
-                                child: Text(
-                                  'No food items found matching your search.',
-                                  style: TextStyle(
-                                    color: Colors.grey,
-                                    fontSize: 14,
-                                  ),
+                              padding: EdgeInsets.fromLTRB(20, 16, 20, 10),
+                              child: Text(
+                                'Top categories',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.black87,
                                 ),
                               ),
-                            )
-                          else
+                            ),
                             Flexible(
-                              child: ListView.builder(
+                              child: ListView.separated(
                                 shrinkWrap: true,
-                                itemCount: searchResults.length,
+                                itemCount: topCategories.length,
+                                separatorBuilder: (_, _) => const Divider(
+                                  height: 1,
+                                  indent: 20,
+                                  endIndent: 20,
+                                ),
                                 itemBuilder: (context, index) {
-                                  final item = searchResults[index];
+                                  final cat = topCategories[index];
                                   return ListTile(
-                                    contentPadding: const EdgeInsets.symmetric(
-                                      horizontal: 16,
-                                      vertical: 4,
-                                    ),
-                                    leading: ClipRRect(
-                                      borderRadius: BorderRadius.circular(8),
-                                      child: item.buildImage(
-                                        width: 48,
-                                        height: 48,
-                                        fit: BoxFit.cover,
-                                      ),
+                                    leading: Text(
+                                      cat['icon']!,
+                                      style: const TextStyle(fontSize: 22),
                                     ),
                                     title: Text(
-                                      item.title,
+                                      cat['label']!,
                                       style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
                                         fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                        color: Colors.black87,
                                       ),
                                     ),
-                                    subtitle: Text(
-                                      '${item.displayCafe} • TZS ${item.price}',
-                                      style: const TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.grey,
-                                      ),
-                                    ),
-                                    trailing: Container(
-                                      padding: const EdgeInsets.all(6),
-                                      decoration: BoxDecoration(
-                                        color: item.available
-                                            ? Colors.orange
-                                            : Colors.grey.shade300,
-                                        shape: BoxShape.circle,
-                                      ),
-                                      child: Icon(
-                                        item.available
-                                            ? Icons.add_rounded
-                                            : Icons.block,
-                                        color: item.available
-                                            ? Colors.white
-                                            : Colors.grey.shade500,
-                                        size: 16,
-                                      ),
+                                    trailing: const Icon(
+                                      Icons.arrow_forward_ios_rounded,
+                                      size: 14,
+                                      color: Colors.grey,
                                     ),
                                     onTap: () {
+                                      final categoryName = cat['label']!;
+                                      final catItems = allItems
+                                          .where(
+                                            (i) =>
+                                                i.category.toLowerCase().contains(
+                                                  categoryName.toLowerCase(),
+                                                ) ||
+                                                i.title.toLowerCase().contains(
+                                                  categoryName.toLowerCase(),
+                                                ) ||
+                                                i.section.toLowerCase().contains(
+                                                  categoryName.toLowerCase(),
+                                                ) ||
+                                                i.keywords.any(
+                                                  (k) => k.toLowerCase().contains(
+                                                    categoryName.toLowerCase(),
+                                                  ),
+                                                ),
+                                          )
+                                          .toList();
                                       _desktopSearchFocusNode.unfocus();
                                       setState(() {
                                         _isDesktopSearchOpen = false;
                                       });
-                                      FoodDetailsScreen.open(
+                                      Navigator.push(
                                         context,
-                                        item,
-                                        heroTagPrefix: 'search_overlay_',
+                                        MaterialPageRoute(
+                                          builder: (_) => CategoriesTitles(
+                                            title: categoryName,
+                                            items: catItems,
+                                            heroTagPrefix: 'search_cat_${categoryName}_',
+                                          ),
+                                        ),
                                       );
                                     },
                                   );
                                 },
                               ),
                             ),
+                          ] else ...[
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(20, 14, 20, 10),
+                              child: Text(
+                                'Results for "$_desktopSearchQuery" (${searchResults.length})',
+                                style: const TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.black87,
+                                ),
+                              ),
+                            ),
+                            if (searchResults.isEmpty)
+                              const Padding(
+                                padding: EdgeInsets.all(24.0),
+                                child: Center(
+                                  child: Text(
+                                    'No food items found matching your search.',
+                                    style: TextStyle(
+                                      color: Colors.grey,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                ),
+                              )
+                            else
+                              Flexible(
+                                child: ListView.builder(
+                                  shrinkWrap: true,
+                                  itemCount: searchResults.length,
+                                  itemBuilder: (context, index) {
+                                    final item = searchResults[index];
+                                    return ListTile(
+                                      contentPadding: const EdgeInsets.symmetric(
+                                        horizontal: 16,
+                                        vertical: 4,
+                                      ),
+                                      leading: ClipRRect(
+                                        borderRadius: BorderRadius.circular(8),
+                                        child: item.buildImage(
+                                          width: 48,
+                                          height: 48,
+                                          fit: BoxFit.cover,
+                                        ),
+                                      ),
+                                      title: Text(
+                                        item.title,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                      subtitle: Text(
+                                        '${item.displayCafe} • TZS ${item.price}',
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.grey,
+                                        ),
+                                      ),
+                                      trailing: Container(
+                                        padding: const EdgeInsets.all(6),
+                                        decoration: BoxDecoration(
+                                          color: item.available
+                                              ? Colors.orange
+                                              : Colors.grey.shade300,
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: Icon(
+                                          item.available
+                                              ? Icons.add_rounded
+                                              : Icons.block,
+                                          color: item.available
+                                              ? Colors.white
+                                              : Colors.grey.shade500,
+                                          size: 16,
+                                        ),
+                                      ),
+                                      onTap: () {
+                                        _desktopSearchFocusNode.unfocus();
+                                        setState(() {
+                                          _isDesktopSearchOpen = false;
+                                        });
+                                        FoodDetailsScreen.open(
+                                          context,
+                                          item,
+                                          heroTagPrefix: 'search_overlay_${item.id}_',
+                                        );
+                                      },
+                                    );
+                                  },
+                                ),
+                              ),
+                          ],
                         ],
-                      ],
-                    ),
+                      ),
+              ),
             ),
           ),
         );
@@ -1238,25 +1288,7 @@ class _NavigationExampleState extends State<MainScreen> {
                 children: [
                   desktopBody,
 
-                  if (_isDesktopSearchOpen) ...[
-                    // Backdrop detector to close search overlay on click outside
-                    Positioned.fill(
-                      child: GestureDetector(
-                        onTap: () {
-                          _desktopSearchFocusNode.unfocus();
-                          setState(() {
-                            _isDesktopSearchOpen = false;
-                          });
-                        },
-                        child: Container(
-                          color: Colors.black.withValues(alpha: 0.1),
-                        ),
-                      ),
-                    ),
-
-                    // Expandable search dropdown menu
-                    _buildDesktopSearchOverlay(),
-                  ],
+                  if (_isDesktopSearchOpen) _buildDesktopSearchOverlay(),
                 ],
               )
             : Stack(
