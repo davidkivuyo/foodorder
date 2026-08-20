@@ -5,8 +5,6 @@
 ---
 
 ## FIXES NEEDED
-1. remove the sidecart panel appears on the right side when the user cart have items, so that both in desktop and in mobile the cart a user cart will always appear only through the bottom sheet
-
 2. remove the add to cart shadow **checked**
 
 3. update the cafe details in food item appearing in desktop to also be tappable and push the use to cafe details screen
