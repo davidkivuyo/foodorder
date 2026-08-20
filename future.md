@@ -1,6 +1,43 @@
 # future implementation plans
 
 # TODOS
+
+---
+
+## FIXES NEEDED
+1. remove the sidecart panel appears on the right side when the user cart have items, so that both in desktop and in mobile the cart a user cart will always appear only through the bottom sheet
+
+2. remove the add to cart shadow **checked**
+
+3. update the cafe details in food item appearing in desktop to also be tappable and push the use to cafe details screen
+
+4. remove the prices **checked**
+
+5 . fix the orange overlay **checked**
+
+6. fix the home searchbar layout issue **checked
+
+7. fix the padding issue **checked**
+
+8.  fix the text cafe overflows **checked**
+
+9. remove any border and elevation and hovers in all food cards **checked**
+
+10. make it as a carousel instead of pushing to a different screen for each section in the home screen
+
+11. fix the review button not showing up--orders deleted (investigate if the review buttons nd logic work as intended)
+
+12. increase slightly the width of the food images in homescreen
+
+13. Fix the searchbar logic in homescreen
+
+14. Remove duplicate icons in the categories filter in the top header section
+
+15. change the food details popup model design to adapt that of uber eats in the screenshots
+
+----
+
+## FUTURE FEATURES
 1. apply ai to view and monitor images uploaded to be for food only no harm or dangerous materials
 
 2. Add a 'for' field on every food items which  is for univerisity with a value of "for university"
@@ -26,14 +63,3 @@
 * CardRowItems(title: "Deals outside campus cafes",items: offCampus,),
 // If cafe is 'offcampus', show 'OFF-CAMPUS', otherwise show 'CAFE(X)'
 * item.cafe.toLowerCase() == 'offcampus' ? '${item.rating} • OFFCAMPUS' : '${item.rating} • CAFE(${item.cafe})',
-
----
-
-# important
-Rule going forward
-
-Keep versions strictly increasing across channels — a production tag must always be greater than the highest dev tag, and dev tags should be prereleases of a future version, not a parallel numbering track:
-- Bad: dev  v1.1.0-dev ,  v1.8.0-dev  → production  v1.0.0  (downgrade in name)
-- Good: production  v1.9.0  → then dev  v1.10.0-dev  → production  v2.0.0  → dev  v2.1.0-dev  …
-
-Your pipeline enforces this automatically — the  -prerelease  detection in the workflow ( IS_PRERELEASE ) publishes dev tags as GitHub prereleases, the semver validation ensures tags are always well-formed, and a release-ordering gate in the Extract Version step rejects any tag that is not semver-greater than every previously published tag (excluding the candidate itself, so re-runs pass). No manual gate is needed; a lower tag simply fails the build.
