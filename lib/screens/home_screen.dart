@@ -397,13 +397,14 @@ class CardRowItems extends StatelessWidget {
 
         // Cards Presentation (Desktop Responsive Row)
         SizedBox(
-          height: (isDesktop ? 230 : 200) * textScale,
+          height: (isDesktop ? 230 : 208) * textScale,
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: EdgeInsets.fromLTRB(8, 0, isDesktop ? 8 : 0, 0),
             itemCount: displayedItems.length,
             itemBuilder: (context, index) {
               final item = displayedItems[index];
+              final bool isAvailable = item.available;
               return Container(
                 width: isDesktop ? 265 : 235,
                 margin: const EdgeInsets.only(right: 12),
@@ -437,7 +438,7 @@ class CardRowItems extends StatelessWidget {
                             ),
                           ),
                           // Stock overlay badge
-                          StockOverlayBadge(inStock: item.available),
+                          StockOverlayBadge(inStock: isAvailable),
                           // Prep time overlay badge (Deliveroo style)
                           PrepTimeBadge(time: item.time),
                         ],
@@ -464,33 +465,32 @@ class CardRowItems extends StatelessWidget {
                                     ),
                                   ),
                                 ),
-                                GestureDetector(
-                                  onTap: item.available
+                                IconButton(
+                                  onPressed: isAvailable
                                       ? () => addToCartWithCafeCheck(
                                           context,
                                           item,
                                         )
                                       : null,
-                                  child: Container(
-                                    padding: const EdgeInsets.all(4),
-                                    decoration: BoxDecoration(
-                                      color: item.available
-                                          ? Colors.orange
-                                          : Colors.grey.shade300,
-                                      shape: BoxShape.circle,
-                                    ),
-                                    child: Icon(
-                                      item.available
-                                          ? Icons.add_rounded
-                                          : Icons.block,
-                                      color: item.available
-                                          ? Colors.white
-                                          : Colors.grey.shade500,
-                                      size: 16,
-                                      semanticLabel: item.available
-                                          ? 'Add item to cart'
-                                          : 'Item unavailable',
-                                    ),
+                                  icon: Icon(
+                                    isAvailable
+                                        ? Icons.add_rounded
+                                        : Icons.block,
+                                    semanticLabel: isAvailable
+                                        ? 'Add item to cart'
+                                        : 'Item unavailable',
+                                  ),
+                                  style: IconButton.styleFrom(
+                                    backgroundColor: isAvailable
+                                        ? Colors.orange
+                                        : Colors.grey.shade300,
+                                    foregroundColor: isAvailable
+                                        ? Colors.white
+                                        : Colors.grey.shade500,
+                                    padding: EdgeInsets.zero,
+                                    iconSize: 16,
+                                    minimumSize: const Size.square(24),
+                                    tapTargetSize: MaterialTapTargetSize.padded,
                                   ),
                                 ),
                               ],
