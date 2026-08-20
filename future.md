@@ -21,8 +21,6 @@
 
 9. remove any border and elevation and hovers in all food cards **checked**
 
-10. make it as a carousel instead of pushing to a different screen for each section in the home screen
-
 11. fix the review button not showing up--orders deleted (investigate if the review buttons nd logic work as intended)
 
 12. increase slightly the width of the food images in homescreen
