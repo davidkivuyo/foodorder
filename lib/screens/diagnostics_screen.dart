@@ -16,6 +16,7 @@ import 'package:flutter/material.dart';
 
 import '../services/diagnostics_service.dart';
 import '../services/health_service.dart';
+import '../utils/responsive.dart';
 import '../viewmodels/diagnostics_view_model.dart';
 
 /// Hidden developer diagnostics screen (Phase 17 — Part 14).
@@ -102,107 +103,109 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
     if (snapshot == null) {
       return const Center(child: CircularProgressIndicator());
     }
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        _Section(
-          title: 'Application',
-          children: [
-            _Row(label: 'Version', value: snapshot.appVersion),
-            _Row(label: 'Build', value: snapshot.buildNumber),
-            _Row(label: 'SDK version', value: snapshot.sdkVersion),
-            _Row(label: 'Platform', value: snapshot.platform),
-          ],
-        ),
-        _Section(
-          title: 'Firebase',
-          children: [
-            for (final entry in snapshot.firebaseVersions.entries)
-              _Row(label: entry.key, value: entry.value),
-          ],
-        ),
-        _Section(
-          title: 'Storage',
-          children: [
-            _Row(
-              label: 'Offline persistence',
-              // Tri-state: null means "not configured / unknown", which is
-              // not the same as disabled (mobile Firestore persists by
-              // default; web ignores the setting).
-              value: switch (snapshot.persistenceEnabled) {
-                true => 'enabled',
-                false => 'disabled',
-                null => 'not configured',
-              },
-            ),
-            _Row(
-              label: 'Last sync',
-              value: _formatTime(snapshot.lastSyncAt),
-            ),
-          ],
-        ),
-        _Section(
-          title: 'Monitoring',
-          children: [
-            _Row(
-              label: 'Role',
-              value: snapshot.userRole,
-            ),
-            _Row(
-              label: 'Notifications',
-              value: snapshot.notificationActive ? 'active' : 'inactive',
-            ),
-            _Row(
-              label: 'Analytics',
-              value: snapshot.analyticsAvailable ? 'enabled' : 'unavailable',
-            ),
-            _Row(
-              label: 'Crashlytics',
-              value:
-                  snapshot.crashlyticsAvailable ? 'enabled' : 'unavailable',
-            ),
-            _Row(
-              label: 'Performance',
-              value:
-                  snapshot.performanceAvailable ? 'enabled' : 'unavailable',
-            ),
-          ],
-        ),
-        _Section(
-          title: 'Service health',
-          children: [
-            _Row(label: 'Overall', value: _healthName(snapshot.health.overall)),
-            _Row(
-              label: 'Firestore',
-              value: _componentName(snapshot.health.firestore),
-            ),
-            _Row(label: 'Auth', value: _componentName(snapshot.health.auth)),
-            _Row(
-              label: 'Cloudinary',
-              value: _componentName(snapshot.health.cloudinary),
-            ),
-            _Row(
-              label: 'Notifications',
-              value: _componentName(snapshot.health.notifications),
-            ),
-            _Row(
-              label: 'Update service',
-              value: _componentName(snapshot.health.update),
-            ),
-            _Row(
-              label: 'Cloud Functions',
-              value: _componentName(snapshot.health.functions),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        const Text(
-          'Diagnostics contain technical data only. No personal information '
-          'is collected or displayed.',
-          style: TextStyle(fontSize: 12, color: Colors.grey),
-          textAlign: TextAlign.center,
-        ),
-      ],
+    return desktopCentered(
+      context,
+      ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          _Section(
+            title: 'Application',
+            children: [
+              _Row(label: 'Version', value: snapshot.appVersion),
+              _Row(label: 'Build', value: snapshot.buildNumber),
+              _Row(label: 'SDK version', value: snapshot.sdkVersion),
+              _Row(label: 'Platform', value: snapshot.platform),
+            ],
+          ),
+          _Section(
+            title: 'Firebase',
+            children: [
+              for (final entry in snapshot.firebaseVersions.entries)
+                _Row(label: entry.key, value: entry.value),
+            ],
+          ),
+          _Section(
+            title: 'Storage',
+            children: [
+              _Row(
+                label: 'Offline persistence',
+                // Tri-state: null means "not configured / unknown", which is
+                // not the same as disabled (mobile Firestore persists by
+                // default; web ignores the setting).
+                value: switch (snapshot.persistenceEnabled) {
+                  true => 'enabled',
+                  false => 'disabled',
+                  null => 'not configured',
+                },
+              ),
+              _Row(label: 'Last sync', value: _formatTime(snapshot.lastSyncAt)),
+            ],
+          ),
+          _Section(
+            title: 'Monitoring',
+            children: [
+              _Row(label: 'Role', value: snapshot.userRole),
+              _Row(
+                label: 'Notifications',
+                value: snapshot.notificationActive ? 'active' : 'inactive',
+              ),
+              _Row(
+                label: 'Analytics',
+                value: snapshot.analyticsAvailable ? 'enabled' : 'unavailable',
+              ),
+              _Row(
+                label: 'Crashlytics',
+                value: snapshot.crashlyticsAvailable
+                    ? 'enabled'
+                    : 'unavailable',
+              ),
+              _Row(
+                label: 'Performance',
+                value: snapshot.performanceAvailable
+                    ? 'enabled'
+                    : 'unavailable',
+              ),
+            ],
+          ),
+          _Section(
+            title: 'Service health',
+            children: [
+              _Row(
+                label: 'Overall',
+                value: _healthName(snapshot.health.overall),
+              ),
+              _Row(
+                label: 'Firestore',
+                value: _componentName(snapshot.health.firestore),
+              ),
+              _Row(label: 'Auth', value: _componentName(snapshot.health.auth)),
+              _Row(
+                label: 'Cloudinary',
+                value: _componentName(snapshot.health.cloudinary),
+              ),
+              _Row(
+                label: 'Notifications',
+                value: _componentName(snapshot.health.notifications),
+              ),
+              _Row(
+                label: 'Update service',
+                value: _componentName(snapshot.health.update),
+              ),
+              _Row(
+                label: 'Cloud Functions',
+                value: _componentName(snapshot.health.functions),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'Diagnostics contain technical data only. No personal information '
+            'is collected or displayed.',
+            style: TextStyle(fontSize: 12, color: Colors.grey),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
     );
   }
 
@@ -265,10 +268,7 @@ class _Row extends StatelessWidget {
           Flexible(
             child: Text(
               value,
-              style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-              ),
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
               textAlign: TextAlign.right,
               overflow: TextOverflow.ellipsis,
             ),
@@ -290,8 +290,7 @@ class DiagnosticsEntryTile extends StatefulWidget {
   static bool shouldShowDiagnostics({
     required bool debugMode,
     required String role,
-  }) =>
-      debugMode || role == 'admin';
+  }) => debugMode || role == 'admin';
 
   @override
   State<DiagnosticsEntryTile> createState() => _DiagnosticsEntryTileState();
@@ -327,13 +326,18 @@ class _DiagnosticsEntryTileState extends State<DiagnosticsEntryTile> {
       children: [
         const Divider(height: 1),
         ListTile(
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 20,
+            vertical: 8,
+          ),
           leading: CircleAvatar(
             radius: 20,
             backgroundColor: Colors.blueGrey.shade50,
-            child: const Icon(Icons.monitor_heart_outlined,
-                color: Colors.blueGrey, size: 22),
+            child: const Icon(
+              Icons.monitor_heart_outlined,
+              color: Colors.blueGrey,
+              size: 22,
+            ),
           ),
           title: const Text(
             'Developer Diagnostics',
@@ -341,9 +345,9 @@ class _DiagnosticsEntryTileState extends State<DiagnosticsEntryTile> {
           ),
           subtitle: const Text('App health, versions and monitoring status'),
           trailing: const Icon(Icons.chevron_right),
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const DiagnosticsScreen()),
-          ),
+          onTap: () => Navigator.of(
+            context,
+          ).push(MaterialPageRoute(builder: (_) => const DiagnosticsScreen())),
         ),
       ],
     );

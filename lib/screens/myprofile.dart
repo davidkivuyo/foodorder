@@ -24,6 +24,7 @@ import 'package:campusbite/widgets/user_initials_avatar.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../utils/responsive.dart';
 import '../widgets/logout_confirmation_dialog.dart';
 
 class MyProfileScreen extends StatefulWidget {
@@ -191,7 +192,8 @@ class _MyProfileScreenState extends State<MyProfileScreen> {
     if (currentUser == null) {
       setState(() {
         _isSaving = false;
-        _errorMessage = 'You are not signed in. '
+        _errorMessage =
+            'You are not signed in. '
             'Please sign in again and retry.';
       });
       return;
@@ -199,7 +201,8 @@ class _MyProfileScreenState extends State<MyProfileScreen> {
     if (currentUser.email == null || currentUser.email!.isEmpty) {
       setState(() {
         _isSaving = false;
-        _errorMessage = 'Profile cannot be saved without an authenticated '
+        _errorMessage =
+            'Profile cannot be saved without an authenticated '
             'email. Please sign in with an email account and retry.';
       });
       return;
@@ -268,9 +271,9 @@ class _MyProfileScreenState extends State<MyProfileScreen> {
         child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
           stream: currentUser != null
               ? FirebaseFirestore.instance
-                  .collection('users')
-                  .doc(currentUser.uid)
-                  .snapshots()
+                    .collection('users')
+                    .doc(currentUser.uid)
+                    .snapshots()
               : null,
           builder: (context, snapshot) {
             UserProfile userProfile;
@@ -302,233 +305,236 @@ class _MyProfileScreenState extends State<MyProfileScreen> {
                   )
                 : 'New record';
 
-            return SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Header Section
-                  Container(
-                    width: double.infinity,
-                    color: sectionBgColor,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 12,
-                    ),
-                    child: Column(
-                      children: [
-                        // Top Bar with Back Button & Title
-                        Row(
-                          children: [
-                            IconButton(
-                              icon: const Icon(
-                                Icons.arrow_back,
-                                color: Colors.black87,
+            return desktopCentered(
+              context,
+              SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Header Section
+                    Container(
+                      width: double.infinity,
+                      color: sectionBgColor,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                      child: Column(
+                        children: [
+                          // Top Bar with Back Button & Title
+                          Row(
+                            children: [
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.arrow_back,
+                                  color: Colors.black87,
+                                ),
+                                onPressed: () => Navigator.maybePop(context),
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(),
                               ),
-                              onPressed: () => Navigator.maybePop(context),
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(),
+                              const SizedBox(width: 16),
+                              const Text(
+                                'My Profile',
+                                style: TextStyle(
+                                  fontSize: 26,
+                                  color: Colors.black,
+                                  letterSpacing: -0.5,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 20),
+
+                          // Profile Avatar
+                          Center(
+                            child: UserInitialsAvatar(
+                              initials: initialsFromName(displayName),
+                              color: avatarColorFromName(displayName),
+                              size: 84,
                             ),
-                            const SizedBox(width: 16),
-                            const Text(
-                              'My Profile',
-                              style: TextStyle(
-                                fontSize: 26,
-                                color: Colors.black,
-                                letterSpacing: -0.5,
+                          ),
+                          const SizedBox(height: 12),
+
+                          // User Name - editable or display
+                          _isEditing
+                              ? TextField(
+                                  controller: _nameController,
+                                  autofocus: false,
+                                  decoration: const InputDecoration(
+                                    hintText: 'Full name',
+                                    border: UnderlineInputBorder(),
+                                  ),
+                                  onChanged: (_) => setState(() {}),
+                                )
+                              : Text(
+                                  displayName,
+                                  style: const TextStyle(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.black87,
+                                  ),
+                                ),
+
+                          const SizedBox(height: 16),
+                        ],
+                      ),
+                    ),
+
+                    // Personal Info Section
+                    _buildSectionHeader('Personal info'),
+
+                    _buildProfileEditTile(
+                      title: 'Name',
+                      subtitle: _isEditing
+                          ? _nameController.text.isNotEmpty
+                                ? _nameController.text
+                                : displayName
+                          : displayName,
+                      onTap: _onEditingTap,
+                    ),
+                    _buildDivider(),
+                    // Email is immutable — display only, never editable.
+                    _buildSettingTile(
+                      title: 'Email',
+                      subtitle: displayEmail,
+                      subtitleColor: brandGreen,
+                      trailingIcon: Icons.check_circle_outline,
+                      trailingIconColor: Colors.black87,
+                    ),
+
+                    // Save / Cancel buttons when in edit mode
+                    if (_isEditing) ...[
+                      _buildSectionGap(),
+                      if (_errorMessage != null)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 8,
+                          ),
+                          child: Text(
+                            _errorMessage!,
+                            style: const TextStyle(
+                              color: Colors.red,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                      Container(
+                        width: double.infinity,
+                        color: Colors.white,
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: TextButton(
+                                onPressed: _isSaving
+                                    ? null
+                                    : () {
+                                        setState(() {
+                                          _isEditing = false;
+                                          _nameController.clear();
+                                          _errorMessage = null;
+                                        });
+                                      },
+                                child: const Text('Cancel'),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: ElevatedButton(
+                                onPressed: _isSaving ? null : _saveProfile,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF168039),
+                                  foregroundColor: Colors.white,
+                                ),
+                                child: _isSaving
+                                    ? const SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: CircularProgressIndicator(
+                                          color: Colors.white,
+                                          strokeWidth: 2.5,
+                                        ),
+                                      )
+                                    : const Text('Save'),
                               ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 20),
-
-                        // Profile Avatar
-                        Center(
-                          child: UserInitialsAvatar(
-                            initials: initialsFromName(displayName),
-                            color: avatarColorFromName(displayName),
-                            size: 84,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-
-                        // User Name - editable or display
-                        _isEditing
-                            ? TextField(
-                                controller: _nameController,
-                                autofocus: false,
-                                decoration: const InputDecoration(
-                                  hintText: 'Full name',
-                                  border: UnderlineInputBorder(),
-                                ),
-                                onChanged: (_) => setState(() {}),
-                              )
-                            : Text(
-                                displayName,
-                                style: const TextStyle(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.black87,
-                                ),
-                              ),
-
-                        const SizedBox(height: 16),
-                      ],
-                    ),
-                  ),
-
-                  // Personal Info Section
-                  _buildSectionHeader('Personal info'),
-
-                  _buildProfileEditTile(
-                    title: 'Name',
-                    subtitle: _isEditing
-                        ? _nameController.text.isNotEmpty
-                            ? _nameController.text
-                            : displayName
-                        : displayName,
-                    onTap: _onEditingTap,
-                  ),
-                  _buildDivider(),
-                  // Email is immutable — display only, never editable.
-                  _buildSettingTile(
-                    title: 'Email',
-                    subtitle: displayEmail,
-                    subtitleColor: brandGreen,
-                    trailingIcon: Icons.check_circle_outline,
-                    trailingIconColor: Colors.black87,
-                  ),
-
-                  // Save / Cancel buttons when in edit mode
-                  if (_isEditing) ...[
+                      ),
+                      _buildSectionGap(),
+                    ], // if _isEditing
+                    // Section Separator
                     _buildSectionGap(),
-                    if (_errorMessage != null)
+
+                    // Pickup Reliability Status Tile Section
+                    _buildSectionHeader('Pickup Reliability'),
+                    _buildSettingTile(
+                      title: 'Reliability Status',
+                      subtitle: statusLabel,
+                      subtitleColor: PickupReliabilityCard.getStatusColor(
+                        userProfile.pickupReliability?.status ??
+                            PickupReliabilityStatus.newUser,
+                      ),
+                      trailingIcon: Icons.chevron_right,
+                      onTap: () =>
+                          _showReliabilityDetailModal(context, userProfile),
+                    ),
+
+                    // Phase E §16 — ordering-limit notice (derived from the
+                    // already-loaded server-maintained summary; no new query).
+                    if (userProfile.pickupReliability != null) ...[
                       Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 8,
-                        ),
-                        child: Text(
-                          _errorMessage!,
-                          style: const TextStyle(
-                            color: Colors.red,
-                            fontSize: 13,
-                          ),
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                        child: RestrictionNotice(
+                          level:
+                              userProfile.pickupReliability!.restrictionLevel,
+                          activeOrderLimit:
+                              userProfile.pickupReliability!.activeOrderLimit,
                         ),
                       ),
+                    ],
+
+                    // Section Separator
+                    _buildSectionGap(),
+
+                    // Security Section
+                    _buildSectionHeader('Security'),
+                    _buildSettingTile(
+                      title: 'Password',
+                      subtitle: 'Reset password via email verification',
+                      onTap: () => _handleResetPassword(context),
+                    ),
+
+                    // Section Separator
+                    _buildSectionGap(),
+
+                    // Sign Out Section
                     Container(
                       width: double.infinity,
                       color: Colors.white,
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: TextButton(
-                              onPressed: _isSaving
-                                  ? null
-                                  : () {
-                                      setState(() {
-                                        _isEditing = false;
-                                        _nameController.clear();
-                                        _errorMessage = null;
-                                      });
-                                    },
-                              child: const Text('Cancel'),
+                      child: InkWell(
+                        onTap: () => _handleLogout(context),
+                        child: const Padding(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 18,
+                          ),
+                          child: Text(
+                            'Sign out',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFFE53935),
                             ),
                           ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: ElevatedButton(
-                              onPressed: _isSaving ? null : _saveProfile,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFF168039),
-                                foregroundColor: Colors.white,
-                              ),
-                              child: _isSaving
-                                  ? const SizedBox(
-                                      width: 20,
-                                      height: 20,
-                                      child: CircularProgressIndicator(
-                                        color: Colors.white,
-                                        strokeWidth: 2.5,
-                                      ),
-                                    )
-                                  : const Text('Save'),
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
                     ),
-                    _buildSectionGap(),
-                  ], // if _isEditing
 
-                  // Section Separator
-                  _buildSectionGap(),
-
-                  // Pickup Reliability Status Tile Section
-                  _buildSectionHeader('Pickup Reliability'),
-                  _buildSettingTile(
-                    title: 'Reliability Status',
-                    subtitle: statusLabel,
-                    subtitleColor: PickupReliabilityCard.getStatusColor(
-                      userProfile.pickupReliability?.status ??
-                          PickupReliabilityStatus.newUser,
-                    ),
-                    trailingIcon: Icons.chevron_right,
-                    onTap: () =>
-                        _showReliabilityDetailModal(context, userProfile),
-                  ),
-
-                  // Phase E §16 — ordering-limit notice (derived from the
-                  // already-loaded server-maintained summary; no new query).
-                  if (userProfile.pickupReliability != null) ...[
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                      child: RestrictionNotice(
-                        level: userProfile.pickupReliability!.restrictionLevel,
-                        activeOrderLimit:
-                            userProfile.pickupReliability!.activeOrderLimit,
-                      ),
-                    ),
+                    const SizedBox(height: 32),
                   ],
-
-                  // Section Separator
-                  _buildSectionGap(),
-
-                  // Security Section
-                  _buildSectionHeader('Security'),
-                  _buildSettingTile(
-                    title: 'Password',
-                    subtitle: 'Reset password via email verification',
-                    onTap: () => _handleResetPassword(context),
-                  ),
-
-                  // Section Separator
-                  _buildSectionGap(),
-
-                  // Sign Out Section
-                  Container(
-                    width: double.infinity,
-                    color: Colors.white,
-                    child: InkWell(
-                      onTap: () => _handleLogout(context),
-                      child: const Padding(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 18,
-                        ),
-                        child: Text(
-                          'Sign out',
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                            color: Color(0xFFE53935),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 32),
-                ],
+                ),
               ),
             );
           },
@@ -620,7 +626,6 @@ class _MyProfileScreenState extends State<MyProfileScreen> {
       color: const Color(0xFFF7F7F9),
     );
   }
-
 
   void _onEditingTap() {
     if (_isEditing) return;
