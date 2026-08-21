@@ -37,7 +37,11 @@ void main() {
 
   testWidgets('SupportScreen centers its body on desktop', (tester) async {
     await pumpAtDesktop(tester, const SupportScreen());
-    expect(find.text('Help and support'), findsOneWidget);
+    final body = constrainedChild(tester, 'How can we help?');
+    expect(body, findsOneWidget);
+    final box = tester.getRect(body);
+    expect(box.center.dx, closeTo(960, 1));
+    expect(box.width, lessThanOrEqualTo(720));
   });
 
   testWidgets('FaqScreen renders on desktop', (tester) async {
@@ -52,11 +56,24 @@ void main() {
 
   testWidgets('TermsScreen centers its body on desktop', (tester) async {
     await pumpAtDesktop(tester, const TermsScreen());
-    expect(find.text('Terms and Conditions'), findsOneWidget);
+    final body = constrainedChild(
+      tester,
+      'Please collect your orders within the pickup window to help keep '
+      'cafeterias efficient and reduce food waste.',
+    );
+    expect(body, findsOneWidget);
+    final box = tester.getRect(body);
+    expect(box.center.dx, closeTo(960, 1));
+    expect(box.width, lessThanOrEqualTo(720));
   });
 
   testWidgets('DiagnosticsScreen renders on desktop', (tester) async {
     await pumpAtDesktop(tester, const DiagnosticsScreen());
     await tester.pump(const Duration(milliseconds: 300));
+    // Access resolves to allowed in debug builds; when denied the screen
+    // renders nothing at all, so these app bar widgets prove access was
+    // granted. The snapshot body may legitimately still be loading here.
+    expect(find.text('Developer Diagnostics'), findsOneWidget);
+    expect(find.byTooltip('Refresh'), findsOneWidget);
   });
 }
