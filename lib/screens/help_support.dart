@@ -88,7 +88,7 @@ class FaqScreen extends StatelessWidget {
                 Padding(
                   padding: EdgeInsets.all(16.0),
                   child: Text(
-                    'We currently DO NOT deliver to any location. the app is a self pick based, users order food and the cafe receives orders to process them and prepare once ready(completed), users go to the corresponding cafe and pick their meals.',
+                    'We currently do not offer delivery to any location. Our app operates on a self-pickup basis — users place their orders digitally, and the receiving cafe processes them. Once your order status changes to "Ready for Pickup", you can head to the cafeteria physical location to collect your meal . Please bring your order confirmation number when collecting.',
                   ),
                 ),
               ],
@@ -99,7 +99,7 @@ class FaqScreen extends StatelessWidget {
                 Padding(
                   padding: EdgeInsets.all(16.0),
                   child: Text(
-                    'The app is strictly non payment proccessing, it DOES NOT accept, process or make payments. We encourage users to only pay at the cafe in which they ordered their meals',
+                    'The app is strictly non-payment processing — we do not accept, process, or facilitate any payments online. To keep things simple and secure, we encourage all users to pay only at the cafe counter upon pickup. Each cafe handles its own payment methods (cash, card, mobile money, etc.). Please confirm with your chosen cafe about their accepted payment options.',
                   ),
                 ),
               ],
