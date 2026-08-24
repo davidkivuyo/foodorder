@@ -93,7 +93,7 @@ For support, see the Help & support page or email directly lembotor6@gmail.com''
                     height: 1.5,
                     color: Colors.black,
                     fontWeight: FontWeight
-                        .normal, // Adds a little line spacing for better readability
+                        .normal, // Adds a little line spacing for better and smart arrangementsand good readability
                   ),
                 ),
                 SizedBox(height: 10),
@@ -104,7 +104,7 @@ For support, see the Help & support page or email directly lembotor6@gmail.com''
                     height: 1.5,
                     color: Colors.red,
                     fontWeight: FontWeight
-                        .bold, // Adds a little line spacing for better readability
+                        .bold, // Adds a little line spacing for better readability and smart works
                   ),
                 ),
               ],

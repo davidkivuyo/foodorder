@@ -35,6 +35,8 @@
 ----
 
 ## FUTURE FEATURES
+1. For a food item available at multiple cafes, display a "Multiple" on food cards in home screen and category screen, and on the food details leave the cafe list as it is.
+
 1. apply ai to view and monitor images uploaded to be for food only no harm or dangerous materials
 
 2. Add a 'for' field on every food items which  is for univerisity with a value of "for university"
