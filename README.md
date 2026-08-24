@@ -223,12 +223,6 @@ flutter run -d chrome
 
 ---
 
-## Firestore Security Rules
-
-Read and write your own firestore rules. follow best practices in the official documentations.
-
----
-
 ## App Navigation
 
 The student app uses `go_router` with authentication-aware redirects:
@@ -300,14 +294,6 @@ CampusBite provides students with tools to plan meals in advance and quickly rep
 ## Pickup Extension & No-Show Handling
 
 CampusBite keeps pickup schedules fair and prevents food waste by enforcing server-authoritative deadlines, giving students a one-time grace action, and notifying them when an order is missed.
-
----
-
-## Production Notification Platform
-
-CampusBite features a scalable, production-ready notification platform that decouples notification delivery from core business logic.
-
-> **Where notifications are created:** In production, notification documents are written **server-side** by Cloud Functions (`createNotification` in `functions/index.js`) using the Admin SDK, which bypasses Firestore client rules. `NotificationService.dart` is the **client-side helper** — it mirrors the same idempotent creation logic for parity/future use and powers all read, unread-count, and read/delete operations in the apps. The client never writes notifications directly in the current flows.
 
 ---
 
