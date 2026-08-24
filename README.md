@@ -42,16 +42,16 @@ This Project code changes must be reviewed by:
 
 | Doc | Contents |
 |---|---|
-| [ARCHITECTURE.md](ARCHITECTURE.md) | System map, Cloud Functions, update system |
-| [DATABASE.md](DATABASE.md) | Firestore schema, security model, indexes, offline |
-| [BUSINESS_RULES.md](BUSINESS_RULES.md) | Lifecycle, reliability, restrictions, excusal, disposition |
+| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | System map, Cloud Functions, update system |
+| [DATABASE.md](docs/DATABASE.md) | Firestore schema, security model, indexes, offline |
+| [BUSINESS_RULES.md](docs/BUSINESS_RULES.md) | Lifecycle, reliability, restrictions, excusal, disposition |
 | [SECURITY.md](SECURITY.md) | Auth, rules model, secrets, monitoring/privacy |
-| [DEPLOYMENT.md](DEPLOYMENT.md) | Deploy steps, release process, rollback plan |
-| [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Common issues and fixes |
-| [ROADMAP.md](ROADMAP.md) | Phase history and forward-looking plans |
-| [PRODUCTION_CHECKLIST.md](PRODUCTION_CHECKLIST.md) | Release gate checklist |
-| [DOCUMENTATION.md](DOCUMENTATION.md) | Deep dives: lifecycle, reliability engine, notifications, FCM |
-| [PHASE_I_REPORT.md](PHASE_I_REPORT.md) | Release evidence and recomendations |
+| [DEPLOYMENT.md](docs/DEPLOYMENT.md) | Deploy steps, release process, rollback plan |
+| [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Common issues and fixes |
+| [ROADMAP.md](docs/ROADMAP.md) | Phase history and forward-looking plans |
+| [PRODUCTION_CHECKLIST.md](docs/PRODUCTION_CHECKLIST.md) | Release gate checklist |
+| [DOCUMENTATION.md](docs/DOCUMENTATION.md) | Deep dives: lifecycle, reliability engine, notifications, FCM |
+| [PHASE_I_REPORT.md](docs/PHASE_I_REPORT.md) | Release evidence and recomendations |
 
 ---
 
@@ -384,7 +384,7 @@ This project includes an `AGENTS.md` file that defines strict rules for AI codin
 
 ---
 
-See the [Project official Documentation](DOCUMENTATION.md) for more Instructions and overviews
+See the [Project official Documentation](docs/DOCUMENTATION.md) for more Instructions and overviews
 
 ---
 
