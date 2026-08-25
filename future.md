@@ -35,7 +35,6 @@
 ----
 
 ## FUTURE FEATURES
-1. For a food item available at multiple cafes, display a "Multiple" on food cards in home screen and category screen, and on the food details leave the cafe list as it is.
 
 1. apply ai to view and monitor images uploaded to be for food only no harm or dangerous materials
 
@@ -43,8 +42,6 @@
 * and food items for outer restaurants will have a value of "for restaurants"
 
 3. use n8n to automate creating newsletters for furnitures to subscribers in mailchimp
-
-4. in each food description page add a arrow button to view through a popup the cafe/restaurant location on google maps and distance from where the student is.
 
 5. add a search to view if the written cafe is already in database to avoid duplication
 

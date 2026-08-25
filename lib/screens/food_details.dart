@@ -380,7 +380,6 @@ class _FoodDetailsScreenState extends State<FoodDetailsScreen> {
                                     ),
                                   ),
                                 ),
-                                StockOverlayBadge(inStock: item.available),
                                 if (item.featured)
                                   Positioned(
                                     top: 12,
@@ -459,12 +458,10 @@ class _FoodDetailsScreenState extends State<FoodDetailsScreen> {
                         fit: BoxFit.cover,
                       ),
                     ),
-                    // Stock overlay badge
-                    StockOverlayBadge(inStock: item.available),
                     // "Bestseller" Badge - show only if featured
                     if (item.featured)
                       Positioned(
-                        top: 100,
+                        top: MediaQuery.of(context).padding.top + 8,
                         right: 16,
                         child: Container(
                           padding: const EdgeInsets.symmetric(
