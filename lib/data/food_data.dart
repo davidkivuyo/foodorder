@@ -140,6 +140,11 @@ class FoodItem {
 
   String get displayCafe => availableCafes.join(', ');
 
+  String get cardCafeLabel =>
+      availableCafes.length > 1 ? 'Multiple' : displayCafe;
+
+  bool get isMultipleCafes => availableCafes.length > 1;
+
   /// Display‑friendly price in TZS (the value stored is in TZS).
   String get formattedPrice => '$price';
 

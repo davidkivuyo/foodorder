@@ -525,7 +525,7 @@ class CardRowItems extends StatelessWidget {
                                 const SizedBox(width: 2),
                                 Flexible(
                                   child: Text(
-                                    item.displayCafe,
+                                    item.cardCafeLabel,
                                     style: TextStyle(
                                       fontSize: 11,
                                       color: Colors.grey.shade600,
@@ -768,7 +768,7 @@ class CategoriesTitles extends StatelessWidget {
                                     const SizedBox(width: 2),
                                     Flexible(
                                       child: Text(
-                                        item.displayCafe,
+                                        item.cardCafeLabel,
                                         style: const TextStyle(
                                           fontSize: 12,
                                           color: Colors.black,

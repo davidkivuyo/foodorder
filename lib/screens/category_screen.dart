@@ -348,7 +348,7 @@ class FoodCard extends StatelessWidget {
                   const SizedBox(width: 2),
                   Flexible(
                     child: Text(
-                      item.displayCafe,
+                      item.cardCafeLabel,
                       style: const TextStyle(fontSize: 12, color: Colors.black),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
