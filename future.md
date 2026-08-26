@@ -35,6 +35,7 @@
 ----
 
 ## FUTURE FEATURES
+1. add preorder meals e.g in morning one can pre order lunch or dinner
 
 1. apply ai to view and monitor images uploaded to be for food only no harm or dangerous materials
 
