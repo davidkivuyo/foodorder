@@ -30,11 +30,13 @@
 14. Remove duplicate icons in the categories filter in the top header section **checked**
 
 15. change the food details popup model design to adapt that of uber eats in the screenshots
-16. remove the overlay in desktop
+16. remove the overlay in desktop **checked**
 
 ----
 
 ## FUTURE FEATURES
+1. add explicit description for the corresponding food item (even add swahili translation). to explain how the food is priced and at what quantity per the food image representation which is not neccessarilly equal.
+
 1. add preorder meals e.g in morning one can pre order lunch or dinner
 
 1. apply ai to view and monitor images uploaded to be for food only no harm or dangerous materials
