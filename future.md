@@ -35,6 +35,8 @@
 ----
 
 ## FUTURE FEATURES
+1. remove old food items in the firebase console
+
 1. add explicit description for the corresponding food item (even add swahili translation). to explain how the food is priced and at what quantity per the food image representation which is not neccessarilly equal.
 
 1. add preorder meals e.g in morning one can pre order lunch or dinner
